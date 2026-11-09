@@ -35,6 +35,7 @@ repaired from the interface instead of the terminal.
 - Per-step command output console
 - One-click repairs (DNS flush, DHCP renew, Winsock/TCP-IP reset)
 - "Run all checks" sequential diagnosis
+- LAN-accessible dashboard for other devices
 - Dark, responsive dashboard interface
 
 ## Technologies
@@ -74,7 +75,15 @@ python app.py
 
 ### 6. Open dashboard
 
+On this computer:
+
 http://127.0.0.1:5000
+
+From another device on the same local network, use the
+address printed at startup (for example
+http://192.168.1.20:5000). If other devices cannot
+connect, allow Python or TCP port 5000 through Windows
+Firewall.
 
 ## Project Structure
 
@@ -109,8 +118,16 @@ NetScope/
 
 ## Important Notes
 
-NetScope runs locally on your computer and binds to
-127.0.0.1 by default.
+NetScope runs on your computer and binds to all network
+interfaces (0.0.0.0:5000) so other devices on the same
+local network can open it in a browser. The console lists
+the reachable LAN addresses at startup.
+
+There is no authentication. Anyone who can reach port
+5000 can view the dashboard and trigger the predefined
+troubleshooting commands on this computer, including
+repairs. Use NetScope only on a trusted local network,
+and never forward port 5000 to the internet.
 
 Bandwidth monitoring measures total traffic across
 network interfaces. Displayed speeds are smoothed in

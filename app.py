@@ -1,5 +1,9 @@
+import socket
+
+import psutil
 from flask import Flask, jsonify, render_template
 
+from config import APP_NAME, HOST, PORT
 from modules.network_info import get_network_info
 from modules.bandwidth import BandwidthMonitor
 from modules.ping_monitor import ping_host
@@ -9,6 +13,33 @@ from modules.diagnostics import list_diagnostics, run_diagnostic
 app = Flask(__name__)
 
 bandwidth_monitor = BandwidthMonitor()
+
+
+def _lan_urls():
+    urls = set()
+
+    try:
+        interfaces = psutil.net_if_addrs()
+    except (OSError, AttributeError):
+        return []
+
+    for addresses in interfaces.values():
+        for address in addresses:
+            if address.family != socket.AF_INET:
+                continue
+
+            ip = address.address
+
+            if (
+                not ip
+                or ip.startswith("127.")
+                or ip.startswith("169.254.")
+            ):
+                continue
+
+            urls.add(f"http://{ip}:{PORT}")
+
+    return sorted(urls)
 
 
 @app.route("/")
@@ -63,9 +94,21 @@ def api_run_diagnostic(step_id):
 
 
 if __name__ == "__main__":
+    urls = _lan_urls()
+
+    print(f"{APP_NAME} is reachable on this computer:")
+    print(f"  http://127.0.0.1:{PORT}")
+
+    if urls:
+        print("On the local network:")
+        for url in urls:
+            print(f"  {url}")
+
+    print()
+
     app.run(
-        host="127.0.0.1",
-        port=5000,
+        host=HOST,
+        port=PORT,
         debug=False,
         threaded=True
     )

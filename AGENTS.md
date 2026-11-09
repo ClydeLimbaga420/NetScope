@@ -3,7 +3,8 @@
 Flask network dashboard. Windows is the target, with Linux/macOS command fallbacks.
 
 ### Run
-- From the project dir: `.venv\Scripts\python.exe app.py` → http://127.0.0.1:5000 (binds localhost, `debug=False`, `threaded=True`).
+- From the project dir: `.venv\Scripts\python.exe app.py` → http://127.0.0.1:5000 locally, or `http://<LAN-IP>:5000` from another device. Binds `0.0.0.0` using `HOST`/`PORT` from `config.py` (`debug=False`, `threaded=True`); startup prints reachable LAN URLs via `_lan_urls()`.
+- No authentication: the dashboard and `POST /api/diagnostics/<step_id>/run` are reachable by anyone who can access port 5000, and repairs change the host's network settings. Keep it on a trusted LAN; never port-forward it to the internet.
 - Project `.venv` is Python 3.14.7 with Flask 3.1 / psutil 7.2; deps are only `Flask`, `psutil` (`requirements.txt`).
 - Run `app.py` as a script: imports are flat/absolute (`from config ...`, `from modules...`), not a package.
 - `debug=False` means Python changes require restarting the server.
