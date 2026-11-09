@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -14,6 +15,7 @@ from cli import exit_codes
 from cli.admin import admin_guidance, is_admin
 from cli.context import CliContext
 from cli.render import (
+    render_fix_outcome,
     render_info,
     render_report_text,
     render_result,
@@ -22,11 +24,18 @@ from cli.render import (
 from cli.utilities import UtilityRunner
 from core.info import build_info
 from core.logging_config import LOG_FILE_NAME
+from core.models import Status
+from fixes.catalog import Catalog, CatalogError, FixEntry, load_catalog
+from fixes.executor import FixExecutor, FixOutcome, PlanError
+from fixes.if_unresolved import build_unresolved_sections
 from powershell.validation import (
     ValidationError,
-    validate_fix_id,
     validate_path,
 )
+
+_FINDING_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,64}$")
+_PARAM_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_SERVICE_SUFFIX_RE = re.compile(r"^[A-Za-z]{2,5}-[0-9]{2}-(.+)$")
 
 
 def _failure(ctx: CliContext, message: str, code: int = exit_codes.USAGE) -> int:
@@ -67,25 +76,297 @@ def cmd_diagnose(args: Any, ctx: CliContext) -> int:
     return report.exit_code
 
 
+def _stdin_is_tty(ctx: CliContext) -> bool:
+    try:
+        return bool(ctx.stdin.isatty())
+    except Exception:
+        return False
+
+
+def _confirm(ctx: CliContext, prompt: str) -> bool:
+    if not _stdin_is_tty(ctx):
+        return False
+    print(prompt, end="", file=ctx.stdout, flush=True)
+    try:
+        answer = ctx.stdin.readline()
+    except (EOFError, KeyboardInterrupt):
+        raise
+    if not answer:
+        return False
+    return answer.strip().lower() in {"y", "yes"}
+
+
+def _isolation_func(ctx: CliContext, assume_yes: bool):
+    def ask() -> bool | None:
+        if assume_yes or not _stdin_is_tty(ctx):
+            return None
+        print(
+            "Does another device on the same network work? [y/n/unknown] ",
+            end="",
+            file=ctx.stdout,
+            flush=True,
+        )
+        try:
+            answer = ctx.stdin.readline()
+        except (EOFError, KeyboardInterrupt):
+            raise
+        text = (answer or "").strip().lower()
+        if text.startswith("y"):
+            return True
+        if text.startswith("n"):
+            return False
+        return None
+
+    return ask
+
+
+def _normalize_finding(value: str) -> str:
+    text = str(value).strip()
+    if not _FINDING_RE.fullmatch(text):
+        raise ValueError(f"invalid finding or fix id: {value!r}")
+    return text.upper()
+
+
+def _match_result(report: Any, finding: str):
+    if report is None:
+        return None
+    normalized = finding.upper()
+    for result in report.results:
+        if result.id.upper() == normalized:
+            return result
+    for result in report.results:
+        if result.id.upper().startswith(f"{normalized}-"):
+            return result
+    for result in report.results:
+        if normalized in {fix_id.upper() for fix_id in result.fix_ids}:
+            return result
+    return None
+
+
+def _candidate_results(report: Any) -> list[Any]:
+    return [
+        result
+        for result in report.results
+        if result.status.severity >= Status.WARN.severity and result.fix_ids
+    ]
+
+
+def _collect_overrides(
+    args: Any,
+    entry: FixEntry,
+    result: Any,
+    raw_finding: str,
+) -> dict[str, str]:
+    overrides: dict[str, str] = {}
+
+    for item in getattr(args, "param", None) or []:
+        if "=" not in item:
+            raise ValueError("--param expects NAME=VALUE")
+        name, value = item.split("=", 1)
+        name = name.strip()
+        if not _PARAM_RE.fullmatch(name):
+            raise ValueError(f"invalid parameter name: {name!r}")
+        if name not in entry.parameter_map:
+            raise ValueError(f"{entry.id} has no parameter named {name!r}")
+        overrides[name] = value
+
+    def assign(sources: set[str], value: str, flag: str) -> None:
+        matches = [param for param in entry.params if param.source in sources]
+        if not matches:
+            raise ValueError(f"{flag} is not used by {entry.id}")
+        if len(matches) > 1:
+            raise ValueError(f"{flag} is ambiguous for {entry.id}; use --param NAME=VALUE")
+        overrides[matches[0].name] = value
+
+    adapter = getattr(args, "adapter", None)
+    if adapter:
+        assign({"adapter", "adapter_alias"}, adapter, "--adapter")
+    target = getattr(args, "target", None)
+    if target:
+        assign({"target"}, target, "--target")
+    value = getattr(args, "value", None)
+    if value:
+        assign({"value"}, value, "--value")
+
+    if "ServiceName" in entry.parameter_map and "ServiceName" not in overrides:
+        service = None
+        if result is not None:
+            service = (result.evidence or {}).get("service")
+        if not service and result is not None:
+            suffix = _SERVICE_SUFFIX_RE.match(result.id or "")
+            service = suffix.group(1) if suffix else None
+        if not service:
+            suffix = _SERVICE_SUFFIX_RE.match(raw_finding or "")
+            service = suffix.group(1) if suffix else None
+        if service:
+            overrides["ServiceName"] = str(service)
+
+    return overrides
+
+
+def _make_executor(ctx: CliContext, catalog: Catalog, engine: Any) -> FixExecutor:
+    return FixExecutor(
+        ctx.runner,
+        ctx.ps,
+        ctx.logger,
+        engine,
+        catalog,
+        admin_check=is_admin,
+        session_id=getattr(ctx.logger, "session_id", "-"),
+    )
+
+
+def _finish_fix(
+    ctx: CliContext,
+    args: Any,
+    outcome: FixOutcome,
+    entry: FixEntry,
+    *,
+    preview: list[str] | None = None,
+) -> int:
+    if outcome.status == "needs_admin":
+        ctx.err(admin_guidance(["netscope.py", "fix", entry.id]))
+    if args.json:
+        payload = outcome.to_dict()
+        if preview is not None:
+            payload["preview"] = preview
+        _json_dump(ctx, payload)
+    else:
+        if preview:
+            for line in preview:
+                print(line, file=ctx.stdout)
+            print(file=ctx.stdout)
+        for line in render_fix_outcome(outcome.to_dict(), verbose=args.verbose):
+            print(line, file=ctx.stdout)
+    return outcome.exit_code
+
+
 def cmd_fix(args: Any, ctx: CliContext) -> int:
-    finding = getattr(args, "finding", None)
-    if not finding:
+    raw_finding = getattr(args, "finding", None)
+    rollback = bool(getattr(args, "rollback", False))
+    try:
+        catalog = load_catalog()
+    except CatalogError as exc:
+        ctx.err(f"error: {exc}")
+        return exit_codes.FIX_FAILED
+
+    if rollback and not raw_finding:
+        return _failure(ctx, "provide a fix id with --rollback, for example: netscope fix IP-01 --rollback")
+
+    report = None
+    snapshot = None
+    result = None
+    engine = None
+
+    if raw_finding:
+        try:
+            finding = _normalize_finding(raw_finding)
+        except ValueError as exc:
+            return _failure(ctx, str(exc))
+    else:
+        finding = ""
+
+    if not rollback:
+        engine = ctx.engine()
+        if not args.json and not args.quiet:
+            ctx.err("Collecting network state...")
+        try:
+            snapshot = engine.collect_snapshot()
+            report = engine.diagnose(snapshot=snapshot, mode="fix")
+        except KeyboardInterrupt:
+            raise
+        except Exception as exc:
+            ctx.logger.error("fix_diagnose_failed", exc_info=True, error=str(exc))
+            return _failure(
+                ctx,
+                f"could not collect network state: {exc}",
+                exit_codes.FAILURES,
+            )
+
+        if not finding:
+            candidates = _candidate_results(report)
+            if not candidates:
+                print("No failing findings with a catalog fix were found.", file=ctx.stdout)
+                return exit_codes.OK
+            if len(candidates) > 1:
+                ctx.err("Multiple findings need attention; choose one:")
+                for candidate in candidates:
+                    ctx.err(
+                        f"  {candidate.id}: {candidate.title} -> "
+                        f"{', '.join(candidate.fix_ids)}"
+                    )
+                return exit_codes.USAGE
+            result = candidates[0]
+            raw_finding = result.id
+            finding = _normalize_finding(result.id)
+        else:
+            result = _match_result(report, finding)
+
+    entry = catalog.get(finding)
+    if entry is None:
+        if rollback:
+            return _failure(ctx, f"unknown fix id: {finding!r}")
+        if result is None:
+            return _failure(ctx, f"unknown finding or fix id: {finding!r}")
+        fix_ids = [fix_id for fix_id in result.fix_ids if catalog.get(fix_id)]
+        if not fix_ids:
+            return _failure(
+                ctx,
+                f"{finding} has no automated fix in the catalog; run 'netscope diagnose' for guidance",
+            )
+        if len(fix_ids) > 1:
+            ctx.err(
+                f"Using {fix_ids[0]} for {finding}; other catalog fixes: "
+                + ", ".join(fix_ids[1:])
+            )
+        entry = catalog.require(fix_ids[0])
+
+    if engine is None:
+        engine = ctx.engine()
+    executor = _make_executor(ctx, catalog, engine)
+
+    if rollback:
+        outcome = executor.rollback(
+            entry,
+            assume_yes=args.yes,
+            risk_ack=args.yes_i_understand_risk,
+            confirm=lambda prompt: _confirm(ctx, prompt),
+        )
+        return _finish_fix(ctx, args, outcome, entry)
+
+    try:
+        overrides = _collect_overrides(args, entry, result, raw_finding)
+        plan = executor.prepare(entry, overrides=overrides, snapshot=snapshot)
+    except (PlanError, CatalogError, ValidationError, ValueError) as exc:
+        return _failure(ctx, str(exc))
+
+    if not args.json:
+        for line in plan.preview_lines:
+            print(line, file=ctx.stdout)
+        print(file=ctx.stdout)
+
+    if not args.dry_run and not args.yes and not _stdin_is_tty(ctx):
         return _failure(
             ctx,
-            "provide a finding id, for example: netscope fix IP-01",
+            "confirmation is required; rerun with --yes for non-interactive use",
         )
-    try:
-        finding = validate_fix_id(finding.upper())
-    except ValidationError as exc:
-        return _failure(ctx, str(exc))
-    if not is_admin():
-        ctx.err(admin_guidance(["netscope.py", "fix", finding]))
-    ctx.logger.unresolved(finding, reason="catalog unavailable")
-    ctx.err(
-        f"fix catalog not available in this build (requested {finding}); "
-        "automatic fixes arrive in Phase 3."
+
+    outcome = executor.run(
+        entry,
+        plan=plan,
+        assume_yes=args.yes,
+        dry_run=args.dry_run,
+        risk_ack=args.yes_i_understand_risk,
+        confirm=lambda prompt: _confirm(ctx, prompt),
+        isolation=_isolation_func(ctx, args.yes),
     )
-    return exit_codes.FIX_FAILED
+    return _finish_fix(
+        ctx,
+        args,
+        outcome,
+        entry,
+        preview=plan.preview_lines if args.dry_run else None,
+    )
 
 
 def cmd_info(args: Any, ctx: CliContext) -> int:
@@ -311,7 +592,17 @@ def cmd_report(args: Any, ctx: CliContext) -> int:
         ctx.logger.error("report_failed", exc_info=True, error=str(exc))
         return _failure(ctx, f"could not build report: {exc}", exit_codes.FAILURES)
 
-    payload = {"info": info, "diagnostic": report.to_dict(include_snapshot=False)}
+    unresolved: list[dict[str, Any]] = []
+    try:
+        unresolved = build_unresolved_sections(report, load_catalog())
+    except CatalogError as exc:
+        ctx.logger.warning("fix_catalog_unavailable", error=str(exc))
+
+    payload = {
+        "info": info,
+        "diagnostic": report.to_dict(include_snapshot=False),
+        "unresolved": unresolved,
+    }
     if args.report_format == "json":
         content = json.dumps(payload, indent=2, sort_keys=True, default=str)
         extension = "json"

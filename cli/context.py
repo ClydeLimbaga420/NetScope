@@ -21,6 +21,7 @@ class CliContext:
     ps: PowerShellLayer
     probe: NetworkProbe
     color: Colorizer
+    stdin: TextIO = field(default_factory=lambda: sys.stdin)
     stdout: TextIO = field(default_factory=lambda: sys.stdout)
     stderr: TextIO = field(default_factory=lambda: sys.stderr)
 
@@ -47,12 +48,14 @@ def create_context(
     no_color: bool = False,
     json_mode: bool = False,
     quiet: bool = False,
+    stdin: TextIO | None = None,
     stdout: TextIO | None = None,
     stderr: TextIO | None = None,
     logger: Any | None = None,
 ) -> CliContext:
     import logging
 
+    in_stream = stdin if stdin is not None else sys.stdin
     out_stream = stdout or sys.stdout
     err_stream = stderr or sys.stderr
 
@@ -81,6 +84,7 @@ def create_context(
         ps=layer,
         probe=NetworkProbe(),
         color=color,
+        stdin=in_stream,
         stdout=out_stream,
         stderr=err_stream,
     )

@@ -105,9 +105,44 @@ def build_parser() -> argparse.ArgumentParser:
         "fix",
         parents=[common],
         help="apply a preset fix by finding or fix id",
-        description="Apply one preset fix. The catalog is delivered in a later phase.",
+        description=(
+            "Show a catalog fix, confirm it, apply its ladder and re-run the "
+            "verification check. Use --rollback to restore a saved pre-fix snapshot."
+        ),
     )
-    fix.add_argument("finding", nargs="?", help="finding/check id or fix id (for example IP-01)")
+    fix.add_argument(
+        "finding",
+        nargs="?",
+        help="finding/check id or fix id (for example GW-02 or IP-01)",
+    )
+    fix.add_argument(
+        "--rollback",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="restore the latest saved snapshot for this fix",
+    )
+    fix.add_argument(
+        "--adapter",
+        metavar="NAME",
+        help="override the adapter parameter for this fix",
+    )
+    fix.add_argument(
+        "--target",
+        metavar="VALUE",
+        help="override the target parameter (host, name or path)",
+    )
+    fix.add_argument(
+        "--value",
+        metavar="VALUE",
+        help="override the value parameter when the fix has exactly one",
+    )
+    fix.add_argument(
+        "--param",
+        action="append",
+        default=argparse.SUPPRESS,
+        metavar="NAME=VALUE",
+        help="override a named catalog parameter (repeatable)",
+    )
 
     info = sub.add_parser(
         "info",

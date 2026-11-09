@@ -204,16 +204,12 @@ def test_diagnose_human_prints_result_and_summary():
     assert "Overall: PASS" in out
 
 
-def test_fix_command_requires_valid_id_and_reports_unavailable_catalog():
+def test_fix_command_rejects_unknown_ids():
     ctx = make_ctx()
     from cli.commands import dispatch
 
-    assert dispatch(parse(["fix"]), ctx) == 64
     assert dispatch(parse(["fix", "not-an-id"]), ctx) == 64
-
-    ctx = make_ctx()
-    assert dispatch(parse(["fix", "IP-01"]), ctx) == 3
-    assert "Phase 3" in ctx.stderr.getvalue()
+    assert "unknown finding or fix id" in ctx.stderr.getvalue()
 
 
 def test_info_json_is_plain_data(snapshot_factory):

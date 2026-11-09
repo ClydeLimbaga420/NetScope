@@ -65,6 +65,103 @@ def write_report(
         print(line, file=stream)
 
 
+def render_unresolved_section(section: dict[str, Any]) -> list[str]:
+    lines: list[str] = []
+    finding_id = section.get("finding_id")
+    finding_title = section.get("finding_title")
+    if finding_id:
+        label = f"{finding_id}"
+        if finding_title:
+            label += f" - {finding_title}"
+    else:
+        label = f"{section.get('fix_id', '')} - {section.get('name', '')}".strip(" -")
+    lines.append(f"Still not working? {label}")
+    if section.get("reason"):
+        lines.append(f"  Reason: {section['reason']}")
+    if section.get("wording"):
+        lines.append(f"  {section['wording']}")
+    answer = section.get("another_device_works")
+    if answer is True:
+        lines.append("  Another device on the same network works: yes")
+    elif answer is False:
+        lines.append("  Another device on the same network works: no")
+    else:
+        lines.append("  Another device on the same network works: unknown/skipped")
+
+    ranked = section.get("ranked") or []
+    if ranked:
+        lines.append("  Probable or possible causes:")
+        for cause in ranked:
+            scope = (
+                "this device"
+                if cause.get("scope") == "this_device"
+                else "beyond this device"
+            )
+            likelihood = cause.get("likelihood") or "possible"
+            lines.append(f"    [{likelihood}] {scope}: {cause.get('cause', '')}")
+    checks = section.get("next_checks") or []
+    if checks:
+        lines.append("  Next checks (cheapest first):")
+        for index, check in enumerate(checks, start=1):
+            lines.append(f"    {index}. {check}")
+    evidence = section.get("evidence_to_collect") or []
+    if evidence:
+        lines.append("  Evidence to collect for a report:")
+        for item in evidence:
+            lines.append(f"    - {item}")
+    return lines
+
+
+def render_fix_outcome(outcome: dict[str, Any], *, verbose: bool = False) -> list[str]:
+    lines: list[str] = []
+    for step in outcome.get("steps") or []:
+        lines.append(
+            f"Step {step.get('index')}: {step.get('name')} [{step.get('status')}]"
+        )
+        for command in step.get("commands") or []:
+            state = "ok" if command.get("ok") else "FAILED"
+            detail = f"exit {command.get('returncode')}"
+            if command.get("timed_out"):
+                detail += ", timed out"
+            lines.append(f"  {command.get('label')}: {state} ({detail})")
+            if verbose:
+                for stream in ("stdout", "stderr"):
+                    text = (command.get(stream) or "").rstrip()
+                    if text:
+                        lines.extend(
+                            f"    {stream}: {line}" for line in text.splitlines()
+                        )
+
+    verification = outcome.get("verification")
+    if verification:
+        if verification.get("error"):
+            lines.append(f"Verification: {verification['error']}")
+        elif verification.get("resolved") is True:
+            lines.append("Verification: resolved")
+        else:
+            lines.append("Verification: still failing")
+        for match in verification.get("matches") or []:
+            lines.append(
+                "  {id}: {status} - {message}".format(
+                    id=match.get("id", ""),
+                    status=str(match.get("status", "")).upper(),
+                    message=match.get("message", ""),
+                )
+            )
+
+    if outcome.get("snapshot_file"):
+        lines.append(f"Pre-fix snapshot: {outcome['snapshot_file']}")
+    if outcome.get("rollback_available"):
+        lines.append(f"Undo: netscope fix {outcome.get('fix_id')} --rollback")
+    if outcome.get("message"):
+        lines.append(outcome["message"])
+    unresolved = outcome.get("unresolved")
+    if unresolved:
+        lines.append("")
+        lines.extend(render_unresolved_section(unresolved))
+    return lines
+
+
 def render_info(info: dict[str, Any]) -> list[str]:
     lines: list[str] = []
     lines.append(f"Host: {info.get('hostname') or 'unknown'}")
@@ -185,5 +282,13 @@ def render_report_text(payload: dict[str, Any]) -> str:
         lines.append(
             "Counts: " + ", ".join(f"{key}={value}" for key, value in summary.items())
         )
+    sections = payload.get("unresolved") or []
+    if sections:
+        lines.append("")
+        lines.append("Unresolved findings - probable causes")
+        lines.append("------------------------------------")
+        for section in sections:
+            lines.extend(render_unresolved_section(section))
+            lines.append("")
     lines.append("")
     return "\n".join(lines)

@@ -1,0 +1,5287 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "ADP-01",
+      "name": "Adapter disabled",
+      "symptom": "An adapter is administratively disabled.",
+      "detection": "Get-NetAdapter Status=Disabled",
+      "explanation": "Enables the selected network adapter. Windows will load the driver and try to bring the link up.",
+      "admin": true,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "ADP-01"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "AdapterName",
+          "source": "adapter",
+          "required": true,
+          "validator": "adapter"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "adapter state",
+          "script": "param($AdapterName)\nGet-NetAdapter -Name $AdapterName -ErrorAction SilentlyContinue |\n  Select-Object Name,Status,LinkSpeed,MacAddress,ifIndex |\n  ConvertTo-Json -Depth 4",
+          "params": [
+            "AdapterName"
+          ]
+        }
+      ],
+      "rollback": [
+        {
+          "kind": "powershell",
+          "label": "disable the adapter again",
+          "script": "param($AdapterName)\nDisable-NetAdapter -Name $AdapterName -Confirm:$false -ErrorAction SilentlyContinue",
+          "params": [
+            "AdapterName"
+          ]
+        }
+      ],
+      "rollback_notes": "The adapter was disabled before the fix; rollback disables it again.",
+      "ladder": [
+        {
+          "name": "Enable the adapter",
+          "description": "Enable-NetAdapter with an explicit confirmation flag.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "enable the adapter",
+              "script": "param($AdapterName)\nEnable-NetAdapter -Name $AdapterName -Confirm:$false -ErrorAction Stop",
+              "params": [
+                "AdapterName"
+              ],
+              "native": [
+                "netsh",
+                "interface",
+                "set",
+                "interface",
+                "name={AdapterName}",
+                "admin=enable"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "failing or loose NIC (PCIe/USB/M.2 Wi-Fi card)",
+          "faulty or incompatible driver",
+          "BIOS/UEFI disabled the device",
+          "USB adapter or dock issue",
+          "Wi-Fi hardware switch or Fn key is off",
+          "corrupted OS network components",
+          "overheating or power-starved USB adapter"
+        ],
+        "beyond_device": [
+          "bad cable",
+          "dead switch port",
+          "failing wall jack",
+          "PoE or switch port security disabling the port",
+          "router or wireless access point is down"
+        ],
+        "next_checks": [
+          "try a different cable or switch port",
+          "test another USB port or adapter",
+          "check Device Manager error code and Event Viewer (NDIS and vendor driver sources)",
+          "update or roll back the driver from the vendor"
+        ],
+        "evidence_to_collect": [
+          "Get-NetAdapter Status and LinkSpeed",
+          "Get-PnpDevice status and problem code",
+          "Get-NetAdapterStatistics errors and discards"
+        ]
+      }
+    },
+    {
+      "id": "ADP-02",
+      "name": "Adapter hung while link is up",
+      "symptom": "The adapter reports Up but traffic does not flow and the gateway ARP entry stays incomplete.",
+      "detection": "Status Up, gateway unreachable, ARP incomplete",
+      "explanation": "Restarts the adapter to reload the driver state without changing any saved setting.",
+      "admin": true,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "GW-02"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "AdapterName",
+          "source": "adapter",
+          "required": true,
+          "validator": "adapter"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "adapter state",
+          "script": "param($AdapterName)\nGet-NetAdapter -Name $AdapterName -ErrorAction SilentlyContinue |\n  Select-Object Name,Status,LinkSpeed,MacAddress,ifIndex |\n  ConvertTo-Json -Depth 4",
+          "params": [
+            "AdapterName"
+          ]
+        },
+        {
+          "kind": "powershell",
+          "label": "adapter statistics",
+          "script": "param($AdapterName)\nGet-NetAdapterStatistics -Name $AdapterName -ErrorAction SilentlyContinue |\n  ConvertTo-Json -Depth 4",
+          "params": [
+            "AdapterName"
+          ]
+        }
+      ],
+      "rollback": [],
+      "rollback_notes": "Restarting the adapter is reversible by design; no saved setting is changed.",
+      "ladder": [
+        {
+          "name": "Restart the adapter",
+          "description": "Restart-NetAdapter briefly disconnects the interface.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "restart adapter",
+              "script": "param($AdapterName)\nRestart-NetAdapter -Name $AdapterName -Confirm:$false -ErrorAction Stop",
+              "params": [
+                "AdapterName"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "failing or loose NIC (PCIe/USB/M.2 Wi-Fi card)",
+          "faulty or incompatible driver",
+          "BIOS/UEFI disabled the device",
+          "USB adapter or dock issue",
+          "Wi-Fi hardware switch or Fn key is off",
+          "corrupted OS network components",
+          "overheating or power-starved USB adapter"
+        ],
+        "beyond_device": [
+          "bad cable",
+          "dead switch port",
+          "failing wall jack",
+          "PoE or switch port security disabling the port",
+          "router or wireless access point is down"
+        ],
+        "next_checks": [
+          "try a different cable or switch port",
+          "test another USB port or adapter",
+          "check Device Manager error code and Event Viewer (NDIS and vendor driver sources)",
+          "update or roll back the driver from the vendor"
+        ],
+        "evidence_to_collect": [
+          "Get-NetAdapter Status and LinkSpeed",
+          "Get-PnpDevice status and problem code",
+          "Get-NetAdapterStatistics errors and discards"
+        ]
+      }
+    },
+    {
+      "id": "ADP-03",
+      "name": "Adapter power saving",
+      "symptom": "Windows is allowed to turn off the adapter to save power, which can drop the link after sleep.",
+      "detection": "Get-NetAdapterPowerManagement AllowComputerToTurnOffDevice=Enabled",
+      "explanation": "Stops Windows from powering down the adapter. The link should survive sleep and idle periods.",
+      "admin": true,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "ADP-03"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "AdapterName",
+          "source": "adapter",
+          "required": true,
+          "validator": "adapter"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "power management",
+          "script": "param($AdapterName)\nGet-NetAdapterPowerManagement -Name $AdapterName -ErrorAction SilentlyContinue |\n  Select-Object Name,AllowComputerToTurnOffDevice |\n  ConvertTo-Json -Depth 4",
+          "params": [
+            "AdapterName"
+          ]
+        }
+      ],
+      "rollback": [
+        {
+          "kind": "powershell",
+          "label": "restore power saving",
+          "script": "param($AdapterName)\nSet-NetAdapterPowerManagement -Name $AdapterName -AllowComputerToTurnOffDevice Enabled -ErrorAction SilentlyContinue",
+          "params": [
+            "AdapterName"
+          ]
+        }
+      ],
+      "rollback_notes": "Rollback re-enables Windows power management for the adapter.",
+      "ladder": [
+        {
+          "name": "Disable adapter power saving",
+          "description": "Keeps the adapter powered while the PC is awake.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "disable power saving",
+              "script": "param($AdapterName)\nSet-NetAdapterPowerManagement -Name $AdapterName -AllowComputerToTurnOffDevice Disabled -ErrorAction Stop",
+              "params": [
+                "AdapterName"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "failing or loose NIC (PCIe/USB/M.2 Wi-Fi card)",
+          "faulty or incompatible driver",
+          "BIOS/UEFI disabled the device",
+          "USB adapter or dock issue",
+          "Wi-Fi hardware switch or Fn key is off",
+          "corrupted OS network components",
+          "overheating or power-starved USB adapter"
+        ],
+        "beyond_device": [
+          "bad cable",
+          "dead switch port",
+          "failing wall jack",
+          "PoE or switch port security disabling the port",
+          "router or wireless access point is down"
+        ],
+        "next_checks": [
+          "try a different cable or switch port",
+          "test another USB port or adapter",
+          "check Device Manager error code and Event Viewer (NDIS and vendor driver sources)",
+          "update or roll back the driver from the vendor"
+        ],
+        "evidence_to_collect": [
+          "Get-NetAdapter Status and LinkSpeed",
+          "Get-PnpDevice status and problem code",
+          "Get-NetAdapterStatistics errors and discards"
+        ]
+      }
+    },
+    {
+      "id": "ADP-04",
+      "name": "Driver error or device glitch",
+      "symptom": "A network device reports an error status, often Code 10 or 43.",
+      "detection": "Get-PnpDevice -Class Net with Status Error or Degraded",
+      "explanation": "Disables and re-enables the PnP device to reload the driver. If the error returns, update or reinstall the vendor driver.",
+      "admin": true,
+      "risk": "medium",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "ADP-04"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "InstanceId",
+          "source": "instance_id",
+          "required": true,
+          "description": "PnP instance id of the failing network device"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "PnP device state",
+          "script": "param($InstanceId)\nGet-PnpDevice -InstanceId $InstanceId -ErrorAction SilentlyContinue |\n  Select-Object FriendlyName,Status,Problem,ProblemDescription,InstanceId |\n  ConvertTo-Json -Depth 4",
+          "params": [
+            "InstanceId"
+          ]
+        }
+      ],
+      "rollback": [
+        {
+          "kind": "powershell",
+          "label": "enable the device",
+          "script": "param($InstanceId)\nEnable-PnpDevice -InstanceId $InstanceId -Confirm:$false -ErrorAction SilentlyContinue",
+          "params": [
+            "InstanceId"
+          ]
+        }
+      ],
+      "rollback_notes": "The device is left enabled after the fix; rollback enables it again if needed.",
+      "ladder": [
+        {
+          "name": "Reload the device driver",
+          "description": "Disable then enable the PnP device.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "disable PnP device",
+              "script": "param($InstanceId)\nDisable-PnpDevice -InstanceId $InstanceId -Confirm:$false -ErrorAction Stop",
+              "params": [
+                "InstanceId"
+              ]
+            },
+            {
+              "kind": "powershell",
+              "label": "enable PnP device",
+              "script": "param($InstanceId)\nEnable-PnpDevice -InstanceId $InstanceId -Confirm:$false -ErrorAction Stop",
+              "params": [
+                "InstanceId"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "failing or loose NIC (PCIe/USB/M.2 Wi-Fi card)",
+          "faulty or incompatible driver",
+          "BIOS/UEFI disabled the device",
+          "USB adapter or dock issue",
+          "Wi-Fi hardware switch or Fn key is off",
+          "corrupted OS network components",
+          "overheating or power-starved USB adapter"
+        ],
+        "beyond_device": [
+          "bad cable",
+          "dead switch port",
+          "failing wall jack",
+          "PoE or switch port security disabling the port",
+          "router or wireless access point is down"
+        ],
+        "next_checks": [
+          "try a different cable or switch port",
+          "test another USB port or adapter",
+          "check Device Manager error code and Event Viewer (NDIS and vendor driver sources)",
+          "update or roll back the driver from the vendor"
+        ],
+        "evidence_to_collect": [
+          "Get-NetAdapter Status and LinkSpeed",
+          "Get-PnpDevice status and problem code",
+          "Get-NetAdapterStatistics errors and discards"
+        ]
+      }
+    },
+    {
+      "id": "ADP-05",
+      "name": "Wrong link speed or duplex",
+      "symptom": "A wired adapter negotiated 10 Mbps or half duplex, far below the expected link speed.",
+      "detection": "Get-NetAdapter LinkSpeed far below expected",
+      "explanation": "Sets the adapter speed and duplex setting to Auto Negotiation. If the driver has no such property, the command fails safely and cable/port checks remain.",
+      "admin": true,
+      "risk": "medium",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "ADP-05"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "AdapterName",
+          "source": "adapter",
+          "required": true,
+          "validator": "adapter"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "advanced properties",
+          "script": "param($AdapterName)\nGet-NetAdapterAdvancedProperty -Name $AdapterName -ErrorAction SilentlyContinue |\n  Select-Object Name,DisplayName,DisplayValue,RegistryKeyword |\n  ConvertTo-Json -Depth 4",
+          "params": [
+            "AdapterName"
+          ]
+        }
+      ],
+      "rollback": [],
+      "rollback_notes": "Restore the DisplayValue recorded in the snapshot with Set-NetAdapterAdvancedProperty if needed.",
+      "ladder": [
+        {
+          "name": "Set automatic speed and duplex",
+          "description": "Property names vary by driver; this may not exist on every adapter.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "set auto negotiation",
+              "script": "param($AdapterName)\nSet-NetAdapterAdvancedProperty -Name $AdapterName -DisplayName 'Speed & Duplex' -DisplayValue 'Auto Negotiation' -NoRestart -ErrorAction Stop",
+              "params": [
+                "AdapterName"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "failing or loose NIC (PCIe/USB/M.2 Wi-Fi card)",
+          "faulty or incompatible driver",
+          "BIOS/UEFI disabled the device",
+          "USB adapter or dock issue",
+          "Wi-Fi hardware switch or Fn key is off",
+          "corrupted OS network components",
+          "overheating or power-starved USB adapter"
+        ],
+        "beyond_device": [
+          "bad cable",
+          "dead switch port",
+          "failing wall jack",
+          "PoE or switch port security disabling the port",
+          "router or wireless access point is down"
+        ],
+        "next_checks": [
+          "try a different cable or switch port",
+          "test another USB port or adapter",
+          "check Device Manager error code and Event Viewer (NDIS and vendor driver sources)",
+          "update or roll back the driver from the vendor"
+        ],
+        "evidence_to_collect": [
+          "Get-NetAdapter Status and LinkSpeed",
+          "Get-PnpDevice status and problem code",
+          "Get-NetAdapterStatistics errors and discards"
+        ]
+      }
+    },
+    {
+      "id": "ADP-06",
+      "name": "Wrong interface priority",
+      "symptom": "A virtual adapter has a lower route metric than the physical LAN adapter.",
+      "detection": "Lowest InterfaceMetric belongs to Hyper-V/WSL/VPN/virtual adapter",
+      "explanation": "Raises the physical adapter priority by setting its interface metric. A lower metric wins routing decisions.",
+      "admin": true,
+      "risk": "medium",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "ADP-06"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "AdapterName",
+          "source": "adapter",
+          "required": true,
+          "validator": "adapter"
+        },
+        {
+          "name": "Metric",
+          "source": "value",
+          "default": "10",
+          "description": "New interface metric",
+          "validator": "port"
+        },
+        {
+          "name": "OriginalMetric",
+          "source": "original_metric",
+          "default": "25",
+          "description": "Recorded current metric",
+          "validator": "port"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "interface metric",
+          "script": "param($AdapterName)\nGet-NetIPInterface -InterfaceAlias $AdapterName -AddressFamily IPv4 -ErrorAction SilentlyContinue |\n  Select-Object InterfaceAlias,InterfaceMetric,Dhcp |\n  ConvertTo-Json -Depth 4",
+          "params": [
+            "AdapterName"
+          ]
+        }
+      ],
+      "rollback": [
+        {
+          "kind": "powershell",
+          "label": "restore the original metric",
+          "script": "param($AdapterName,$OriginalMetric)\nSet-NetIPInterface -InterfaceAlias $AdapterName -InterfaceMetric $OriginalMetric -ErrorAction SilentlyContinue",
+          "params": [
+            "AdapterName",
+            "OriginalMetric"
+          ]
+        }
+      ],
+      "rollback_notes": "Rollback restores the metric recorded before the change.",
+      "ladder": [
+        {
+          "name": "Set the physical adapter metric",
+          "description": "A lower metric gives the physical adapter priority over virtual adapters.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "set interface metric",
+              "script": "param($AdapterName,$Metric)\nSet-NetIPInterface -InterfaceAlias $AdapterName -InterfaceMetric $Metric -ErrorAction Stop",
+              "params": [
+                "AdapterName",
+                "Metric"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "failing or loose NIC (PCIe/USB/M.2 Wi-Fi card)",
+          "faulty or incompatible driver",
+          "BIOS/UEFI disabled the device",
+          "USB adapter or dock issue",
+          "Wi-Fi hardware switch or Fn key is off",
+          "corrupted OS network components",
+          "overheating or power-starved USB adapter"
+        ],
+        "beyond_device": [
+          "bad cable",
+          "dead switch port",
+          "failing wall jack",
+          "PoE or switch port security disabling the port",
+          "router or wireless access point is down"
+        ],
+        "next_checks": [
+          "try a different cable or switch port",
+          "test another USB port or adapter",
+          "check Device Manager error code and Event Viewer (NDIS and vendor driver sources)",
+          "update or roll back the driver from the vendor"
+        ],
+        "evidence_to_collect": [
+          "Get-NetAdapter Status and LinkSpeed",
+          "Get-PnpDevice status and problem code",
+          "Get-NetAdapterStatistics errors and discards"
+        ]
+      }
+    },
+    {
+      "id": "SVC-01",
+      "name": "Service WlanSvc is not running",
+      "symptom": "WLAN AutoConfig is stopped or disabled, so Wi-Fi is missing or flaky.",
+      "detection": "Get-Service WlanSvc Status!=Running or StartType=Disabled",
+      "explanation": "Sets WlanSvc to Automatic and starts it. Existing service dependencies are preserved.",
+      "admin": true,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "SVC-01-WlanSvc"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "ServiceName",
+          "source": "value",
+          "default": "WlanSvc",
+          "description": "Windows service name",
+          "required": true
+        },
+        {
+          "name": "OriginalStartType",
+          "source": "original_service_start",
+          "default": "Manual",
+          "description": "Recorded start mode",
+          "required": false
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "service state",
+          "script": "param($ServiceName)\nGet-CimInstance -ClassName Win32_Service -ErrorAction SilentlyContinue |\n  Where-Object { $_.Name -eq $ServiceName } |\n  Select-Object Name,State,StartMode |\n  ConvertTo-Json -Depth 4",
+          "params": [
+            "ServiceName"
+          ]
+        }
+      ],
+      "rollback": [
+        {
+          "kind": "powershell",
+          "label": "restore the start mode",
+          "script": "param($ServiceName,$OriginalStartType)\nSet-Service -Name $ServiceName -StartupType $OriginalStartType -ErrorAction SilentlyContinue",
+          "params": [
+            "ServiceName",
+            "OriginalStartType"
+          ]
+        }
+      ],
+      "rollback_notes": "Rollback restores the start mode recorded before the fix.",
+      "ladder": [
+        {
+          "name": "Start WlanSvc",
+          "description": "Set the service to Automatic, then start it.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "set and start WlanSvc",
+              "script": "param($ServiceName)\nSet-Service -Name $ServiceName -StartupType Automatic -ErrorAction Stop\nStart-Service -Name $ServiceName -ErrorAction Stop",
+              "params": [
+                "ServiceName"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "service dependency missing or corrupted",
+          "service disabled by group policy or a security/optimizer tool",
+          "corrupted system files",
+          "failed Windows update left components broken"
+        ],
+        "beyond_device": [
+          "managed device (domain or MDM policy re-disables the service)"
+        ],
+        "next_checks": [
+          "run sfc /scannow",
+          "run DISM /Online /Cleanup-Image /RestoreHealth",
+          "check gpresult or MDM policy",
+          "check for 'PC optimizer' tools"
+        ],
+        "evidence_to_collect": [
+          "service state and start type",
+          "service-start failure event IDs"
+        ]
+      }
+    },
+    {
+      "id": "SVC-02",
+      "name": "Service Dhcp is not running",
+      "symptom": "The DHCP Client service is stopped, so the adapter may have no lease or an APIPA address.",
+      "detection": "Get-Service Dhcp Status!=Running or StartType=Disabled",
+      "explanation": "Sets Dhcp to Automatic and starts it. Existing service dependencies are preserved.",
+      "admin": true,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "SVC-02"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "ServiceName",
+          "source": "value",
+          "default": "Dhcp",
+          "description": "Windows service name",
+          "required": true
+        },
+        {
+          "name": "OriginalStartType",
+          "source": "original_service_start",
+          "default": "Manual",
+          "description": "Recorded start mode",
+          "required": false
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "service state",
+          "script": "param($ServiceName)\nGet-CimInstance -ClassName Win32_Service -ErrorAction SilentlyContinue |\n  Where-Object { $_.Name -eq $ServiceName } |\n  Select-Object Name,State,StartMode |\n  ConvertTo-Json -Depth 4",
+          "params": [
+            "ServiceName"
+          ]
+        }
+      ],
+      "rollback": [
+        {
+          "kind": "powershell",
+          "label": "restore the start mode",
+          "script": "param($ServiceName,$OriginalStartType)\nSet-Service -Name $ServiceName -StartupType $OriginalStartType -ErrorAction SilentlyContinue",
+          "params": [
+            "ServiceName",
+            "OriginalStartType"
+          ]
+        }
+      ],
+      "rollback_notes": "Rollback restores the start mode recorded before the fix.",
+      "ladder": [
+        {
+          "name": "Start Dhcp",
+          "description": "Set the service to Automatic, then start it.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "set and start Dhcp",
+              "script": "param($ServiceName)\nSet-Service -Name $ServiceName -StartupType Automatic -ErrorAction Stop\nStart-Service -Name $ServiceName -ErrorAction Stop",
+              "params": [
+                "ServiceName"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "service dependency missing or corrupted",
+          "service disabled by group policy or a security/optimizer tool",
+          "corrupted system files",
+          "failed Windows update left components broken"
+        ],
+        "beyond_device": [
+          "managed device (domain or MDM policy re-disables the service)"
+        ],
+        "next_checks": [
+          "run sfc /scannow",
+          "run DISM /Online /Cleanup-Image /RestoreHealth",
+          "check gpresult or MDM policy",
+          "check for 'PC optimizer' tools"
+        ],
+        "evidence_to_collect": [
+          "service state and start type",
+          "service-start failure event IDs"
+        ]
+      }
+    },
+    {
+      "id": "SVC-03",
+      "name": "Service Dnscache is not running",
+      "symptom": "The DNS Client service is stopped, so name resolution can fail.",
+      "detection": "Get-Service Dnscache Status!=Running or StartType=Disabled",
+      "explanation": "Sets Dnscache to Automatic and starts it. Existing service dependencies are preserved.",
+      "admin": true,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "SVC-03"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "ServiceName",
+          "source": "value",
+          "default": "Dnscache",
+          "description": "Windows service name",
+          "required": true
+        },
+        {
+          "name": "OriginalStartType",
+          "source": "original_service_start",
+          "default": "Manual",
+          "description": "Recorded start mode",
+          "required": false
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "service state",
+          "script": "param($ServiceName)\nGet-CimInstance -ClassName Win32_Service -ErrorAction SilentlyContinue |\n  Where-Object { $_.Name -eq $ServiceName } |\n  Select-Object Name,State,StartMode |\n  ConvertTo-Json -Depth 4",
+          "params": [
+            "ServiceName"
+          ]
+        }
+      ],
+      "rollback": [
+        {
+          "kind": "powershell",
+          "label": "restore the start mode",
+          "script": "param($ServiceName,$OriginalStartType)\nSet-Service -Name $ServiceName -StartupType $OriginalStartType -ErrorAction SilentlyContinue",
+          "params": [
+            "ServiceName",
+            "OriginalStartType"
+          ]
+        }
+      ],
+      "rollback_notes": "Rollback restores the start mode recorded before the fix.",
+      "ladder": [
+        {
+          "name": "Start Dnscache",
+          "description": "Set the service to Automatic, then start it.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "set and start Dnscache",
+              "script": "param($ServiceName)\nSet-Service -Name $ServiceName -StartupType Automatic -ErrorAction Stop\nStart-Service -Name $ServiceName -ErrorAction Stop",
+              "params": [
+                "ServiceName"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "service dependency missing or corrupted",
+          "service disabled by group policy or a security/optimizer tool",
+          "corrupted system files",
+          "failed Windows update left components broken"
+        ],
+        "beyond_device": [
+          "managed device (domain or MDM policy re-disables the service)"
+        ],
+        "next_checks": [
+          "run sfc /scannow",
+          "run DISM /Online /Cleanup-Image /RestoreHealth",
+          "check gpresult or MDM policy",
+          "check for 'PC optimizer' tools"
+        ],
+        "evidence_to_collect": [
+          "service state and start type",
+          "service-start failure event IDs"
+        ]
+      }
+    },
+    {
+      "id": "SVC-05",
+      "name": "Service BFE is not running",
+      "symptom": "The Base Filtering Engine is stopped, so firewall and VPN filtering can fail.",
+      "detection": "Get-Service BFE Status!=Running or StartType=Disabled",
+      "explanation": "Sets BFE to Automatic and starts it. Existing service dependencies are preserved.",
+      "admin": true,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "SVC-05"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "ServiceName",
+          "source": "value",
+          "default": "BFE",
+          "description": "Windows service name",
+          "required": true
+        },
+        {
+          "name": "OriginalStartType",
+          "source": "original_service_start",
+          "default": "Manual",
+          "description": "Recorded start mode",
+          "required": false
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "service state",
+          "script": "param($ServiceName)\nGet-CimInstance -ClassName Win32_Service -ErrorAction SilentlyContinue |\n  Where-Object { $_.Name -eq $ServiceName } |\n  Select-Object Name,State,StartMode |\n  ConvertTo-Json -Depth 4",
+          "params": [
+            "ServiceName"
+          ]
+        }
+      ],
+      "rollback": [
+        {
+          "kind": "powershell",
+          "label": "restore the start mode",
+          "script": "param($ServiceName,$OriginalStartType)\nSet-Service -Name $ServiceName -StartupType $OriginalStartType -ErrorAction SilentlyContinue",
+          "params": [
+            "ServiceName",
+            "OriginalStartType"
+          ]
+        }
+      ],
+      "rollback_notes": "Rollback restores the start mode recorded before the fix.",
+      "ladder": [
+        {
+          "name": "Start BFE",
+          "description": "Set the service to Automatic, then start it.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "set and start BFE",
+              "script": "param($ServiceName)\nSet-Service -Name $ServiceName -StartupType Automatic -ErrorAction Stop\nStart-Service -Name $ServiceName -ErrorAction Stop",
+              "params": [
+                "ServiceName"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "service dependency missing or corrupted",
+          "service disabled by group policy or a security/optimizer tool",
+          "corrupted system files",
+          "failed Windows update left components broken"
+        ],
+        "beyond_device": [
+          "managed device (domain or MDM policy re-disables the service)"
+        ],
+        "next_checks": [
+          "run sfc /scannow",
+          "run DISM /Online /Cleanup-Image /RestoreHealth",
+          "check gpresult or MDM policy",
+          "check for 'PC optimizer' tools"
+        ],
+        "evidence_to_collect": [
+          "service state and start type",
+          "service-start failure event IDs"
+        ]
+      }
+    },
+    {
+      "id": "SVC-04",
+      "name": "Network location services are stuck",
+      "symptom": "NlaSvc or netprofm is not running, which can show the wrong network profile or a false No Internet status.",
+      "detection": "NlaSvc or netprofm Status!=Running or StartType=Disabled",
+      "explanation": "Restarts Network Location Awareness and Network List Service. The network profile and NCSI status are recalculated.",
+      "admin": true,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "SVC-04"
+      ],
+      "state_changing": true,
+      "params": [],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "location services",
+          "script": "Get-CimInstance -ClassName Win32_Service -ErrorAction SilentlyContinue |\n  Where-Object { $_.Name -in @('NlaSvc','netprofm') } |\n  Select-Object Name,State,StartMode |\n  ConvertTo-Json -Depth 4",
+          "params": []
+        }
+      ],
+      "rollback": [],
+      "rollback_notes": "Restore the recorded StartMode if the machine needs the previous configuration.",
+      "ladder": [
+        {
+          "name": "Restart location services",
+          "description": "Set both services to Automatic and restart them.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "restart location services",
+              "script": "$services = @('NlaSvc','netprofm')\nforeach ($name in $services) {\n  Set-Service -Name $name -StartupType Automatic -ErrorAction SilentlyContinue\n  Start-Service -Name $name -ErrorAction SilentlyContinue\n}",
+              "params": []
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "service dependency missing or corrupted",
+          "service disabled by group policy or a security/optimizer tool",
+          "corrupted system files",
+          "failed Windows update left components broken"
+        ],
+        "beyond_device": [
+          "managed device (domain or MDM policy re-disables the service)"
+        ],
+        "next_checks": [
+          "run sfc /scannow",
+          "run DISM /Online /Cleanup-Image /RestoreHealth",
+          "check gpresult or MDM policy",
+          "check for 'PC optimizer' tools"
+        ],
+        "evidence_to_collect": [
+          "service state and start type",
+          "service-start failure event IDs"
+        ]
+      }
+    },
+    {
+      "id": "SVC-06",
+      "name": "Sharing and discovery services are stopped",
+      "symptom": "LanmanServer, LanmanWorkstation, FDResPub, SSDPSRV or upnphost is stopped, so shares and devices are not visible.",
+      "detection": "One or more of LanmanServer, LanmanWorkstation, FDResPub, SSDPSRV, upnphost is not running",
+      "explanation": "Starts the file-sharing and discovery services and sets them to Automatic.",
+      "admin": true,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "SVC-06"
+      ],
+      "state_changing": true,
+      "params": [],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "sharing services",
+          "script": "Get-CimInstance -ClassName Win32_Service -ErrorAction SilentlyContinue |\n  Where-Object { $_.Name -in @('LanmanServer','LanmanWorkstation','FDResPub','SSDPSRV','upnphost') } |\n  Select-Object Name,State,StartMode |\n  ConvertTo-Json -Depth 4",
+          "params": []
+        }
+      ],
+      "rollback": [],
+      "rollback_notes": "Restore the recorded StartMode for services that should stay Manual or Disabled.",
+      "ladder": [
+        {
+          "name": "Start sharing services",
+          "description": "Set the stack to Automatic and start each service.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "start sharing services",
+              "script": "$services = @('LanmanServer','LanmanWorkstation','FDResPub','SSDPSRV','upnphost')\nforeach ($name in $services) {\n  Set-Service -Name $name -StartupType Automatic -ErrorAction SilentlyContinue\n  Start-Service -Name $name -ErrorAction SilentlyContinue\n}",
+              "params": []
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "service dependency missing or corrupted",
+          "service disabled by group policy or a security/optimizer tool",
+          "corrupted system files",
+          "failed Windows update left components broken"
+        ],
+        "beyond_device": [
+          "managed device (domain or MDM policy re-disables the service)"
+        ],
+        "next_checks": [
+          "run sfc /scannow",
+          "run DISM /Online /Cleanup-Image /RestoreHealth",
+          "check gpresult or MDM policy",
+          "check for 'PC optimizer' tools"
+        ],
+        "evidence_to_collect": [
+          "service state and start type",
+          "service-start failure event IDs"
+        ]
+      }
+    },
+    {
+      "id": "IP-01",
+      "name": "APIPA or missing DHCP lease",
+      "symptom": "The adapter has a 169.254.x.x address because DHCP did not provide a lease.",
+      "detection": "Get-NetIPAddress PrefixOrigin=WellKnown or 169.254.*",
+      "explanation": "Tries progressively stronger DHCP recovery: release/renew, restart the adapter, restart the DHCP Client. If the router never answers, the problem is outside this PC.",
+      "admin": true,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "IP-01"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "AdapterName",
+          "source": "adapter",
+          "required": true,
+          "validator": "adapter"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "IP configuration",
+          "script": "param($AdapterName)\nGet-NetIPAddress -InterfaceAlias $AdapterName -AddressFamily IPv4 -ErrorAction SilentlyContinue |\n  Select-Object IPAddress,PrefixLength,PrefixOrigin,SuffixOrigin,AddressState,InterfaceAlias |\n  ConvertTo-Json -Depth 4",
+          "params": [
+            "AdapterName"
+          ]
+        },
+        {
+          "kind": "powershell",
+          "label": "DHCP interface state",
+          "script": "param($AdapterName)\nGet-NetIPInterface -InterfaceAlias $AdapterName -AddressFamily IPv4 -ErrorAction SilentlyContinue |\n  Select-Object InterfaceAlias,Dhcp,ConnectionState |\n  ConvertTo-Json -Depth 4",
+          "params": [
+            "AdapterName"
+          ]
+        }
+      ],
+      "rollback": [],
+      "rollback_notes": "A new DHCP lease is not rolled back; the old lease expired.",
+      "ladder": [
+        {
+          "name": "Release and renew the lease",
+          "description": "Asks the DHCP server for a new address.",
+          "commands": [
+            {
+              "kind": "native",
+              "label": "release lease",
+              "args": [
+                "ipconfig",
+                "/release"
+              ]
+            },
+            {
+              "kind": "native",
+              "label": "renew lease",
+              "args": [
+                "ipconfig",
+                "/renew"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Restart the adapter",
+          "description": "Reloads the adapter driver state.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "restart adapter",
+              "script": "param($AdapterName)\nRestart-NetAdapter -Name $AdapterName -Confirm:$false -ErrorAction Stop",
+              "params": [
+                "AdapterName"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Restart the DHCP Client service",
+          "description": "Reloads the Windows DHCP client.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "restart DHCP",
+              "script": "Restart-Service -Name Dhcp -Force -ErrorAction Stop",
+              "params": []
+            }
+          ]
+        },
+        {
+          "name": "Stop and check the DHCP server",
+          "description": "NetScope cannot fix this from the PC. Check the router DHCP service, scope, VLAN, cable and AP.",
+          "commands": []
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "NIC or driver not passing traffic",
+          "static address left from another network",
+          "virtual adapter (VPN, Hyper-V, Docker) interfering",
+          "wrong adapter being configured",
+          "security software blocking DHCP"
+        ],
+        "beyond_device": [
+          "DHCP server down or scope exhausted",
+          "router needs a reboot",
+          "MAC filtering or NAC rejecting the device",
+          "wrong VLAN or SSID",
+          "rogue DHCP server handing out bad settings",
+          "duplicate IP address on the LAN"
+        ],
+        "next_checks": [
+          "connect directly to the router or another port/SSID",
+          "check the router DHCP lease table for free addresses and this MAC",
+          "reboot the router",
+          "test with a different device on the same port"
+        ],
+        "evidence_to_collect": [
+          "assigned address and lease info",
+          "DHCP server address if any",
+          "APIPA flag",
+          "adapter MAC address"
+        ]
+      }
+    },
+    {
+      "id": "IP-02",
+      "name": "Stale DHCP lease",
+      "symptom": "The DHCP address is outside the subnet of the reachable gateway after moving between networks.",
+      "detection": "IP not in the same subnet as the reachable gateway; expired lease",
+      "explanation": "Releases and renews the DHCP lease so the router can assign an address for the current network.",
+      "admin": true,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "IP-02"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "AdapterName",
+          "source": "adapter",
+          "required": true,
+          "validator": "adapter"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "IP configuration",
+          "script": "param($AdapterName)\nGet-NetIPAddress -InterfaceAlias $AdapterName -AddressFamily IPv4 -ErrorAction SilentlyContinue |\n  Select-Object IPAddress,PrefixLength,PrefixOrigin,AddressState,InterfaceAlias |\n  ConvertTo-Json -Depth 4",
+          "params": [
+            "AdapterName"
+          ]
+        }
+      ],
+      "rollback": [],
+      "rollback_notes": "A new DHCP lease is not rolled back.",
+      "ladder": [
+        {
+          "name": "Release and renew the lease",
+          "description": "Refreshes the address for the current network.",
+          "commands": [
+            {
+              "kind": "native",
+              "label": "release lease",
+              "args": [
+                "ipconfig",
+                "/release"
+              ]
+            },
+            {
+              "kind": "native",
+              "label": "renew lease",
+              "args": [
+                "ipconfig",
+                "/renew"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "NIC or driver not passing traffic",
+          "static address left from another network",
+          "virtual adapter (VPN, Hyper-V, Docker) interfering",
+          "wrong adapter being configured",
+          "security software blocking DHCP"
+        ],
+        "beyond_device": [
+          "DHCP server down or scope exhausted",
+          "router needs a reboot",
+          "MAC filtering or NAC rejecting the device",
+          "wrong VLAN or SSID",
+          "rogue DHCP server handing out bad settings",
+          "duplicate IP address on the LAN"
+        ],
+        "next_checks": [
+          "connect directly to the router or another port/SSID",
+          "check the router DHCP lease table for free addresses and this MAC",
+          "reboot the router",
+          "test with a different device on the same port"
+        ],
+        "evidence_to_collect": [
+          "assigned address and lease info",
+          "DHCP server address if any",
+          "APIPA flag",
+          "adapter MAC address"
+        ]
+      }
+    },
+    {
+      "id": "IP-03",
+      "name": "Duplicate IP address",
+      "symptom": "Windows detected another device using the same IPv4 address.",
+      "detection": "Get-NetIPAddress AddressState=Duplicate or Event ID 4199",
+      "explanation": "Switches the adapter to DHCP, removes the conflicting static address and resets DNS to DHCP. Recorded static settings are saved for rollback.",
+      "admin": true,
+      "risk": "medium",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "IP-03"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "AdapterName",
+          "source": "adapter",
+          "required": true,
+          "validator": "adapter"
+        },
+        {
+          "name": "OriginalAddress",
+          "source": "original_ip",
+          "required": false,
+          "validator": "ip"
+        },
+        {
+          "name": "OriginalPrefix",
+          "source": "original_prefix",
+          "required": false,
+          "validator": "port"
+        },
+        {
+          "name": "OriginalGateway",
+          "source": "original_gateway",
+          "required": false,
+          "validator": "ip"
+        },
+        {
+          "name": "OriginalDns",
+          "source": "original_dns",
+          "required": false,
+          "validator": "dns_list"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "IP configuration",
+          "script": "param($AdapterName)\nGet-NetIPAddress -InterfaceAlias $AdapterName -AddressFamily IPv4 -ErrorAction SilentlyContinue |\n  Select-Object IPAddress,PrefixLength,PrefixOrigin,SuffixOrigin,AddressState,InterfaceAlias |\n  ConvertTo-Json -Depth 4",
+          "params": [
+            "AdapterName"
+          ]
+        },
+        {
+          "kind": "powershell",
+          "label": "DNS configuration",
+          "script": "param($AdapterName)\nGet-DnsClientServerAddress -InterfaceAlias $AdapterName -AddressFamily IPv4 -ErrorAction SilentlyContinue |\n  Select-Object InterfaceAlias,ServerAddresses |\n  ConvertTo-Json -Depth 4",
+          "params": [
+            "AdapterName"
+          ]
+        }
+      ],
+      "rollback": [
+        {
+          "kind": "powershell",
+          "label": "restore static IP",
+          "script": "param($AdapterName,$OriginalAddress,$OriginalPrefix,$OriginalGateway)\nSet-NetIPInterface -InterfaceAlias $AdapterName -Dhcp Disabled -ErrorAction SilentlyContinue\nif ($OriginalAddress -and $OriginalPrefix) {\n  New-NetIPAddress -InterfaceAlias $AdapterName -IPAddress $OriginalAddress -PrefixLength $OriginalPrefix -DefaultGateway $OriginalGateway -ErrorAction SilentlyContinue\n}",
+          "params": [
+            "AdapterName",
+            "OriginalAddress",
+            "OriginalPrefix",
+            "OriginalGateway"
+          ]
+        },
+        {
+          "kind": "powershell",
+          "label": "restore DNS",
+          "script": "param($AdapterName,$OriginalDns)\nif ($OriginalDns) {\n  Set-DnsClientServerAddress -InterfaceAlias $AdapterName -ServerAddresses ($OriginalDns -split ',') -ErrorAction SilentlyContinue\n}",
+          "params": [
+            "AdapterName",
+            "OriginalDns"
+          ]
+        }
+      ],
+      "rollback_notes": "Rollback re-applies the recorded static address and DNS servers when they were available.",
+      "ladder": [
+        {
+          "name": "Switch the adapter to DHCP",
+          "description": "Removes the duplicate static address and asks DHCP for a safe lease.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "enable DHCP",
+              "script": "param($AdapterName)\nSet-NetIPInterface -InterfaceAlias $AdapterName -Dhcp Enabled -ErrorAction Stop",
+              "params": [
+                "AdapterName"
+              ]
+            },
+            {
+              "kind": "powershell",
+              "label": "remove static addresses",
+              "script": "param($AdapterName)\nRemove-NetIPAddress -InterfaceAlias $AdapterName -AddressFamily IPv4 -Confirm:$false -ErrorAction SilentlyContinue",
+              "params": [
+                "AdapterName"
+              ]
+            },
+            {
+              "kind": "powershell",
+              "label": "reset DNS to DHCP",
+              "script": "param($AdapterName)\nSet-DnsClientServerAddress -InterfaceAlias $AdapterName -ResetServerAddresses -ErrorAction Stop",
+              "params": [
+                "AdapterName"
+              ]
+            },
+            {
+              "kind": "native",
+              "label": "renew lease",
+              "args": [
+                "ipconfig",
+                "/renew"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "NIC or driver not passing traffic",
+          "static address left from another network",
+          "virtual adapter (VPN, Hyper-V, Docker) interfering",
+          "wrong adapter being configured",
+          "security software blocking DHCP"
+        ],
+        "beyond_device": [
+          "DHCP server down or scope exhausted",
+          "router needs a reboot",
+          "MAC filtering or NAC rejecting the device",
+          "wrong VLAN or SSID",
+          "rogue DHCP server handing out bad settings",
+          "duplicate IP address on the LAN"
+        ],
+        "next_checks": [
+          "connect directly to the router or another port/SSID",
+          "check the router DHCP lease table for free addresses and this MAC",
+          "reboot the router",
+          "test with a different device on the same port"
+        ],
+        "evidence_to_collect": [
+          "assigned address and lease info",
+          "DHCP server address if any",
+          "APIPA flag",
+          "adapter MAC address"
+        ]
+      }
+    },
+    {
+      "id": "IP-04",
+      "name": "Static address wrong for this network",
+      "symptom": "The static IP, mask or gateway does not match the current LAN.",
+      "detection": "Static config, gateway not reachable on-link, mask mismatch",
+      "explanation": "Switches the adapter to DHCP instead of guessing a static address.",
+      "admin": true,
+      "risk": "medium",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "IP-04"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "AdapterName",
+          "source": "adapter",
+          "required": true,
+          "validator": "adapter"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "static IP configuration",
+          "script": "param($AdapterName)\nGet-NetIPAddress -InterfaceAlias $AdapterName -AddressFamily IPv4 -ErrorAction SilentlyContinue |\n  Select-Object IPAddress,PrefixLength,PrefixOrigin,SuffixOrigin,AddressState,InterfaceAlias |\n  ConvertTo-Json -Depth 4",
+          "params": [
+            "AdapterName"
+          ]
+        }
+      ],
+      "rollback": [],
+      "rollback_notes": "Recorded static settings are in the snapshot; re-apply them only if the user confirms they were correct.",
+      "ladder": [
+        {
+          "name": "Switch to DHCP",
+          "description": "NetScope never guesses a static address.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "enable DHCP",
+              "script": "param($AdapterName)\nSet-NetIPInterface -InterfaceAlias $AdapterName -Dhcp Enabled -ErrorAction Stop",
+              "params": [
+                "AdapterName"
+              ]
+            },
+            {
+              "kind": "powershell",
+              "label": "reset DNS to DHCP",
+              "script": "param($AdapterName)\nSet-DnsClientServerAddress -InterfaceAlias $AdapterName -ResetServerAddresses -ErrorAction SilentlyContinue",
+              "params": [
+                "AdapterName"
+              ]
+            },
+            {
+              "kind": "native",
+              "label": "renew lease",
+              "args": [
+                "ipconfig",
+                "/renew"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "NIC or driver not passing traffic",
+          "static address left from another network",
+          "virtual adapter (VPN, Hyper-V, Docker) interfering",
+          "wrong adapter being configured",
+          "security software blocking DHCP"
+        ],
+        "beyond_device": [
+          "DHCP server down or scope exhausted",
+          "router needs a reboot",
+          "MAC filtering or NAC rejecting the device",
+          "wrong VLAN or SSID",
+          "rogue DHCP server handing out bad settings",
+          "duplicate IP address on the LAN"
+        ],
+        "next_checks": [
+          "connect directly to the router or another port/SSID",
+          "check the router DHCP lease table for free addresses and this MAC",
+          "reboot the router",
+          "test with a different device on the same port"
+        ],
+        "evidence_to_collect": [
+          "assigned address and lease info",
+          "DHCP server address if any",
+          "APIPA flag",
+          "adapter MAC address"
+        ]
+      }
+    },
+    {
+      "id": "IP-05",
+      "name": "Missing or wrong default route",
+      "symptom": "There is no usable 0.0.0.0/0 route, so traffic cannot leave the local subnet.",
+      "detection": "Get-NetRoute 0.0.0.0/0 absent or points to a dead hop",
+      "explanation": "Removes the bad default route and renews DHCP so Windows recreates the correct one.",
+      "admin": true,
+      "risk": "medium",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "IP-05"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "NextHop",
+          "source": "gateway",
+          "required": true,
+          "validator": "ip"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "default routes",
+          "script": "Get-NetRoute -AddressFamily IPv4 -ErrorAction SilentlyContinue |\n  Where-Object { $_.DestinationPrefix -eq '0.0.0.0/0' } |\n  Select-Object DestinationPrefix,NextHop,InterfaceAlias,RouteMetric,InterfaceMetric,Store |\n  ConvertTo-Json -Depth 4",
+          "params": []
+        }
+      ],
+      "rollback": [],
+      "rollback_notes": "DHCP or the VPN client recreates its own default route after renewal.",
+      "ladder": [
+        {
+          "name": "Remove the bad route and renew",
+          "description": "Only the specific dead default route is removed.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "remove default route",
+              "script": "param($NextHop)\nRemove-NetRoute -DestinationPrefix '0.0.0.0/0' -NextHop $NextHop -Confirm:$false -ErrorAction SilentlyContinue",
+              "params": [
+                "NextHop"
+              ]
+            },
+            {
+              "kind": "native",
+              "label": "renew lease",
+              "args": [
+                "ipconfig",
+                "/renew"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "VPN or virtual switch left routes behind",
+          "security tool rewriting routes",
+          "multiple active adapters with competing metrics",
+          "corrupted persistent routes"
+        ],
+        "beyond_device": [
+          "gateway down or advertising the wrong route",
+          "upstream routing change",
+          "overlapping subnets between sites"
+        ],
+        "next_checks": [
+          "disconnect VPN and virtual adapters",
+          "disable unused adapters",
+          "compare route print against a known-good machine",
+          "run tracert to see where the path dies"
+        ],
+        "evidence_to_collect": [
+          "Get-NetRoute dump",
+          "interface metrics",
+          "first failing hop"
+        ]
+      }
+    },
+    {
+      "id": "IP-06",
+      "name": "Overlapping or stale routes",
+      "symptom": "Multiple routes share the same destination prefix, often after a VPN or virtual switch.",
+      "detection": "Duplicate destination prefixes or persistent stale routes",
+      "explanation": "Removes one specific stale route. Interface metrics can also be adjusted separately. route -f is not used.",
+      "admin": true,
+      "risk": "medium",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "IP-06"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "DestinationPrefix",
+          "source": "stale_route",
+          "required": true,
+          "validator": "none"
+        },
+        {
+          "name": "NextHop",
+          "source": "stale_next_hop",
+          "required": true,
+          "validator": "ip"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "route table",
+          "script": "Get-NetRoute -AddressFamily IPv4 -ErrorAction SilentlyContinue |\n  Select-Object DestinationPrefix,NextHop,InterfaceAlias,RouteMetric,InterfaceMetric,Store |\n  ConvertTo-Json -Depth 4",
+          "params": []
+        }
+      ],
+      "rollback": [],
+      "rollback_notes": "Re-add the route only if the VPN or virtual adapter needs it; most stale routes should not return.",
+      "ladder": [
+        {
+          "name": "Remove the specific stale route",
+          "description": "Never clears the whole route table from this step.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "remove stale route",
+              "script": "param($DestinationPrefix,$NextHop)\nRemove-NetRoute -DestinationPrefix $DestinationPrefix -NextHop $NextHop -Confirm:$false -ErrorAction Stop",
+              "params": [
+                "DestinationPrefix",
+                "NextHop"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "VPN or virtual switch left routes behind",
+          "security tool rewriting routes",
+          "multiple active adapters with competing metrics",
+          "corrupted persistent routes"
+        ],
+        "beyond_device": [
+          "gateway down or advertising the wrong route",
+          "upstream routing change",
+          "overlapping subnets between sites"
+        ],
+        "next_checks": [
+          "disconnect VPN and virtual adapters",
+          "disable unused adapters",
+          "compare route print against a known-good machine",
+          "run tracert to see where the path dies"
+        ],
+        "evidence_to_collect": [
+          "Get-NetRoute dump",
+          "interface metrics",
+          "first failing hop"
+        ]
+      }
+    },
+    {
+      "id": "IP-07",
+      "name": "Virtual network overlaps the LAN",
+      "symptom": "A Docker, WSL, Hyper-V or VPN subnet overlaps the real LAN or VPN range.",
+      "detection": "Virtual adapter prefix overlaps a physical LAN/VPN prefix",
+      "explanation": "NetScope cannot safely change the virtual network range. Change the Docker/WSL/Hyper-V/VPN subnet, or lower the virtual adapter priority with ADP-06.",
+      "admin": true,
+      "risk": "medium",
+      "reboot": false,
+      "detection_only": true,
+      "verify_flag": false,
+      "verify": [
+        "IP-07"
+      ],
+      "state_changing": false,
+      "params": [],
+      "snapshot": [],
+      "rollback": [],
+      "rollback_notes": "",
+      "ladder": [],
+      "if_unresolved": {
+        "this_device": [
+          "VPN or virtual switch left routes behind",
+          "security tool rewriting routes",
+          "multiple active adapters with competing metrics",
+          "corrupted persistent routes"
+        ],
+        "beyond_device": [
+          "gateway down or advertising the wrong route",
+          "upstream routing change",
+          "overlapping subnets between sites"
+        ],
+        "next_checks": [
+          "disconnect VPN and virtual adapters",
+          "disable unused adapters",
+          "compare route print against a known-good machine",
+          "run tracert to see where the path dies"
+        ],
+        "evidence_to_collect": [
+          "Get-NetRoute dump",
+          "interface metrics",
+          "first failing hop"
+        ]
+      }
+    },
+    {
+      "id": "IP-08",
+      "name": "IPv6 is broken while IPv4 works",
+      "symptom": "Some sites hang because IPv6 is preferred but not routed.",
+      "detection": "IPv6 test fails while IPv4 succeeds; IPv6 address present without a working gateway",
+      "explanation": "Applies the documented IPv4-preference workaround in the Tcpip6 registry and requires a reboot. This is a workaround, not a repair of the IPv6 path.",
+      "admin": true,
+      "risk": "medium",
+      "reboot": true,
+      "detection_only": false,
+      "verify_flag": true,
+      "verify": [
+        "NET-PING"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "AdapterName",
+          "source": "adapter",
+          "required": true,
+          "validator": "adapter"
+        },
+        {
+          "name": "OriginalDisabledComponents",
+          "source": "original_disabled_components",
+          "default": "0",
+          "required": false,
+          "validator": "none"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "IPv6 registry",
+          "script": "Get-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip6\\Parameters' -ErrorAction SilentlyContinue |\n  Select-Object DisabledComponents |\n  ConvertTo-Json -Depth 4",
+          "params": []
+        },
+        {
+          "kind": "powershell",
+          "label": "IPv6 binding",
+          "script": "param($AdapterName)\nGet-NetAdapterBinding -Name $AdapterName -ComponentID ms_tcpip6 -ErrorAction SilentlyContinue |\n  Select-Object Name,ComponentID,Enabled |\n  ConvertTo-Json -Depth 4",
+          "params": [
+            "AdapterName"
+          ]
+        }
+      ],
+      "rollback": [
+        {
+          "kind": "powershell",
+          "label": "restore IPv6 preference",
+          "script": "param($OriginalDisabledComponents)\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip6\\Parameters' -Name DisabledComponents -Value $OriginalDisabledComponents -Type DWord -ErrorAction SilentlyContinue",
+          "params": [
+            "OriginalDisabledComponents"
+          ]
+        }
+      ],
+      "rollback_notes": "Rollback restores the recorded DisabledComponents value and needs a reboot.",
+      "ladder": [
+        {
+          "name": "Prefer IPv4 (registry workaround)",
+          "description": "Sets DisabledComponents to 0x20 and needs a reboot.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "prefer IPv4",
+              "script": "Set-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip6\\Parameters' -Name DisabledComponents -Value 0x20 -Type DWord -ErrorAction Stop",
+              "params": []
+            }
+          ]
+        },
+        {
+          "name": "Disable the IPv6 binding (less preferred)",
+          "description": "A narrower workaround than the registry change.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "disable IPv6 binding",
+              "script": "param($AdapterName)\nDisable-NetAdapterBinding -Name $AdapterName -ComponentID ms_tcpip6 -ErrorAction Stop",
+              "params": [
+                "AdapterName"
+              ]
+            }
+          ],
+          "optional": true
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "broken IPv6 stack or tunnel adapter (Teredo/6to4)",
+          "security software filtering IPv6"
+        ],
+        "beyond_device": [
+          "ISP/router advertising IPv6 but not routing it",
+          "router RA or firewall bugs"
+        ],
+        "next_checks": [
+          "test with IPv6 disabled on the adapter",
+          "check router IPv6 settings",
+          "update router firmware"
+        ],
+        "evidence_to_collect": [
+          "IPv4 versus IPv6 test results",
+          "IPv6 gateway",
+          "router advertisement presence"
+        ]
+      }
+    },
+    {
+      "id": "LAN-01",
+      "name": "Stale or poisoned ARP cache",
+      "symptom": "The gateway or a peer maps to a wrong MAC, or its ARP entry stays unreachable.",
+      "detection": "ARP entry for gateway/peer maps to wrong MAC or is Unreachable/Stale",
+      "explanation": "Clears the ARP cache in three steps, from least to most disruptive. This only affects cached mappings, not saved configuration.",
+      "admin": true,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "GW-02"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "AdapterName",
+          "source": "adapter",
+          "required": true,
+          "validator": "adapter"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "neighbor table",
+          "script": "param($AdapterName)\nGet-NetNeighbor -InterfaceAlias $AdapterName -AddressFamily IPv4 -ErrorAction SilentlyContinue |\n  Select-Object IPAddress,LinkLayerAddress,State,InterfaceAlias |\n  ConvertTo-Json -Depth 4",
+          "params": [
+            "AdapterName"
+          ]
+        }
+      ],
+      "rollback": [],
+      "rollback_notes": "No saved configuration is changed; the cache repopulates automatically.",
+      "ladder": [
+        {
+          "name": "Remove cached neighbors",
+          "description": "Clears the IPv4 neighbor cache.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "remove neighbors",
+              "script": "Remove-NetNeighbor -AddressFamily IPv4 -Confirm:$false -ErrorAction SilentlyContinue",
+              "params": []
+            },
+            {
+              "kind": "native",
+              "label": "clear ARP cache",
+              "args": [
+                "arp",
+                "-d",
+                "*"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Delete the ARP cache with netsh",
+          "description": "Uses the native ARP cache delete command.",
+          "commands": [
+            {
+              "kind": "native",
+              "label": "delete ARP cache",
+              "args": [
+                "netsh",
+                "interface",
+                "ip",
+                "delete",
+                "arpcache"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Restart the adapter",
+          "description": "Reloads the adapter and rebuilds the cache.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "restart adapter",
+              "script": "param($AdapterName)\nRestart-NetAdapter -Name $AdapterName -Confirm:$false -ErrorAction Stop",
+              "params": [
+                "AdapterName"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "NIC offload or driver bug",
+          "VPN or virtual adapter capturing LAN traffic",
+          "host firewall blocking ICMP",
+          "wrong adapter selected"
+        ],
+        "beyond_device": [
+          "Wi-Fi AP/client isolation or guest network",
+          "switch port security or MAC filtering",
+          "peer is offline, asleep, or has its own firewall",
+          "VLAN separation",
+          "failing switch or cable",
+          "IP conflict with another device"
+        ],
+        "next_checks": [
+          "test with a wired connection",
+          "test peer reachability from a third device",
+          "check router client list and isolation setting",
+          "test by TCP port instead of ping"
+        ],
+        "evidence_to_collect": [
+          "ARP table state per peer (Reachable/Stale/Incomplete)",
+          "gateway versus peer results",
+          "subnet match"
+        ]
+      }
+    },
+    {
+      "id": "LAN-02",
+      "name": "Gateway ARP never resolves",
+      "symptom": "There is no ARP reply from the gateway after the cache has been cleared.",
+      "detection": "No ARP reply from the gateway after LAN-01",
+      "explanation": "This usually means cable, switch port, Wi-Fi association, VLAN or router power. NetScope cannot fix it from this PC.",
+      "admin": true,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": true,
+      "verify_flag": false,
+      "verify": [
+        "GW-02"
+      ],
+      "state_changing": false,
+      "params": [],
+      "snapshot": [],
+      "rollback": [],
+      "rollback_notes": "",
+      "ladder": [],
+      "if_unresolved": {
+        "this_device": [
+          "NIC offload or driver bug",
+          "VPN or virtual adapter capturing LAN traffic",
+          "host firewall blocking ICMP",
+          "wrong adapter selected"
+        ],
+        "beyond_device": [
+          "Wi-Fi AP/client isolation or guest network",
+          "switch port security or MAC filtering",
+          "peer is offline, asleep, or has its own firewall",
+          "VLAN separation",
+          "failing switch or cable",
+          "IP conflict with another device"
+        ],
+        "next_checks": [
+          "test with a wired connection",
+          "test peer reachability from a third device",
+          "check router client list and isolation setting",
+          "test by TCP port instead of ping"
+        ],
+        "evidence_to_collect": [
+          "ARP table state per peer (Reachable/Stale/Incomplete)",
+          "gateway versus peer results",
+          "subnet match"
+        ]
+      }
+    },
+    {
+      "id": "LAN-03",
+      "name": "Other LAN devices are unreachable",
+      "symptom": "The gateway and internet work, but peers on the same LAN do not answer.",
+      "detection": "Gateway ping OK, peer ping fails, peer ARP incomplete",
+      "explanation": "Likely Wi-Fi client/AP isolation or a guest network. Test by TCP port, and check whether the peer's firewall blocks ICMP.",
+      "admin": true,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": true,
+      "verify_flag": false,
+      "verify": [
+        "GW-02"
+      ],
+      "state_changing": false,
+      "params": [],
+      "snapshot": [],
+      "rollback": [],
+      "rollback_notes": "",
+      "ladder": [],
+      "if_unresolved": {
+        "this_device": [
+          "NIC offload or driver bug",
+          "VPN or virtual adapter capturing LAN traffic",
+          "host firewall blocking ICMP",
+          "wrong adapter selected"
+        ],
+        "beyond_device": [
+          "Wi-Fi AP/client isolation or guest network",
+          "switch port security or MAC filtering",
+          "peer is offline, asleep, or has its own firewall",
+          "VLAN separation",
+          "failing switch or cable",
+          "IP conflict with another device"
+        ],
+        "next_checks": [
+          "test with a wired connection",
+          "test peer reachability from a third device",
+          "check router client list and isolation setting",
+          "test by TCP port instead of ping"
+        ],
+        "evidence_to_collect": [
+          "ARP table state per peer (Reachable/Stale/Incomplete)",
+          "gateway versus peer results",
+          "subnet match"
+        ]
+      }
+    },
+    {
+      "id": "LAN-04",
+      "name": "Network profile is Public",
+      "symptom": "Windows treats a trusted LAN as Public, blocking discovery and sharing.",
+      "detection": "Get-NetConnectionProfile NetworkCategory=Public on a trusted LAN",
+      "explanation": "Changes the network profile to Private. Confirm the network is trusted first.",
+      "admin": true,
+      "risk": "medium",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "LAN-04"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "AdapterName",
+          "source": "adapter",
+          "required": true,
+          "validator": "adapter"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "connection profile",
+          "script": "param($AdapterName)\nGet-NetConnectionProfile -InterfaceAlias $AdapterName -ErrorAction SilentlyContinue |\n  Select-Object Name,InterfaceAlias,NetworkCategory,IPv4Connectivity |\n  ConvertTo-Json -Depth 4",
+          "params": [
+            "AdapterName"
+          ]
+        }
+      ],
+      "rollback": [
+        {
+          "kind": "powershell",
+          "label": "set profile back to Public",
+          "script": "param($AdapterName)\nSet-NetConnectionProfile -InterfaceAlias $AdapterName -NetworkCategory Public -ErrorAction SilentlyContinue",
+          "params": [
+            "AdapterName"
+          ]
+        }
+      ],
+      "rollback_notes": "Rollback sets the profile back to Public.",
+      "ladder": [
+        {
+          "name": "Set the profile to Private",
+          "description": "Only do this on a trusted home or office network.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "set network private",
+              "script": "param($AdapterName)\nSet-NetConnectionProfile -InterfaceAlias $AdapterName -NetworkCategory Private -ErrorAction Stop",
+              "params": [
+                "AdapterName"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "stale or conflicting saved credentials",
+          "Credential Manager corruption",
+          "local policy (insecure guest logon, signing, NTLM restrictions)",
+          "third-party firewall",
+          "SMB client disabled by policy",
+          "clock skew breaking Kerberos"
+        ],
+        "beyond_device": [
+          "host share or NTFS permissions wrong",
+          "host firewall or network profile Public",
+          "host SMB version/security mismatch (NAS with SMB1 only)",
+          "host sleeping",
+          "ISP blocking port 445",
+          "server out of sessions",
+          "wrong name or IP"
+        ],
+        "next_checks": [
+          "connect by IP versus name",
+          "test \\\\host\\IPC$",
+          "try from another PC",
+          "check the host Sharing tab and event logs",
+          "verify the same user exists on the host"
+        ],
+        "evidence_to_collect": [
+          "port 445 result",
+          "SMB dialect negotiated",
+          "error code (0x80070035, 0x80004005)",
+          "net use output"
+        ]
+      }
+    },
+    {
+      "id": "LAN-05",
+      "name": "Discovery and sharing firewall rules disabled",
+      "symptom": "Network Discovery or File and Printer Sharing firewall groups are disabled.",
+      "detection": "Get-NetFirewallRule DisplayGroup Network Discovery / File and Printer Sharing Enabled=False",
+      "explanation": "Enables the built-in discovery and file-sharing rule groups for the current profiles.",
+      "admin": true,
+      "risk": "medium",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "LAN-05"
+      ],
+      "state_changing": true,
+      "params": [],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "firewall groups",
+          "script": "Get-NetFirewallRule -ErrorAction SilentlyContinue |\n  Where-Object { $_.DisplayGroup -in @('Network Discovery','File and Printer Sharing') } |\n  Select-Object DisplayGroup,DisplayName,Enabled,Direction,Action,Profile |\n  ConvertTo-Json -Depth 4",
+          "params": []
+        }
+      ],
+      "rollback": [
+        {
+          "kind": "powershell",
+          "label": "disable the same groups",
+          "script": "Get-NetFirewallRule -DisplayGroup 'Network Discovery' -ErrorAction SilentlyContinue | Disable-NetFirewallRule -ErrorAction SilentlyContinue\nGet-NetFirewallRule -DisplayGroup 'File and Printer Sharing' -ErrorAction SilentlyContinue | Disable-NetFirewallRule -ErrorAction SilentlyContinue",
+          "params": []
+        }
+      ],
+      "rollback_notes": "Rollback disables the same two groups.",
+      "ladder": [
+        {
+          "name": "Enable discovery and sharing",
+          "description": "Enables the two Microsoft rule groups.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "enable rule groups",
+              "script": "Enable-NetFirewallRule -DisplayGroup 'Network Discovery' -ErrorAction Stop\nEnable-NetFirewallRule -DisplayGroup 'File and Printer Sharing' -ErrorAction Stop",
+              "params": [],
+              "native": [
+                "netsh",
+                "advfirewall",
+                "firewall",
+                "set",
+                "rule",
+                "group=Network Discovery",
+                "new",
+                "enable=Yes"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "stale or conflicting saved credentials",
+          "Credential Manager corruption",
+          "local policy (insecure guest logon, signing, NTLM restrictions)",
+          "third-party firewall",
+          "SMB client disabled by policy",
+          "clock skew breaking Kerberos"
+        ],
+        "beyond_device": [
+          "host share or NTFS permissions wrong",
+          "host firewall or network profile Public",
+          "host SMB version/security mismatch (NAS with SMB1 only)",
+          "host sleeping",
+          "ISP blocking port 445",
+          "server out of sessions",
+          "wrong name or IP"
+        ],
+        "next_checks": [
+          "connect by IP versus name",
+          "test \\\\host\\IPC$",
+          "try from another PC",
+          "check the host Sharing tab and event logs",
+          "verify the same user exists on the host"
+        ],
+        "evidence_to_collect": [
+          "port 445 result",
+          "SMB dialect negotiated",
+          "error code (0x80070035, 0x80004005)",
+          "net use output"
+        ]
+      }
+    },
+    {
+      "id": "LAN-06",
+      "name": "NetBIOS name resolution fails",
+      "symptom": "\\\\NAME fails while \\\\IP works and NetBIOS over TCP/IP is disabled.",
+      "detection": "NetBIOS over TCP/IP off; name lookup fails while SMB by IP works",
+      "explanation": "Refreshes the NetBIOS name cache and enables NetBIOS over TCP/IP on the adapter.",
+      "admin": true,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "LAN-04"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "AdapterName",
+          "source": "adapter",
+          "required": true,
+          "validator": "adapter"
+        },
+        {
+          "name": "InterfaceIndex",
+          "source": "adapter_index",
+          "default": "0",
+          "required": false,
+          "validator": "port"
+        },
+        {
+          "name": "OriginalNetbios",
+          "source": "value",
+          "default": "0",
+          "required": false,
+          "validator": "none"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "NetBIOS adapter setting",
+          "script": "param($InterfaceIndex)\nGet-CimInstance -ClassName Win32_NetworkAdapterConfiguration -ErrorAction SilentlyContinue |\n  Where-Object { $_.InterfaceIndex -eq $InterfaceIndex } |\n  Select-Object Description,InterfaceIndex,TcpipNetbiosOptions |\n  ConvertTo-Json -Depth 4",
+          "params": [
+            "InterfaceIndex"
+          ]
+        }
+      ],
+      "rollback": [
+        {
+          "kind": "powershell",
+          "label": "restore NetBIOS setting",
+          "script": "param($InterfaceIndex,$OriginalNetbios)\n$adapter = Get-CimInstance -ClassName Win32_NetworkAdapterConfiguration -ErrorAction SilentlyContinue |\n  Where-Object { $_.InterfaceIndex -eq $InterfaceIndex }\nif ($adapter) {\n  Invoke-CimMethod -InputObject $adapter -MethodName SetTcpipNetbios -Arguments @{ TcpipNetbiosOptions = [int]$OriginalNetbios } -ErrorAction SilentlyContinue | Out-Null\n}",
+          "params": [
+            "InterfaceIndex",
+            "OriginalNetbios"
+          ]
+        }
+      ],
+      "rollback_notes": "Rollback restores the recorded NetBIOS option.",
+      "ladder": [
+        {
+          "name": "Refresh and enable NetBIOS",
+          "description": "Purges the name cache, then allows NetBIOS over TCP/IP.",
+          "commands": [
+            {
+              "kind": "native",
+              "label": "purge name cache",
+              "args": [
+                "nbtstat",
+                "-R"
+              ]
+            },
+            {
+              "kind": "native",
+              "label": "refresh name registrations",
+              "args": [
+                "nbtstat",
+                "-RR"
+              ]
+            },
+            {
+              "kind": "powershell",
+              "label": "enable NetBIOS",
+              "script": "param($InterfaceIndex)\n$adapter = Get-CimInstance -ClassName Win32_NetworkAdapterConfiguration -ErrorAction Stop |\n  Where-Object { $_.InterfaceIndex -eq $InterfaceIndex }\nif (-not $adapter) { throw \"No adapter with InterfaceIndex $InterfaceIndex\" }\nInvoke-CimMethod -InputObject $adapter -MethodName SetTcpipNetbios -Arguments @{ TcpipNetbiosOptions = 1 } -ErrorAction Stop | Out-Null",
+              "params": [
+                "InterfaceIndex"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "stale or conflicting saved credentials",
+          "Credential Manager corruption",
+          "local policy (insecure guest logon, signing, NTLM restrictions)",
+          "third-party firewall",
+          "SMB client disabled by policy",
+          "clock skew breaking Kerberos"
+        ],
+        "beyond_device": [
+          "host share or NTFS permissions wrong",
+          "host firewall or network profile Public",
+          "host SMB version/security mismatch (NAS with SMB1 only)",
+          "host sleeping",
+          "ISP blocking port 445",
+          "server out of sessions",
+          "wrong name or IP"
+        ],
+        "next_checks": [
+          "connect by IP versus name",
+          "test \\\\host\\IPC$",
+          "try from another PC",
+          "check the host Sharing tab and event logs",
+          "verify the same user exists on the host"
+        ],
+        "evidence_to_collect": [
+          "port 445 result",
+          "SMB dialect negotiated",
+          "error code (0x80070035, 0x80004005)",
+          "net use output"
+        ]
+      }
+    },
+    {
+      "id": "LAN-07",
+      "name": "SMB port 445 is unreachable",
+      "symptom": "TCP 445 fails while ping to the host works.",
+      "detection": "Test-NetConnection host -Port 445 fails while ping works",
+      "explanation": "Likely a remote firewall, ISP block, or a local outbound rule. Check local outbound block rules on 445 first.",
+      "admin": true,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": true,
+      "verify_flag": false,
+      "verify": [
+        "LAN-08"
+      ],
+      "state_changing": false,
+      "params": [],
+      "snapshot": [],
+      "rollback": [],
+      "rollback_notes": "",
+      "ladder": [],
+      "if_unresolved": {
+        "this_device": [
+          "stale or conflicting saved credentials",
+          "Credential Manager corruption",
+          "local policy (insecure guest logon, signing, NTLM restrictions)",
+          "third-party firewall",
+          "SMB client disabled by policy",
+          "clock skew breaking Kerberos"
+        ],
+        "beyond_device": [
+          "host share or NTFS permissions wrong",
+          "host firewall or network profile Public",
+          "host SMB version/security mismatch (NAS with SMB1 only)",
+          "host sleeping",
+          "ISP blocking port 445",
+          "server out of sessions",
+          "wrong name or IP"
+        ],
+        "next_checks": [
+          "connect by IP versus name",
+          "test \\\\host\\IPC$",
+          "try from another PC",
+          "check the host Sharing tab and event logs",
+          "verify the same user exists on the host"
+        ],
+        "evidence_to_collect": [
+          "port 445 result",
+          "SMB dialect negotiated",
+          "error code (0x80070035, 0x80004005)",
+          "net use output"
+        ]
+      }
+    },
+    {
+      "id": "LAN-08",
+      "name": "SMB2/3 client is disabled",
+      "symptom": "The SMB client cannot use modern SMB2/3 dialects.",
+      "detection": "Get-SmbClientConfiguration EnableSMB2Protocol=False",
+      "explanation": "Re-enables the SMB2/3 client protocol. This is the safe modern default.",
+      "admin": true,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "LAN-08"
+      ],
+      "state_changing": true,
+      "params": [],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "SMB client configuration",
+          "script": "Get-SmbClientConfiguration -ErrorAction SilentlyContinue |\n  Select-Object EnableSMB2Protocol,RequireSecuritySignature,EnableSecuritySignature |\n  ConvertTo-Json -Depth 4",
+          "params": []
+        }
+      ],
+      "rollback": [
+        {
+          "kind": "powershell",
+          "label": "disable SMB2/3 again",
+          "script": "Set-SmbClientConfiguration -EnableSMB2Protocol $false -Force -ErrorAction SilentlyContinue",
+          "params": []
+        }
+      ],
+      "rollback_notes": "Rollback disables the SMB2/3 client again.",
+      "ladder": [
+        {
+          "name": "Enable SMB2/3 client",
+          "description": "Does not enable SMB1.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "enable SMB2/3",
+              "script": "Set-SmbClientConfiguration -EnableSMB2Protocol $true -Force -ErrorAction Stop",
+              "params": []
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "stale or conflicting saved credentials",
+          "Credential Manager corruption",
+          "local policy (insecure guest logon, signing, NTLM restrictions)",
+          "third-party firewall",
+          "SMB client disabled by policy",
+          "clock skew breaking Kerberos"
+        ],
+        "beyond_device": [
+          "host share or NTFS permissions wrong",
+          "host firewall or network profile Public",
+          "host SMB version/security mismatch (NAS with SMB1 only)",
+          "host sleeping",
+          "ISP blocking port 445",
+          "server out of sessions",
+          "wrong name or IP"
+        ],
+        "next_checks": [
+          "connect by IP versus name",
+          "test \\\\host\\IPC$",
+          "try from another PC",
+          "check the host Sharing tab and event logs",
+          "verify the same user exists on the host"
+        ],
+        "evidence_to_collect": [
+          "port 445 result",
+          "SMB dialect negotiated",
+          "error code (0x80070035, 0x80004005)",
+          "net use output"
+        ]
+      }
+    },
+    {
+      "id": "LAN-09",
+      "name": "Legacy device needs insecure SMB access",
+      "symptom": "An old NAS or device requires SMB1 or unauthenticated guest access.",
+      "detection": "SMB negotiation fails with a security-policy or guest-access error",
+      "explanation": "DETECT-ONLY by default. NetScope never enables SMB1. Insecure guest access weakens security and must only be considered with a second explicit confirmation outside this safe flow.",
+      "admin": true,
+      "risk": "high",
+      "reboot": false,
+      "detection_only": true,
+      "verify_flag": false,
+      "verify": [
+        "LAN-08"
+      ],
+      "state_changing": false,
+      "params": [],
+      "snapshot": [],
+      "rollback": [],
+      "rollback_notes": "",
+      "ladder": [],
+      "if_unresolved": {
+        "this_device": [
+          "stale or conflicting saved credentials",
+          "Credential Manager corruption",
+          "local policy (insecure guest logon, signing, NTLM restrictions)",
+          "third-party firewall",
+          "SMB client disabled by policy",
+          "clock skew breaking Kerberos"
+        ],
+        "beyond_device": [
+          "host share or NTFS permissions wrong",
+          "host firewall or network profile Public",
+          "host SMB version/security mismatch (NAS with SMB1 only)",
+          "host sleeping",
+          "ISP blocking port 445",
+          "server out of sessions",
+          "wrong name or IP"
+        ],
+        "next_checks": [
+          "connect by IP versus name",
+          "test \\\\host\\IPC$",
+          "try from another PC",
+          "check the host Sharing tab and event logs",
+          "verify the same user exists on the host"
+        ],
+        "evidence_to_collect": [
+          "port 445 result",
+          "SMB dialect negotiated",
+          "error code (0x80070035, 0x80004005)",
+          "net use output"
+        ]
+      }
+    },
+    {
+      "id": "LAN-10",
+      "name": "SMB signing mismatch",
+      "symptom": "Access fails only against specific devices where SMB signing is required on one side.",
+      "detection": "Access denied or network path not found only against specific devices",
+      "explanation": "DETECT-ONLY. Disabling SMB signing weakens security, so NetScope does not offer it as a fix.",
+      "admin": true,
+      "risk": "medium",
+      "reboot": false,
+      "detection_only": true,
+      "verify_flag": true,
+      "verify": [
+        "LAN-08"
+      ],
+      "state_changing": false,
+      "params": [],
+      "snapshot": [],
+      "rollback": [],
+      "rollback_notes": "",
+      "ladder": [],
+      "if_unresolved": {
+        "this_device": [
+          "stale or conflicting saved credentials",
+          "Credential Manager corruption",
+          "local policy (insecure guest logon, signing, NTLM restrictions)",
+          "third-party firewall",
+          "SMB client disabled by policy",
+          "clock skew breaking Kerberos"
+        ],
+        "beyond_device": [
+          "host share or NTFS permissions wrong",
+          "host firewall or network profile Public",
+          "host SMB version/security mismatch (NAS with SMB1 only)",
+          "host sleeping",
+          "ISP blocking port 445",
+          "server out of sessions",
+          "wrong name or IP"
+        ],
+        "next_checks": [
+          "connect by IP versus name",
+          "test \\\\host\\IPC$",
+          "try from another PC",
+          "check the host Sharing tab and event logs",
+          "verify the same user exists on the host"
+        ],
+        "evidence_to_collect": [
+          "port 445 result",
+          "SMB dialect negotiated",
+          "error code (0x80070035, 0x80004005)",
+          "net use output"
+        ]
+      }
+    },
+    {
+      "id": "LAN-11",
+      "name": "Cached bad credentials",
+      "symptom": "Windows repeatedly prompts for a password or returns access denied because a stale credential is saved.",
+      "detection": "cmdkey /list shows stale entries for the target",
+      "explanation": "Deletes the saved credential for one target. The user must re-enter the password next time.",
+      "admin": false,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "LAN-08"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "Target",
+          "source": "target",
+          "required": true,
+          "description": "Share or server target, for example \\\\server or server",
+          "validator": "none"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "native",
+          "label": "saved credentials",
+          "args": [
+            "cmdkey",
+            "/list"
+          ]
+        }
+      ],
+      "rollback": [],
+      "rollback_notes": "The credential is removed; the user re-enters it when prompted.",
+      "ladder": [
+        {
+          "name": "Delete the cached credential",
+          "description": "Only the named target is removed.",
+          "commands": [
+            {
+              "kind": "native",
+              "label": "delete saved credential",
+              "args": [
+                "cmdkey",
+                "/delete:{Target}"
+              ]
+            },
+            {
+              "kind": "native",
+              "label": "delete mapped connection",
+              "args": [
+                "net",
+                "use",
+                "{Target}",
+                "/delete"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "stale or conflicting saved credentials",
+          "Credential Manager corruption",
+          "local policy (insecure guest logon, signing, NTLM restrictions)",
+          "third-party firewall",
+          "SMB client disabled by policy",
+          "clock skew breaking Kerberos"
+        ],
+        "beyond_device": [
+          "host share or NTFS permissions wrong",
+          "host firewall or network profile Public",
+          "host SMB version/security mismatch (NAS with SMB1 only)",
+          "host sleeping",
+          "ISP blocking port 445",
+          "server out of sessions",
+          "wrong name or IP"
+        ],
+        "next_checks": [
+          "connect by IP versus name",
+          "test \\\\host\\IPC$",
+          "try from another PC",
+          "check the host Sharing tab and event logs",
+          "verify the same user exists on the host"
+        ],
+        "evidence_to_collect": [
+          "port 445 result",
+          "SMB dialect negotiated",
+          "error code (0x80070035, 0x80004005)",
+          "net use output"
+        ]
+      }
+    },
+    {
+      "id": "DNS-01",
+      "name": "Stale or poisoned DNS cache",
+      "symptom": "The Windows resolver returns a different result from a direct public DNS query.",
+      "detection": "Resolve-DnsName differs from a direct query to a public DNS",
+      "explanation": "Flushes the local DNS cache and re-registers this PC's names. It does not change DNS servers.",
+      "admin": true,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "DNS-01"
+      ],
+      "state_changing": false,
+      "params": [],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "local DNS cache sample",
+          "script": "Get-DnsClientCache -ErrorAction SilentlyContinue |\n  Select-Object -First 100 Entry,RecordName,Data,Status |\n  ConvertTo-Json -Depth 4",
+          "params": []
+        }
+      ],
+      "rollback": [],
+      "rollback_notes": "Clearing a cache does not require rollback; entries repopulate automatically.",
+      "ladder": [
+        {
+          "name": "Flush the DNS cache",
+          "description": "Clears cached answers and re-registers names.",
+          "commands": [
+            {
+              "kind": "native",
+              "label": "flush DNS",
+              "args": [
+                "ipconfig",
+                "/flushdns"
+              ]
+            },
+            {
+              "kind": "native",
+              "label": "re-register DNS",
+              "args": [
+                "ipconfig",
+                "/registerdns"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "security or VPN software hijacking DNS",
+          "corrupted DNS client service",
+          "hosts file or proxy overriding resolution",
+          "wrong adapter DNS order",
+          "DoH policy conflict",
+          "stale NRPT rules"
+        ],
+        "beyond_device": [
+          "ISP/router resolver down or slow",
+          "router DNS proxy bug",
+          "port 53 blocked or intercepted",
+          "captive portal",
+          "content filter blocking domains",
+          "upstream outage for that domain only"
+        ],
+        "next_checks": [
+          "query a public resolver directly (nslookup name 1.1.1.1)",
+          "try another device on the same network",
+          "reboot the router",
+          "check the router DNS setting"
+        ],
+        "evidence_to_collect": [
+          "per-resolver results and latency",
+          "NXDOMAIN versus timeout versus SERVFAIL",
+          "hosts file hits"
+        ]
+      }
+    },
+    {
+      "id": "DNS-02",
+      "name": "Configured DNS server is failing",
+      "symptom": "Configured resolvers fail while a public resolver answers and IP connectivity works.",
+      "detection": "Ping 1.1.1.1 works, resolve fails, configured DNS fails",
+      "explanation": "First resets DNS to DHCP-provided servers. If that fails, sets public resolvers temporarily. Recorded servers are saved for rollback.",
+      "admin": true,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "DNS-02"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "AdapterName",
+          "source": "adapter",
+          "required": true,
+          "validator": "adapter"
+        },
+        {
+          "name": "PublicDns",
+          "source": "value",
+          "default": "1.1.1.1,8.8.8.8",
+          "validator": "dns_list"
+        },
+        {
+          "name": "OriginalDns",
+          "source": "original_dns",
+          "required": false,
+          "default": "",
+          "validator": "dns_list"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "DNS servers",
+          "script": "param($AdapterName)\nGet-DnsClientServerAddress -InterfaceAlias $AdapterName -AddressFamily IPv4 -ErrorAction SilentlyContinue |\n  Select-Object InterfaceAlias,ServerAddresses |\n  ConvertTo-Json -Depth 4",
+          "params": [
+            "AdapterName"
+          ]
+        }
+      ],
+      "rollback": [
+        {
+          "kind": "powershell",
+          "label": "restore DNS servers",
+          "script": "param($AdapterName,$OriginalDns)\nif ($OriginalDns) {\n  Set-DnsClientServerAddress -InterfaceAlias $AdapterName -ServerAddresses ($OriginalDns -split ',') -ErrorAction SilentlyContinue\n}",
+          "params": [
+            "AdapterName",
+            "OriginalDns"
+          ]
+        }
+      ],
+      "rollback_notes": "Rollback restores the servers recorded before the fix.",
+      "ladder": [
+        {
+          "name": "Reset DNS to DHCP",
+          "description": "Uses the servers supplied by DHCP/router.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "reset DNS",
+              "script": "param($AdapterName)\nSet-DnsClientServerAddress -InterfaceAlias $AdapterName -ResetServerAddresses -ErrorAction Stop",
+              "params": [
+                "AdapterName"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Use public DNS temporarily",
+          "description": "Sets the configured public resolvers on this adapter.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "set public DNS",
+              "script": "param($AdapterName,$PublicDns)\nSet-DnsClientServerAddress -InterfaceAlias $AdapterName -ServerAddresses ($PublicDns -split ',') -ErrorAction Stop",
+              "params": [
+                "AdapterName",
+                "PublicDns"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Stop: DNS port may be filtered",
+          "description": "If public DNS also fails, this is likely a captive portal, firewall, ISP block or upstream outage.",
+          "commands": []
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "security or VPN software hijacking DNS",
+          "corrupted DNS client service",
+          "hosts file or proxy overriding resolution",
+          "wrong adapter DNS order",
+          "DoH policy conflict",
+          "stale NRPT rules"
+        ],
+        "beyond_device": [
+          "ISP/router resolver down or slow",
+          "router DNS proxy bug",
+          "port 53 blocked or intercepted",
+          "captive portal",
+          "content filter blocking domains",
+          "upstream outage for that domain only"
+        ],
+        "next_checks": [
+          "query a public resolver directly (nslookup name 1.1.1.1)",
+          "try another device on the same network",
+          "reboot the router",
+          "check the router DNS setting"
+        ],
+        "evidence_to_collect": [
+          "per-resolver results and latency",
+          "NXDOMAIN versus timeout versus SERVFAIL",
+          "hosts file hits"
+        ]
+      }
+    },
+    {
+      "id": "DNS-03",
+      "name": "Hosts file overrides",
+      "symptom": "Leftover blocklist, malware or development entries override DNS.",
+      "detection": "Non-comment entries in the hosts file, especially 0.0.0.0 blocks",
+      "explanation": "Backs up the hosts file, then removes only the hostnames you select. The backup can be restored.",
+      "admin": true,
+      "risk": "medium",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "DNS-03"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "HostNames",
+          "source": "target",
+          "required": true,
+          "description": "Comma-separated hostnames to remove",
+          "validator": "none"
+        },
+        {
+          "name": "BackupPath",
+          "source": "hosts_backup_path",
+          "required": true,
+          "validator": "path"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "hosts file",
+          "script": "$path = Join-Path $env:SystemRoot 'System32\\drivers\\etc\\hosts'\nGet-Item -LiteralPath $path -ErrorAction SilentlyContinue |\n  Select-Object FullName,Length,LastWriteTime |\n  ConvertTo-Json -Depth 4\nGet-Content -LiteralPath $path -ErrorAction SilentlyContinue | Select-Object -First 500",
+          "params": []
+        }
+      ],
+      "rollback": [
+        {
+          "kind": "powershell",
+          "label": "restore the hosts backup",
+          "script": "param($BackupPath)\n$path = Join-Path $env:SystemRoot 'System32\\drivers\\etc\\hosts'\nif (Test-Path -LiteralPath $BackupPath) {\n  Copy-Item -LiteralPath $BackupPath -Destination $path -Force -ErrorAction Stop\n}",
+          "params": [
+            "BackupPath"
+          ]
+        }
+      ],
+      "rollback_notes": "Rollback copies the pre-fix hosts backup back into place.",
+      "ladder": [
+        {
+          "name": "Remove selected hosts entries",
+          "description": "Only matching hostnames are removed; comments and other entries stay.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "clean hosts entries",
+              "script": "param([string]$HostNames,[string]$BackupPath)\n$path = Join-Path $env:SystemRoot 'System32\\drivers\\etc\\hosts'\nCopy-Item -LiteralPath $path -Destination $BackupPath -Force -ErrorAction Stop\n$names = @($HostNames.Split(',') | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ })\n$lines = Get-Content -LiteralPath $path\n$filtered = foreach ($line in $lines) {\n  $clean = ($line -split '#', 2)[0].Trim()\n  if (-not $clean) { $line; continue }\n  $parts = $clean -split '\\s+'\n  if ($parts.Count -ge 2 -and $names -contains $parts[1].ToLower()) { continue }\n  $line\n}\nSet-Content -LiteralPath $path -Value $filtered -Encoding ASCII",
+              "params": [
+                "HostNames",
+                "BackupPath"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "security or VPN software hijacking DNS",
+          "corrupted DNS client service",
+          "hosts file or proxy overriding resolution",
+          "wrong adapter DNS order",
+          "DoH policy conflict",
+          "stale NRPT rules"
+        ],
+        "beyond_device": [
+          "ISP/router resolver down or slow",
+          "router DNS proxy bug",
+          "port 53 blocked or intercepted",
+          "captive portal",
+          "content filter blocking domains",
+          "upstream outage for that domain only"
+        ],
+        "next_checks": [
+          "query a public resolver directly (nslookup name 1.1.1.1)",
+          "try another device on the same network",
+          "reboot the router",
+          "check the router DNS setting"
+        ],
+        "evidence_to_collect": [
+          "per-resolver results and latency",
+          "NXDOMAIN versus timeout versus SERVFAIL",
+          "hosts file hits"
+        ]
+      }
+    },
+    {
+      "id": "DNS-04",
+      "name": "VPN split-DNS or NRPT problem",
+      "symptom": "Internal names fail only on VPN, or the VPN DNS server is not first in the NRPT.",
+      "detection": "Internal names fail on VPN; Get-DnsClientNrptPolicy lacks a rule or VPN DNS not first",
+      "explanation": "Flushes the cache and asks the user to reconnect the VPN. NetScope does not rewrite NRPT policy.",
+      "admin": true,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": true,
+      "verify_flag": true,
+      "verify": [
+        "DNS-02"
+      ],
+      "state_changing": false,
+      "params": [],
+      "snapshot": [],
+      "rollback": [],
+      "rollback_notes": "",
+      "ladder": [],
+      "if_unresolved": {
+        "this_device": [
+          "security or VPN software hijacking DNS",
+          "corrupted DNS client service",
+          "hosts file or proxy overriding resolution",
+          "wrong adapter DNS order",
+          "DoH policy conflict",
+          "stale NRPT rules"
+        ],
+        "beyond_device": [
+          "ISP/router resolver down or slow",
+          "router DNS proxy bug",
+          "port 53 blocked or intercepted",
+          "captive portal",
+          "content filter blocking domains",
+          "upstream outage for that domain only"
+        ],
+        "next_checks": [
+          "query a public resolver directly (nslookup name 1.1.1.1)",
+          "try another device on the same network",
+          "reboot the router",
+          "check the router DNS setting"
+        ],
+        "evidence_to_collect": [
+          "per-resolver results and latency",
+          "NXDOMAIN versus timeout versus SERVFAIL",
+          "hosts file hits"
+        ]
+      }
+    },
+    {
+      "id": "DNS-05",
+      "name": "Encrypted DNS (DoH) misconfigured",
+      "symptom": "Encrypted DNS entries are present and resolution fails only when DoH is required.",
+      "detection": "Get-DnsClientDohServerAddress entries present; resolves fail only when DoH required",
+      "explanation": "DETECT-ONLY. Review the DoH server setting in Settings or policy; NetScope does not guess a resolver.",
+      "admin": true,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": true,
+      "verify_flag": true,
+      "verify": [
+        "DNS-02"
+      ],
+      "state_changing": false,
+      "params": [],
+      "snapshot": [],
+      "rollback": [],
+      "rollback_notes": "",
+      "ladder": [],
+      "if_unresolved": {
+        "this_device": [
+          "security or VPN software hijacking DNS",
+          "corrupted DNS client service",
+          "hosts file or proxy overriding resolution",
+          "wrong adapter DNS order",
+          "DoH policy conflict",
+          "stale NRPT rules"
+        ],
+        "beyond_device": [
+          "ISP/router resolver down or slow",
+          "router DNS proxy bug",
+          "port 53 blocked or intercepted",
+          "captive portal",
+          "content filter blocking domains",
+          "upstream outage for that domain only"
+        ],
+        "next_checks": [
+          "query a public resolver directly (nslookup name 1.1.1.1)",
+          "try another device on the same network",
+          "reboot the router",
+          "check the router DNS setting"
+        ],
+        "evidence_to_collect": [
+          "per-resolver results and latency",
+          "NXDOMAIN versus timeout versus SERVFAIL",
+          "hosts file hits"
+        ]
+      }
+    },
+    {
+      "id": "NET-01",
+      "name": "Captive portal blocking internet access",
+      "symptom": "The connectivity probe returns a login or redirect page instead of the expected text.",
+      "detection": "GET http://www.msftconnecttest.com/connecttest.txt returns a redirect/login page",
+      "explanation": "Opens a plain HTTP page so the hotel/cafe/campus portal can be completed. No configuration is changed.",
+      "admin": false,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "NET-01"
+      ],
+      "state_changing": false,
+      "params": [],
+      "snapshot": [],
+      "rollback": [],
+      "rollback_notes": "",
+      "ladder": [
+        {
+          "name": "Open the portal",
+          "description": "Opens http://neverssl.com in the default browser.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "open portal page",
+              "script": "Start-Process 'http://neverssl.com'",
+              "params": []
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "browser or app-level proxy or extension",
+          "security software HTTPS inspection",
+          "wrong system clock",
+          "expired or intercepted certificates",
+          "malware changing settings",
+          "per-app firewall rule"
+        ],
+        "beyond_device": [
+          "router WAN down",
+          "modem not synced",
+          "ISP outage or billing block",
+          "captive portal not completed",
+          "upstream proxy or authentication required",
+          "corporate firewall policy",
+          "remote site down"
+        ],
+        "next_checks": [
+          "check modem/router WAN light and status page",
+          "test on another device or phone hotspot",
+          "call the ISP",
+          "open a plain HTTP page to trigger a portal",
+          "test another site or app"
+        ],
+        "evidence_to_collect": [
+          "gateway ping and public-IP ping",
+          "DNS result",
+          "HTTP and HTTPS probe results",
+          "proxy settings found"
+        ]
+      }
+    },
+    {
+      "id": "NET-02",
+      "name": "Windows says No Internet but browsing works",
+      "symptom": "NCSI reports limited connectivity even though the connectivity probe succeeds.",
+      "detection": "Connecttest works over HTTP but NCSI status is limited",
+      "explanation": "Restarts NLA/netprofm and then the adapter. NetScope never disables NCSI active probing.",
+      "admin": true,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "NET-PING",
+        "NET-01"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "AdapterName",
+          "source": "adapter",
+          "required": true,
+          "validator": "adapter"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "location services",
+          "script": "Get-CimInstance -ClassName Win32_Service -ErrorAction SilentlyContinue |\n  Where-Object { $_.Name -in @('NlaSvc','netprofm') } |\n  Select-Object Name,State,StartMode |\n  ConvertTo-Json -Depth 4",
+          "params": []
+        },
+        {
+          "kind": "powershell",
+          "label": "NCSI settings",
+          "script": "Get-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\NlaSvc\\Parameters\\Internet' -ErrorAction SilentlyContinue |\n  Select-Object EnableActiveProbing,ActiveWebProbeHost,ActiveWebProbePath |\n  ConvertTo-Json -Depth 4",
+          "params": []
+        }
+      ],
+      "rollback": [],
+      "rollback_notes": "Restarting services does not change saved settings; active probing stays enabled.",
+      "ladder": [
+        {
+          "name": "Restart NLA and network list services",
+          "description": "Recreates the connectivity status.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "restart location services",
+              "script": "$services = @('NlaSvc','netprofm')\nforeach ($name in $services) {\n  Set-Service -Name $name -StartupType Automatic -ErrorAction SilentlyContinue\n  Restart-Service -Name $name -Force -ErrorAction SilentlyContinue\n}",
+              "params": []
+            }
+          ]
+        },
+        {
+          "name": "Restart the adapter",
+          "description": "Re-runs network detection on the interface.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "restart adapter",
+              "script": "param($AdapterName)\nRestart-NetAdapter -Name $AdapterName -Confirm:$false -ErrorAction Stop",
+              "params": [
+                "AdapterName"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Stop: NCSI or proxy problem",
+          "description": "Check the WinHTTP/system proxy with NET-03. Do not disable NCSI active probing.",
+          "commands": []
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "browser or app-level proxy or extension",
+          "security software HTTPS inspection",
+          "wrong system clock",
+          "expired or intercepted certificates",
+          "malware changing settings",
+          "per-app firewall rule"
+        ],
+        "beyond_device": [
+          "router WAN down",
+          "modem not synced",
+          "ISP outage or billing block",
+          "captive portal not completed",
+          "upstream proxy or authentication required",
+          "corporate firewall policy",
+          "remote site down"
+        ],
+        "next_checks": [
+          "check modem/router WAN light and status page",
+          "test on another device or phone hotspot",
+          "call the ISP",
+          "open a plain HTTP page to trigger a portal",
+          "test another site or app"
+        ],
+        "evidence_to_collect": [
+          "gateway ping and public-IP ping",
+          "DNS result",
+          "HTTP and HTTPS probe results",
+          "proxy settings found"
+        ]
+      }
+    },
+    {
+      "id": "NET-03",
+      "name": "Stale WinHTTP system proxy",
+      "symptom": "Windows Update, Store and services fail because the WinHTTP proxy is unreachable.",
+      "detection": "netsh winhttp show proxy returns an unreachable proxy",
+      "explanation": "Resets the WinHTTP proxy so services use direct access. Browsers keep their own WinINET setting.",
+      "admin": true,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "NET-03"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "OriginalProxy",
+          "source": "original_winhttp",
+          "required": false,
+          "default": "",
+          "validator": "none"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "native",
+          "label": "WinHTTP proxy",
+          "args": [
+            "netsh",
+            "winhttp",
+            "show",
+            "proxy"
+          ]
+        }
+      ],
+      "rollback": [],
+      "rollback_notes": "Re-apply the recorded proxy with: netsh winhttp set proxy <server>.",
+      "ladder": [
+        {
+          "name": "Reset the WinHTTP proxy",
+          "description": "Uses the native netsh reset command.",
+          "commands": [
+            {
+              "kind": "native",
+              "label": "reset WinHTTP proxy",
+              "args": [
+                "netsh",
+                "winhttp",
+                "reset",
+                "proxy"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "browser or app-level proxy or extension",
+          "security software HTTPS inspection",
+          "wrong system clock",
+          "expired or intercepted certificates",
+          "malware changing settings",
+          "per-app firewall rule"
+        ],
+        "beyond_device": [
+          "router WAN down",
+          "modem not synced",
+          "ISP outage or billing block",
+          "captive portal not completed",
+          "upstream proxy or authentication required",
+          "corporate firewall policy",
+          "remote site down"
+        ],
+        "next_checks": [
+          "check modem/router WAN light and status page",
+          "test on another device or phone hotspot",
+          "call the ISP",
+          "open a plain HTTP page to trigger a portal",
+          "test another site or app"
+        ],
+        "evidence_to_collect": [
+          "gateway ping and public-IP ping",
+          "DNS result",
+          "HTTP and HTTPS probe results",
+          "proxy settings found"
+        ]
+      }
+    },
+    {
+      "id": "NET-04",
+      "name": "Dead per-user proxy",
+      "symptom": "The WinINET proxy is enabled but its server is unreachable.",
+      "detection": "HKCU Internet Settings ProxyEnable=1 and ProxyServer unreachable",
+      "explanation": "Disables the per-user proxy. The recorded server name is saved for rollback.",
+      "admin": false,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "NET-04"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "OriginalProxyEnable",
+          "source": "value",
+          "default": "1",
+          "validator": "none"
+        },
+        {
+          "name": "OriginalProxyServer",
+          "source": "original_proxy_server",
+          "required": false,
+          "default": "",
+          "validator": "none"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "WinINET proxy",
+          "script": "Get-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings' -ErrorAction SilentlyContinue |\n  Select-Object ProxyEnable,ProxyServer,ProxyOverride,AutoConfigURL |\n  ConvertTo-Json -Depth 4",
+          "params": []
+        }
+      ],
+      "rollback": [
+        {
+          "kind": "powershell",
+          "label": "restore the per-user proxy",
+          "script": "param($OriginalProxyEnable,$OriginalProxyServer)\n$path = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings'\nSet-ItemProperty -Path $path -Name ProxyEnable -Value ([int]$OriginalProxyEnable) -Type DWord -ErrorAction SilentlyContinue\nif ($OriginalProxyServer) {\n  Set-ItemProperty -Path $path -Name ProxyServer -Value $OriginalProxyServer -Type String -ErrorAction SilentlyContinue\n}",
+          "params": [
+            "OriginalProxyEnable",
+            "OriginalProxyServer"
+          ]
+        }
+      ],
+      "rollback_notes": "Rollback restores the recorded proxy enable flag and server.",
+      "ladder": [
+        {
+          "name": "Disable the per-user proxy",
+          "description": "Leaves the ProxyServer value recorded in the snapshot.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "disable WinINET proxy",
+              "script": "$path = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings'\nSet-ItemProperty -Path $path -Name ProxyEnable -Value 0 -Type DWord -ErrorAction Stop",
+              "params": []
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "browser or app-level proxy or extension",
+          "security software HTTPS inspection",
+          "wrong system clock",
+          "expired or intercepted certificates",
+          "malware changing settings",
+          "per-app firewall rule"
+        ],
+        "beyond_device": [
+          "router WAN down",
+          "modem not synced",
+          "ISP outage or billing block",
+          "captive portal not completed",
+          "upstream proxy or authentication required",
+          "corporate firewall policy",
+          "remote site down"
+        ],
+        "next_checks": [
+          "check modem/router WAN light and status page",
+          "test on another device or phone hotspot",
+          "call the ISP",
+          "open a plain HTTP page to trigger a portal",
+          "test another site or app"
+        ],
+        "evidence_to_collect": [
+          "gateway ping and public-IP ping",
+          "DNS result",
+          "HTTP and HTTPS probe results",
+          "proxy settings found"
+        ]
+      }
+    },
+    {
+      "id": "NET-05",
+      "name": "Dead PAC or auto-config URL",
+      "symptom": "Automatic proxy configuration points to a URL that cannot be downloaded.",
+      "detection": "AutoConfigURL set and the URL fails to download",
+      "explanation": "Removes the AutoConfigURL value. The recorded URL is saved for rollback.",
+      "admin": false,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "NET-PING"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "OriginalAutoConfigUrl",
+          "source": "original_autoconfig_url",
+          "required": false,
+          "default": "",
+          "validator": "none"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "proxy auto-config",
+          "script": "Get-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings' -ErrorAction SilentlyContinue |\n  Select-Object ProxyEnable,ProxyServer,AutoConfigURL |\n  ConvertTo-Json -Depth 4",
+          "params": []
+        }
+      ],
+      "rollback": [
+        {
+          "kind": "powershell",
+          "label": "restore the PAC URL",
+          "script": "param($OriginalAutoConfigUrl)\nif ($OriginalAutoConfigUrl) {\n  Set-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings' -Name AutoConfigURL -Value $OriginalAutoConfigUrl -Type String -ErrorAction SilentlyContinue\n}",
+          "params": [
+            "OriginalAutoConfigUrl"
+          ]
+        }
+      ],
+      "rollback_notes": "Rollback restores the recorded AutoConfigURL.",
+      "ladder": [
+        {
+          "name": "Remove AutoConfigURL",
+          "description": "Stops Windows from downloading the dead PAC file.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "remove PAC URL",
+              "script": "$path = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings'\nRemove-ItemProperty -Path $path -Name AutoConfigURL -ErrorAction SilentlyContinue",
+              "params": []
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "browser or app-level proxy or extension",
+          "security software HTTPS inspection",
+          "wrong system clock",
+          "expired or intercepted certificates",
+          "malware changing settings",
+          "per-app firewall rule"
+        ],
+        "beyond_device": [
+          "router WAN down",
+          "modem not synced",
+          "ISP outage or billing block",
+          "captive portal not completed",
+          "upstream proxy or authentication required",
+          "corporate firewall policy",
+          "remote site down"
+        ],
+        "next_checks": [
+          "check modem/router WAN light and status page",
+          "test on another device or phone hotspot",
+          "call the ISP",
+          "open a plain HTTP page to trigger a portal",
+          "test another site or app"
+        ],
+        "evidence_to_collect": [
+          "gateway ping and public-IP ping",
+          "DNS result",
+          "HTTP and HTTPS probe results",
+          "proxy settings found"
+        ]
+      }
+    },
+    {
+      "id": "NET-06",
+      "name": "System clock is wrong",
+      "symptom": "The local clock differs from the HTTP Date header by more than five minutes.",
+      "detection": "Large offset between local time and an HTTP Date header",
+      "explanation": "Ensures the Windows Time service is running and asks it to resynchronise. TLS/HTTPS needs a correct clock.",
+      "admin": true,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": true,
+      "verify": [
+        "NET-06"
+      ],
+      "state_changing": true,
+      "params": [],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "time service",
+          "script": "Get-Service -Name W32Time -ErrorAction SilentlyContinue |\n  Select-Object Name,Status,StartType |\n  ConvertTo-Json -Depth 4",
+          "params": []
+        },
+        {
+          "kind": "native",
+          "label": "time status",
+          "args": [
+            "w32tm",
+            "/query",
+            "/status"
+          ]
+        }
+      ],
+      "rollback": [],
+      "rollback_notes": "A time resync is not rolled back; the corrected time should stay.",
+      "ladder": [
+        {
+          "name": "Resync the clock",
+          "description": "Starts W32Time and requests a resync.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "start time service",
+              "script": "Set-Service -Name W32Time -StartupType Automatic -ErrorAction SilentlyContinue\nStart-Service -Name W32Time -ErrorAction SilentlyContinue",
+              "params": []
+            },
+            {
+              "kind": "native",
+              "label": "resync time",
+              "args": [
+                "w32tm",
+                "/resync"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "browser or app-level proxy or extension",
+          "security software HTTPS inspection",
+          "wrong system clock",
+          "expired or intercepted certificates",
+          "malware changing settings",
+          "per-app firewall rule"
+        ],
+        "beyond_device": [
+          "router WAN down",
+          "modem not synced",
+          "ISP outage or billing block",
+          "captive portal not completed",
+          "upstream proxy or authentication required",
+          "corporate firewall policy",
+          "remote site down"
+        ],
+        "next_checks": [
+          "check modem/router WAN light and status page",
+          "test on another device or phone hotspot",
+          "call the ISP",
+          "open a plain HTTP page to trigger a portal",
+          "test another site or app"
+        ],
+        "evidence_to_collect": [
+          "gateway ping and public-IP ping",
+          "DNS result",
+          "HTTP and HTTPS probe results",
+          "proxy settings found"
+        ]
+      }
+    },
+    {
+      "id": "NET-07",
+      "name": "Local firewall blocking traffic",
+      "symptom": "A local firewall rule or group is blocking the failing traffic.",
+      "detection": "Outbound block rules matching the failing port/app; BFE issues",
+      "explanation": "First enables the correct discovery/sharing groups. A full firewall reset is a high-risk last resort and is only attempted after a second explicit confirmation.",
+      "admin": true,
+      "risk": "high",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "NET-PING"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "BackupPath",
+          "source": "firewall_backup_path",
+          "required": true,
+          "validator": "path"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "firewall profiles",
+          "script": "Get-NetFirewallProfile -ErrorAction SilentlyContinue |\n  Select-Object Name,Enabled,DefaultInboundAction,DefaultOutboundAction |\n  ConvertTo-Json -Depth 4",
+          "params": []
+        }
+      ],
+      "rollback": [
+        {
+          "kind": "native",
+          "label": "import the firewall backup",
+          "args": [
+            "netsh",
+            "advfirewall",
+            "import",
+            "{BackupPath}"
+          ]
+        }
+      ],
+      "rollback_notes": "Rollback imports the firewall backup exported before any reset.",
+      "ladder": [
+        {
+          "name": "Enable the correct rule groups",
+          "description": "The low-risk first step.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "enable rule groups",
+              "script": "Enable-NetFirewallRule -DisplayGroup 'Network Discovery' -ErrorAction SilentlyContinue\nEnable-NetFirewallRule -DisplayGroup 'File and Printer Sharing' -ErrorAction SilentlyContinue",
+              "params": []
+            }
+          ]
+        },
+        {
+          "name": "Export and reset the firewall",
+          "description": "Removes all custom firewall rules. High risk.",
+          "commands": [
+            {
+              "kind": "native",
+              "label": "export firewall",
+              "args": [
+                "netsh",
+                "advfirewall",
+                "export",
+                "{BackupPath}"
+              ]
+            },
+            {
+              "kind": "native",
+              "label": "reset firewall",
+              "args": [
+                "netsh",
+                "advfirewall",
+                "reset"
+              ]
+            }
+          ],
+          "risk": "high",
+          "requires_second_confirmation": true
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "third-party antivirus/firewall web protection",
+          "corrupted firewall policy",
+          "VPN client filter drivers",
+          "leftover filter drivers from uninstalled security products",
+          "malware"
+        ],
+        "beyond_device": [
+          "network firewall or content filter",
+          "router parental controls",
+          "ISP filtering"
+        ],
+        "next_checks": [
+          "pause the security product network protection for a test",
+          "check uninstalled-product leftovers",
+          "scan with Defender offline"
+        ],
+        "evidence_to_collect": [
+          "blocking rules matched",
+          "security products detected",
+          "test-with-rule-disabled results (if the user allowed)"
+        ]
+      }
+    },
+    {
+      "id": "NET-08",
+      "name": "Third-party security software interference",
+      "symptom": "A non-Defender antivirus or firewall product is filtering traffic.",
+      "detection": "SecurityCenter2 lists a non-Defender product and symptoms point to filtering",
+      "explanation": "DETECT-ONLY. Test with the product's network protection paused, then turn it back on.",
+      "admin": true,
+      "risk": "medium",
+      "reboot": false,
+      "detection_only": true,
+      "verify_flag": true,
+      "verify": [
+        "NET-PING"
+      ],
+      "state_changing": false,
+      "params": [],
+      "snapshot": [],
+      "rollback": [],
+      "rollback_notes": "",
+      "ladder": [],
+      "if_unresolved": {
+        "this_device": [
+          "third-party antivirus/firewall web protection",
+          "corrupted firewall policy",
+          "VPN client filter drivers",
+          "leftover filter drivers from uninstalled security products",
+          "malware"
+        ],
+        "beyond_device": [
+          "network firewall or content filter",
+          "router parental controls",
+          "ISP filtering"
+        ],
+        "next_checks": [
+          "pause the security product network protection for a test",
+          "check uninstalled-product leftovers",
+          "scan with Defender offline"
+        ],
+        "evidence_to_collect": [
+          "blocking rules matched",
+          "security products detected",
+          "test-with-rule-disabled results (if the user allowed)"
+        ]
+      }
+    },
+    {
+      "id": "NET-09",
+      "name": "MTU black hole",
+      "symptom": "Small packets work but some HTTPS sites or VPN traffic stall because the path MTU is below 1500.",
+      "detection": "ping -f -l binary search finds path MTU below 1500",
+      "explanation": "Sets the adapter MTU to the discovered path MTU. store=active is used so a reboot restores the old value.",
+      "admin": true,
+      "risk": "medium",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "NET-PING"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "AdapterName",
+          "source": "adapter",
+          "required": true,
+          "validator": "adapter"
+        },
+        {
+          "name": "FoundMtu",
+          "source": "found_mtu",
+          "default": "1400",
+          "required": true,
+          "validator": "port"
+        },
+        {
+          "name": "OriginalMtu",
+          "source": "original_mtu",
+          "default": "1500",
+          "required": false,
+          "validator": "port"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "native",
+          "label": "interface MTU",
+          "args": [
+            "netsh",
+            "interface",
+            "ipv4",
+            "show",
+            "subinterfaces"
+          ]
+        }
+      ],
+      "rollback": [
+        {
+          "kind": "native",
+          "label": "restore the MTU",
+          "args": [
+            "netsh",
+            "interface",
+            "ipv4",
+            "set",
+            "subinterface",
+            "{AdapterName}",
+            "mtu={OriginalMtu}",
+            "store=active"
+          ]
+        }
+      ],
+      "rollback_notes": "Rollback restores the MTU recorded before the change.",
+      "ladder": [
+        {
+          "name": "Set the path MTU",
+          "description": "Uses store=active, not persistent.",
+          "commands": [
+            {
+              "kind": "native",
+              "label": "set MTU",
+              "args": [
+                "netsh",
+                "interface",
+                "ipv4",
+                "set",
+                "subinterface",
+                "{AdapterName}",
+                "mtu={FoundMtu}",
+                "store=active"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "NIC offload settings (large send offload, RSS)",
+          "driver bug",
+          "Wi-Fi power saving",
+          "background upload/backup/sync",
+          "malware or a heavy process saturating the link",
+          "failing NIC with error counters rising"
+        ],
+        "beyond_device": [
+          "poor Wi-Fi signal or interference",
+          "congested channel or ISP link",
+          "router CPU saturated",
+          "duplex mismatch or bad cable (CRC/FCS errors)",
+          "ISP throttling",
+          "slow remote server"
+        ],
+        "next_checks": [
+          "wired test",
+          "speed test to a nearby server",
+          "check Resource Monitor for heavy network apps",
+          "try another channel/band",
+          "compare with another device"
+        ],
+        "evidence_to_collect": [
+          "latency, jitter and loss (pathping)",
+          "link speed",
+          "adapter error counters",
+          "top bandwidth processes"
+        ]
+      }
+    },
+    {
+      "id": "NET-10",
+      "name": "TCP auto-tuning disabled",
+      "symptom": "Receive Window Auto-Tuning is disabled or restricted, reducing throughput.",
+      "detection": "netsh int tcp show global Receive Window Auto-Tuning Level disabled",
+      "explanation": "Restores normal auto-tuning. For legacy servers only, highlyrestricted can be chosen as a second step.",
+      "admin": true,
+      "risk": "medium",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "NET-10"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "Level",
+          "source": "value",
+          "default": "normal",
+          "validator": "none"
+        },
+        {
+          "name": "OriginalAutotuning",
+          "source": "original_autotuning",
+          "default": "normal",
+          "required": false,
+          "validator": "none"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "native",
+          "label": "TCP global settings",
+          "args": [
+            "netsh",
+            "int",
+            "tcp",
+            "show",
+            "global"
+          ]
+        }
+      ],
+      "rollback": [
+        {
+          "kind": "native",
+          "label": "restore auto-tuning",
+          "args": [
+            "netsh",
+            "int",
+            "tcp",
+            "set",
+            "global",
+            "autotuninglevel={OriginalAutotuning}"
+          ]
+        }
+      ],
+      "rollback_notes": "Rollback restores the recorded auto-tuning level.",
+      "ladder": [
+        {
+          "name": "Set normal auto-tuning",
+          "description": "The safe modern default.",
+          "commands": [
+            {
+              "kind": "native",
+              "label": "set auto-tuning",
+              "args": [
+                "netsh",
+                "int",
+                "tcp",
+                "set",
+                "global",
+                "autotuninglevel=normal"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Use highlyrestricted for legacy servers",
+          "description": "Only for old servers that misbehave with normal tuning.",
+          "commands": [
+            {
+              "kind": "native",
+              "label": "set highlyrestricted",
+              "args": [
+                "netsh",
+                "int",
+                "tcp",
+                "set",
+                "global",
+                "autotuninglevel=highlyrestricted"
+              ]
+            }
+          ],
+          "optional": true
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "NIC offload settings (large send offload, RSS)",
+          "driver bug",
+          "Wi-Fi power saving",
+          "background upload/backup/sync",
+          "malware or a heavy process saturating the link",
+          "failing NIC with error counters rising"
+        ],
+        "beyond_device": [
+          "poor Wi-Fi signal or interference",
+          "congested channel or ISP link",
+          "router CPU saturated",
+          "duplex mismatch or bad cable (CRC/FCS errors)",
+          "ISP throttling",
+          "slow remote server"
+        ],
+        "next_checks": [
+          "wired test",
+          "speed test to a nearby server",
+          "check Resource Monitor for heavy network apps",
+          "try another channel/band",
+          "compare with another device"
+        ],
+        "evidence_to_collect": [
+          "latency, jitter and loss (pathping)",
+          "link speed",
+          "adapter error counters",
+          "top bandwidth processes"
+        ]
+      }
+    },
+    {
+      "id": "NET-11",
+      "name": "Ephemeral port exhaustion",
+      "symptom": "Random connection failures occur under heavy load with very high TIME_WAIT counts.",
+      "detection": "Very high TIME_WAIT/ESTABLISHED count; Event 4227/4231",
+      "explanation": "Widens the dynamic TCP port range and lowers TcpTimedWaitDelay. This is flagged VERIFY and needs a reboot.",
+      "admin": true,
+      "risk": "medium",
+      "reboot": true,
+      "detection_only": false,
+      "verify_flag": true,
+      "verify": [
+        "NET-PING"
+      ],
+      "state_changing": true,
+      "params": [],
+      "snapshot": [
+        {
+          "kind": "native",
+          "label": "dynamic port range",
+          "args": [
+            "netsh",
+            "int",
+            "ipv4",
+            "show",
+            "dynamicport",
+            "tcp"
+          ]
+        },
+        {
+          "kind": "powershell",
+          "label": "TCP time-wait registry",
+          "script": "Get-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters' -ErrorAction SilentlyContinue |\n  Select-Object TcpTimedWaitDelay |\n  ConvertTo-Json -Depth 4",
+          "params": []
+        }
+      ],
+      "rollback": [],
+      "rollback_notes": "Restore the default dynamic port range and TcpTimedWaitDelay, then reboot.",
+      "ladder": [
+        {
+          "name": "Widen the dynamic port range",
+          "description": "Requires a reboot to take effect.",
+          "commands": [
+            {
+              "kind": "native",
+              "label": "set dynamic port range",
+              "args": [
+                "netsh",
+                "int",
+                "ipv4",
+                "set",
+                "dynamicport",
+                "tcp",
+                "start=1025",
+                "num=64511"
+              ]
+            },
+            {
+              "kind": "powershell",
+              "label": "lower TcpTimedWaitDelay",
+              "script": "Set-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters' -Name TcpTimedWaitDelay -Value 30 -Type DWord -ErrorAction SilentlyContinue",
+              "params": []
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "NIC offload settings (large send offload, RSS)",
+          "driver bug",
+          "Wi-Fi power saving",
+          "background upload/backup/sync",
+          "malware or a heavy process saturating the link",
+          "failing NIC with error counters rising"
+        ],
+        "beyond_device": [
+          "poor Wi-Fi signal or interference",
+          "congested channel or ISP link",
+          "router CPU saturated",
+          "duplex mismatch or bad cable (CRC/FCS errors)",
+          "ISP throttling",
+          "slow remote server"
+        ],
+        "next_checks": [
+          "wired test",
+          "speed test to a nearby server",
+          "check Resource Monitor for heavy network apps",
+          "try another channel/band",
+          "compare with another device"
+        ],
+        "evidence_to_collect": [
+          "latency, jitter and loss (pathping)",
+          "link speed",
+          "adapter error counters",
+          "top bandwidth processes"
+        ]
+      }
+    },
+    {
+      "id": "VPN-01",
+      "name": "VPN connected but no internet",
+      "symptom": "A full-tunnel VPN holds the default route but internet pings fail while internal hosts respond.",
+      "detection": "VPN adapter holds the default route; internet pings fail while VPN hosts respond",
+      "explanation": "Enables split tunnelling for one Windows VPN connection so internet traffic can use the normal route.",
+      "admin": false,
+      "risk": "medium",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "NET-PING"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "VpnName",
+          "source": "vpn",
+          "required": true,
+          "validator": "profile"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "VPN connection",
+          "script": "param($VpnName)\nGet-VpnConnection -Name $VpnName -ErrorAction SilentlyContinue |\n  Select-Object Name,ServerAddress,ConnectionStatus,SplitTunneling,DnsSuffix |\n  ConvertTo-Json -Depth 4",
+          "params": [
+            "VpnName"
+          ]
+        }
+      ],
+      "rollback": [
+        {
+          "kind": "powershell",
+          "label": "disable split tunnelling",
+          "script": "param($VpnName)\nSet-VpnConnection -Name $VpnName -SplitTunneling $false -Force -ErrorAction SilentlyContinue",
+          "params": [
+            "VpnName"
+          ]
+        }
+      ],
+      "rollback_notes": "Rollback restores full tunnelling.",
+      "ladder": [
+        {
+          "name": "Enable split tunnelling",
+          "description": "Internet traffic bypasses the tunnel; internal routes stay.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "enable split tunnelling",
+              "script": "param($VpnName)\nSet-VpnConnection -Name $VpnName -SplitTunneling $true -Force -ErrorAction Stop",
+              "params": [
+                "VpnName"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "VPN client bug or outdated version",
+          "stale virtual adapter (TAP/WAN Miniport)",
+          "conflicting second VPN or security client",
+          "local firewall blocking the VPN protocol",
+          "MTU or IPv6 handling on the client",
+          "kill switch blocking traffic"
+        ],
+        "beyond_device": [
+          "VPN server or concentrator down or at capacity",
+          "expired credentials or certificates",
+          "split-tunnel or route push misconfigured on the server",
+          "subnet overlap with the home or office LAN",
+          "ISP or network blocking VPN ports",
+          "VPN provider outage"
+        ],
+        "next_checks": [
+          "try another protocol or server",
+          "connect from another network (phone hotspot)",
+          "reinstall the client and adapter",
+          "ask the VPN admin to check pushed routes and DNS"
+        ],
+        "evidence_to_collect": [
+          "VPN adapter state",
+          "routes added or pushed",
+          "DNS servers pushed",
+          "MTU probe",
+          "server reachability on the VPN port"
+        ]
+      }
+    },
+    {
+      "id": "VPN-02",
+      "name": "VPN subnet overlaps the LAN",
+      "symptom": "The VPN and local LAN use the same address range.",
+      "detection": "Get-NetRoute shows the same prefix on the LAN and VPN interfaces",
+      "explanation": "The VPN or LAN administrator must change one range. A more specific workaround route is possible but not applied automatically.",
+      "admin": true,
+      "risk": "medium",
+      "reboot": false,
+      "detection_only": true,
+      "verify_flag": false,
+      "verify": [
+        "IP-07"
+      ],
+      "state_changing": false,
+      "params": [],
+      "snapshot": [],
+      "rollback": [],
+      "rollback_notes": "",
+      "ladder": [],
+      "if_unresolved": {
+        "this_device": [
+          "VPN client bug or outdated version",
+          "stale virtual adapter (TAP/WAN Miniport)",
+          "conflicting second VPN or security client",
+          "local firewall blocking the VPN protocol",
+          "MTU or IPv6 handling on the client",
+          "kill switch blocking traffic"
+        ],
+        "beyond_device": [
+          "VPN server or concentrator down or at capacity",
+          "expired credentials or certificates",
+          "split-tunnel or route push misconfigured on the server",
+          "subnet overlap with the home or office LAN",
+          "ISP or network blocking VPN ports",
+          "VPN provider outage"
+        ],
+        "next_checks": [
+          "try another protocol or server",
+          "connect from another network (phone hotspot)",
+          "reinstall the client and adapter",
+          "ask the VPN admin to check pushed routes and DNS"
+        ],
+        "evidence_to_collect": [
+          "VPN adapter state",
+          "routes added or pushed",
+          "DNS servers pushed",
+          "MTU probe",
+          "server reachability on the VPN port"
+        ]
+      }
+    },
+    {
+      "id": "VPN-03",
+      "name": "Stale state after VPN disconnect",
+      "symptom": "The VPN adapter is gone but its routes or DNS remain, sometimes including the default route.",
+      "detection": "VPN adapter gone but routes/DNS remain; default route points to the dead tunnel",
+      "explanation": "Removes stale routes, flushes DNS and restarts the physical adapter. Full stack reset is a later step.",
+      "admin": true,
+      "risk": "medium",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "IP-06"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "AdapterName",
+          "source": "adapter",
+          "required": true,
+          "validator": "adapter"
+        },
+        {
+          "name": "DestinationPrefix",
+          "source": "stale_route",
+          "required": true,
+          "validator": "none"
+        },
+        {
+          "name": "NextHop",
+          "source": "stale_next_hop",
+          "required": true,
+          "validator": "ip"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "route table",
+          "script": "Get-NetRoute -AddressFamily IPv4 -ErrorAction SilentlyContinue |\n  Select-Object DestinationPrefix,NextHop,InterfaceAlias,RouteMetric,InterfaceMetric,Store |\n  ConvertTo-Json -Depth 4",
+          "params": []
+        }
+      ],
+      "rollback": [],
+      "rollback_notes": "Stale routes should not return; re-add them only if the VPN needs them.",
+      "ladder": [
+        {
+          "name": "Remove the stale route",
+          "description": "Only the specific stale route is removed.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "remove stale route",
+              "script": "param($DestinationPrefix,$NextHop)\nRemove-NetRoute -DestinationPrefix $DestinationPrefix -NextHop $NextHop -Confirm:$false -ErrorAction SilentlyContinue",
+              "params": [
+                "DestinationPrefix",
+                "NextHop"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Flush DNS",
+          "description": "Removes answers cached from the tunnel.",
+          "commands": [
+            {
+              "kind": "native",
+              "label": "flush DNS",
+              "args": [
+                "ipconfig",
+                "/flushdns"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Restart the physical adapter",
+          "description": "Rebuilds the normal interface state.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "restart adapter",
+              "script": "param($AdapterName)\nRestart-NetAdapter -Name $AdapterName -Confirm:$false -ErrorAction Stop",
+              "params": [
+                "AdapterName"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Stop: consider the stack reset",
+          "description": "Use STK-02 only if the stale state keeps returning.",
+          "commands": []
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "VPN client bug or outdated version",
+          "stale virtual adapter (TAP/WAN Miniport)",
+          "conflicting second VPN or security client",
+          "local firewall blocking the VPN protocol",
+          "MTU or IPv6 handling on the client",
+          "kill switch blocking traffic"
+        ],
+        "beyond_device": [
+          "VPN server or concentrator down or at capacity",
+          "expired credentials or certificates",
+          "split-tunnel or route push misconfigured on the server",
+          "subnet overlap with the home or office LAN",
+          "ISP or network blocking VPN ports",
+          "VPN provider outage"
+        ],
+        "next_checks": [
+          "try another protocol or server",
+          "connect from another network (phone hotspot)",
+          "reinstall the client and adapter",
+          "ask the VPN admin to check pushed routes and DNS"
+        ],
+        "evidence_to_collect": [
+          "VPN adapter state",
+          "routes added or pushed",
+          "DNS servers pushed",
+          "MTU probe",
+          "server reachability on the VPN port"
+        ]
+      }
+    },
+    {
+      "id": "VPN-04",
+      "name": "VPN stalls on large transfers",
+      "symptom": "Small packets work but large transfers or partial page loads stall over the tunnel.",
+      "detection": "MTU probe over the tunnel finds a lower path MTU",
+      "explanation": "Lowers the MTU on the VPN interface to a common safe value. Adjust to the measured value when known.",
+      "admin": true,
+      "risk": "medium",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "NET-PING"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "VpnName",
+          "source": "vpn",
+          "required": true,
+          "validator": "profile"
+        },
+        {
+          "name": "Mtu",
+          "source": "found_mtu",
+          "default": "1400",
+          "required": true,
+          "validator": "port"
+        },
+        {
+          "name": "OriginalMtu",
+          "source": "original_mtu",
+          "default": "1500",
+          "required": false,
+          "validator": "port"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "native",
+          "label": "VPN interface MTU",
+          "args": [
+            "netsh",
+            "interface",
+            "ipv4",
+            "show",
+            "subinterfaces"
+          ]
+        }
+      ],
+      "rollback": [
+        {
+          "kind": "native",
+          "label": "restore the VPN MTU",
+          "args": [
+            "netsh",
+            "interface",
+            "ipv4",
+            "set",
+            "subinterface",
+            "{VpnName}",
+            "mtu={OriginalMtu}",
+            "store=active"
+          ]
+        }
+      ],
+      "rollback_notes": "Rollback restores the recorded VPN MTU.",
+      "ladder": [
+        {
+          "name": "Lower the VPN MTU",
+          "description": "Common values are 1400, then 1300.",
+          "commands": [
+            {
+              "kind": "native",
+              "label": "set VPN MTU",
+              "args": [
+                "netsh",
+                "interface",
+                "ipv4",
+                "set",
+                "subinterface",
+                "{VpnName}",
+                "mtu={Mtu}",
+                "store=active"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "VPN client bug or outdated version",
+          "stale virtual adapter (TAP/WAN Miniport)",
+          "conflicting second VPN or security client",
+          "local firewall blocking the VPN protocol",
+          "MTU or IPv6 handling on the client",
+          "kill switch blocking traffic"
+        ],
+        "beyond_device": [
+          "VPN server or concentrator down or at capacity",
+          "expired credentials or certificates",
+          "split-tunnel or route push misconfigured on the server",
+          "subnet overlap with the home or office LAN",
+          "ISP or network blocking VPN ports",
+          "VPN provider outage"
+        ],
+        "next_checks": [
+          "try another protocol or server",
+          "connect from another network (phone hotspot)",
+          "reinstall the client and adapter",
+          "ask the VPN admin to check pushed routes and DNS"
+        ],
+        "evidence_to_collect": [
+          "VPN adapter state",
+          "routes added or pushed",
+          "DNS servers pushed",
+          "MTU probe",
+          "server reachability on the VPN port"
+        ]
+      }
+    },
+    {
+      "id": "VPN-05",
+      "name": "VPN traffic leaks over IPv6",
+      "symptom": "IPv6 routes or DNS bypass the tunnel.",
+      "detection": "IPv6 route/DNS outside the tunnel",
+      "explanation": "DETECT-ONLY. Disabling IPv6 on the VPN adapter is optional and can break IPv6-only resources, so NetScope only explains it.",
+      "admin": true,
+      "risk": "medium",
+      "reboot": false,
+      "detection_only": true,
+      "verify_flag": false,
+      "verify": [
+        "NET-PING"
+      ],
+      "state_changing": false,
+      "params": [],
+      "snapshot": [],
+      "rollback": [],
+      "rollback_notes": "",
+      "ladder": [],
+      "if_unresolved": {
+        "this_device": [
+          "VPN client bug or outdated version",
+          "stale virtual adapter (TAP/WAN Miniport)",
+          "conflicting second VPN or security client",
+          "local firewall blocking the VPN protocol",
+          "MTU or IPv6 handling on the client",
+          "kill switch blocking traffic"
+        ],
+        "beyond_device": [
+          "VPN server or concentrator down or at capacity",
+          "expired credentials or certificates",
+          "split-tunnel or route push misconfigured on the server",
+          "subnet overlap with the home or office LAN",
+          "ISP or network blocking VPN ports",
+          "VPN provider outage"
+        ],
+        "next_checks": [
+          "try another protocol or server",
+          "connect from another network (phone hotspot)",
+          "reinstall the client and adapter",
+          "ask the VPN admin to check pushed routes and DNS"
+        ],
+        "evidence_to_collect": [
+          "VPN adapter state",
+          "routes added or pushed",
+          "DNS servers pushed",
+          "MTU probe",
+          "server reachability on the VPN port"
+        ]
+      }
+    },
+    {
+      "id": "VPN-06",
+      "name": "VPN kill switch blocks traffic",
+      "symptom": "Traffic stays blocked while the VPN is down because the client kill switch is active.",
+      "detection": "Persistent block when the VPN is down; related WFP/firewall rules",
+      "explanation": "DETECT-ONLY. Disable the VPN client kill switch or allow LAN access in that client.",
+      "admin": true,
+      "risk": "medium",
+      "reboot": false,
+      "detection_only": true,
+      "verify_flag": false,
+      "verify": [
+        "NET-PING"
+      ],
+      "state_changing": false,
+      "params": [],
+      "snapshot": [],
+      "rollback": [],
+      "rollback_notes": "",
+      "ladder": [],
+      "if_unresolved": {
+        "this_device": [
+          "VPN client bug or outdated version",
+          "stale virtual adapter (TAP/WAN Miniport)",
+          "conflicting second VPN or security client",
+          "local firewall blocking the VPN protocol",
+          "MTU or IPv6 handling on the client",
+          "kill switch blocking traffic"
+        ],
+        "beyond_device": [
+          "VPN server or concentrator down or at capacity",
+          "expired credentials or certificates",
+          "split-tunnel or route push misconfigured on the server",
+          "subnet overlap with the home or office LAN",
+          "ISP or network blocking VPN ports",
+          "VPN provider outage"
+        ],
+        "next_checks": [
+          "try another protocol or server",
+          "connect from another network (phone hotspot)",
+          "reinstall the client and adapter",
+          "ask the VPN admin to check pushed routes and DNS"
+        ],
+        "evidence_to_collect": [
+          "VPN adapter state",
+          "routes added or pushed",
+          "DNS servers pushed",
+          "MTU probe",
+          "server reachability on the VPN port"
+        ]
+      }
+    },
+    {
+      "id": "WIFI-01",
+      "name": "Corrupted or outdated saved Wi-Fi profile",
+      "symptom": "Wi-Fi associates but gets no IP, or authentication fails after a router change.",
+      "detection": "Repeated auth failures or association OK with no IP; security type differs from the AP",
+      "explanation": "Exports the saved profile without the clear-text key, then deletes it so Windows can recreate it. The password must be re-entered.",
+      "admin": true,
+      "risk": "medium",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "NET-PING"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "ProfileName",
+          "source": "wifi_profile",
+          "required": true,
+          "validator": "profile"
+        },
+        {
+          "name": "BackupPath",
+          "source": "wifi_backup_path",
+          "required": true,
+          "validator": "path"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "native",
+          "label": "saved Wi-Fi profile",
+          "args": [
+            "netsh",
+            "wlan",
+            "show",
+            "profile",
+            "name={ProfileName}"
+          ]
+        }
+      ],
+      "rollback": [
+        {
+          "kind": "native",
+          "label": "restore Wi-Fi profile",
+          "args": [
+            "netsh",
+            "wlan",
+            "add",
+            "profile",
+            "filename={BackupPath}\\Wi-Fi-{ProfileName}.xml"
+          ]
+        }
+      ],
+      "rollback_notes": "Rollback imports the exported profile XML; the password is not exported by default.",
+      "ladder": [
+        {
+          "name": "Export and remove the saved profile",
+          "description": "You must re-enter the Wi-Fi password afterward.",
+          "commands": [
+            {
+              "kind": "native",
+              "label": "export Wi-Fi profile",
+              "args": [
+                "netsh",
+                "wlan",
+                "export",
+                "profile",
+                "name={ProfileName}",
+                "folder={BackupPath}"
+              ]
+            },
+            {
+              "kind": "native",
+              "label": "delete Wi-Fi profile",
+              "args": [
+                "netsh",
+                "wlan",
+                "delete",
+                "profile",
+                "name={ProfileName}"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "failing Wi-Fi card or antenna cable (laptop)",
+          "driver or firmware bug",
+          "power saving",
+          "saved-profile or security-type mismatch",
+          "radio off",
+          "interference from USB 3 devices or Bluetooth near the antenna"
+        ],
+        "beyond_device": [
+          "weak signal, distance or walls",
+          "congested or DFS channel",
+          "router firmware bug",
+          "router at client limit",
+          "band steering",
+          "MAC filter or WPA mode mismatch (WPA3/WPA2)",
+          "AP needs a reboot"
+        ],
+        "next_checks": [
+          "move near the AP",
+          "forget and re-join the network",
+          "test on 2.4 GHz versus 5 GHz",
+          "connect another device",
+          "reboot the AP",
+          "update router firmware"
+        ],
+        "evidence_to_collect": [
+          "signal percentage",
+          "channel and band",
+          "link rate",
+          "BSSID",
+          "disconnect reason codes from netsh wlan show wlanreport"
+        ]
+      }
+    },
+    {
+      "id": "WIFI-02",
+      "name": "Weak Wi-Fi signal or congested channel",
+      "symptom": "Signal is weak, the link rate is low, or the channel/band is congested.",
+      "detection": "netsh wlan show interfaces Signal/Radio type/Channel/Rate; neighboring BSSIDs",
+      "explanation": "DETECT-ONLY advice: move closer, prefer 5/6 GHz, change the router channel, or reduce interference.",
+      "admin": true,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": true,
+      "verify_flag": false,
+      "verify": [
+        "NET-PING"
+      ],
+      "state_changing": false,
+      "params": [],
+      "snapshot": [],
+      "rollback": [],
+      "rollback_notes": "",
+      "ladder": [],
+      "if_unresolved": {
+        "this_device": [
+          "failing Wi-Fi card or antenna cable (laptop)",
+          "driver or firmware bug",
+          "power saving",
+          "saved-profile or security-type mismatch",
+          "radio off",
+          "interference from USB 3 devices or Bluetooth near the antenna"
+        ],
+        "beyond_device": [
+          "weak signal, distance or walls",
+          "congested or DFS channel",
+          "router firmware bug",
+          "router at client limit",
+          "band steering",
+          "MAC filter or WPA mode mismatch (WPA3/WPA2)",
+          "AP needs a reboot"
+        ],
+        "next_checks": [
+          "move near the AP",
+          "forget and re-join the network",
+          "test on 2.4 GHz versus 5 GHz",
+          "connect another device",
+          "reboot the AP",
+          "update router firmware"
+        ],
+        "evidence_to_collect": [
+          "signal percentage",
+          "channel and band",
+          "link rate",
+          "BSSID",
+          "disconnect reason codes from netsh wlan show wlanreport"
+        ]
+      }
+    },
+    {
+      "id": "WIFI-03",
+      "name": "Collect a Wi-Fi diagnostic report",
+      "symptom": "Hard Wi-Fi cases need the built-in Windows WLAN report.",
+      "detection": "User or engineer requests detailed Wi-Fi history",
+      "explanation": "Runs netsh wlan show wlanreport and opens the generated HTML report. This gathers data; it does not change settings.",
+      "admin": true,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "NET-PING"
+      ],
+      "state_changing": false,
+      "params": [],
+      "snapshot": [],
+      "rollback": [],
+      "rollback_notes": "",
+      "ladder": [
+        {
+          "name": "Generate and open the WLAN report",
+          "description": "The report is written under ProgramData.",
+          "commands": [
+            {
+              "kind": "native",
+              "label": "generate WLAN report",
+              "args": [
+                "netsh",
+                "wlan",
+                "show",
+                "wlanreport"
+              ]
+            },
+            {
+              "kind": "powershell",
+              "label": "open WLAN report",
+              "script": "Start-Process \"$env:ProgramData\\Microsoft\\Windows\\WlanReport\\wlan-report-latest.html\"",
+              "params": []
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "failing Wi-Fi card or antenna cable (laptop)",
+          "driver or firmware bug",
+          "power saving",
+          "saved-profile or security-type mismatch",
+          "radio off",
+          "interference from USB 3 devices or Bluetooth near the antenna"
+        ],
+        "beyond_device": [
+          "weak signal, distance or walls",
+          "congested or DFS channel",
+          "router firmware bug",
+          "router at client limit",
+          "band steering",
+          "MAC filter or WPA mode mismatch (WPA3/WPA2)",
+          "AP needs a reboot"
+        ],
+        "next_checks": [
+          "move near the AP",
+          "forget and re-join the network",
+          "test on 2.4 GHz versus 5 GHz",
+          "connect another device",
+          "reboot the AP",
+          "update router firmware"
+        ],
+        "evidence_to_collect": [
+          "signal percentage",
+          "channel and band",
+          "link rate",
+          "BSSID",
+          "disconnect reason codes from netsh wlan show wlanreport"
+        ]
+      }
+    },
+    {
+      "id": "WIFI-04",
+      "name": "Airplane mode or Wi-Fi radio off",
+      "symptom": "The Wi-Fi adapter exists but the radio is turned off.",
+      "detection": "Adapter present but radio off (software switch)",
+      "explanation": "DETECT-ONLY. Use the hardware/Fn key or Windows Settings; radio toggling is not reliably scriptable.",
+      "admin": false,
+      "risk": "low",
+      "reboot": false,
+      "detection_only": true,
+      "verify_flag": false,
+      "verify": [
+        "ADP-01"
+      ],
+      "state_changing": false,
+      "params": [],
+      "snapshot": [],
+      "rollback": [],
+      "rollback_notes": "",
+      "ladder": [],
+      "if_unresolved": {
+        "this_device": [
+          "failing Wi-Fi card or antenna cable (laptop)",
+          "driver or firmware bug",
+          "power saving",
+          "saved-profile or security-type mismatch",
+          "radio off",
+          "interference from USB 3 devices or Bluetooth near the antenna"
+        ],
+        "beyond_device": [
+          "weak signal, distance or walls",
+          "congested or DFS channel",
+          "router firmware bug",
+          "router at client limit",
+          "band steering",
+          "MAC filter or WPA mode mismatch (WPA3/WPA2)",
+          "AP needs a reboot"
+        ],
+        "next_checks": [
+          "move near the AP",
+          "forget and re-join the network",
+          "test on 2.4 GHz versus 5 GHz",
+          "connect another device",
+          "reboot the AP",
+          "update router firmware"
+        ],
+        "evidence_to_collect": [
+          "signal percentage",
+          "channel and band",
+          "link rate",
+          "BSSID",
+          "disconnect reason codes from netsh wlan show wlanreport"
+        ]
+      }
+    },
+    {
+      "id": "STK-01",
+      "name": "Winsock catalog corruption",
+      "symptom": "Winsock errors or leftover third-party layered service providers suggest catalog corruption.",
+      "detection": "Error 10106/10093 or third-party LSP issues",
+      "explanation": "Resets the Winsock catalog. Requires a reboot. Third-party LSP software may need reinstalling.",
+      "admin": true,
+      "risk": "medium",
+      "reboot": true,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "STK-01"
+      ],
+      "state_changing": true,
+      "params": [],
+      "snapshot": [
+        {
+          "kind": "native",
+          "label": "Winsock catalog",
+          "args": [
+            "netsh",
+            "winsock",
+            "show",
+            "catalog"
+          ]
+        }
+      ],
+      "rollback": [],
+      "rollback_notes": "A Winsock reset cannot be undone; the next reboot finalises it.",
+      "ladder": [
+        {
+          "name": "Reset Winsock",
+          "description": "The standard repair for a corrupted Winsock catalog.",
+          "commands": [
+            {
+              "kind": "native",
+              "label": "reset Winsock",
+              "args": [
+                "netsh",
+                "winsock",
+                "reset"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "corrupted Windows installation or network components",
+          "failed update",
+          "malware or LSP/filter drivers from old software",
+          "failing NIC or disk errors",
+          "outdated or corrupt drivers"
+        ],
+        "beyond_device": [
+          "the problem was never on this PC (confirm by testing another device on the same network)"
+        ],
+        "next_checks": [
+          "run sfc /scannow",
+          "run DISM /Online /Cleanup-Image /RestoreHealth",
+          "clean-boot to isolate software",
+          "boot a live USB or test another OS/device",
+          "restore point or Windows repair as a last resort"
+        ],
+        "evidence_to_collect": [
+          "all prior results",
+          "Event Viewer network errors",
+          "SFC and DISM output"
+        ]
+      }
+    },
+    {
+      "id": "STK-02",
+      "name": "TCP/IP stack corruption",
+      "symptom": "The TCP/IP stack appears corrupted after failed updates, malware or filter-driver removal.",
+      "detection": "Stack errors persist after higher-level fixes",
+      "explanation": "Resets IPv4 and IPv6 TCP/IP configuration. Requires a reboot and removes custom static IP settings.",
+      "admin": true,
+      "risk": "medium",
+      "reboot": true,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "STK-01"
+      ],
+      "state_changing": true,
+      "params": [],
+      "snapshot": [
+        {
+          "kind": "native",
+          "label": "route table",
+          "args": [
+            "route",
+            "print"
+          ]
+        },
+        {
+          "kind": "native",
+          "label": "TCP global settings",
+          "args": [
+            "netsh",
+            "int",
+            "tcp",
+            "show",
+            "global"
+          ]
+        }
+      ],
+      "rollback": [],
+      "rollback_notes": "A TCP/IP reset cannot be undone; re-apply static addresses and other network settings afterward.",
+      "ladder": [
+        {
+          "name": "Reset the TCP/IP stack",
+          "description": "Runs the IPv4 and IPv6 reset commands.",
+          "commands": [
+            {
+              "kind": "native",
+              "label": "reset IPv4",
+              "args": [
+                "netsh",
+                "int",
+                "ip",
+                "reset"
+              ]
+            },
+            {
+              "kind": "native",
+              "label": "reset IPv6",
+              "args": [
+                "netsh",
+                "int",
+                "ipv6",
+                "reset"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "corrupted Windows installation or network components",
+          "failed update",
+          "malware or LSP/filter drivers from old software",
+          "failing NIC or disk errors",
+          "outdated or corrupt drivers"
+        ],
+        "beyond_device": [
+          "the problem was never on this PC (confirm by testing another device on the same network)"
+        ],
+        "next_checks": [
+          "run sfc /scannow",
+          "run DISM /Online /Cleanup-Image /RestoreHealth",
+          "clean-boot to isolate software",
+          "boot a live USB or test another OS/device",
+          "restore point or Windows repair as a last resort"
+        ],
+        "evidence_to_collect": [
+          "all prior results",
+          "Event Viewer network errors",
+          "SFC and DISM output"
+        ]
+      }
+    },
+    {
+      "id": "STK-03",
+      "name": "Full network reset sequence",
+      "symptom": "Higher-level fixes failed; the standard release/cache/reset sequence is the last safe automated resort.",
+      "detection": "Diagnostics still fail after targeted fixes",
+      "explanation": "Runs release, DNS flush, Winsock reset and TCP/IP reset. Requires a reboot and a second explicit confirmation.",
+      "admin": true,
+      "risk": "high",
+      "reboot": true,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "STK-01",
+        "NET-PING"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "AdapterName",
+          "source": "adapter",
+          "required": true,
+          "validator": "adapter"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "IP configuration",
+          "script": "param($AdapterName)\nGet-NetIPAddress -InterfaceAlias $AdapterName -AddressFamily IPv4 -ErrorAction SilentlyContinue |\n  ConvertTo-Json -Depth 4",
+          "params": [
+            "AdapterName"
+          ]
+        },
+        {
+          "kind": "native",
+          "label": "route table",
+          "args": [
+            "route",
+            "print"
+          ]
+        }
+      ],
+      "rollback": [],
+      "rollback_notes": "This sequence cannot be undone; saved static settings must be re-applied after reboot.",
+      "ladder": [
+        {
+          "name": "Release the lease and flush DNS",
+          "description": "The least disruptive part of the sequence.",
+          "commands": [
+            {
+              "kind": "native",
+              "label": "release lease",
+              "args": [
+                "ipconfig",
+                "/release"
+              ]
+            },
+            {
+              "kind": "native",
+              "label": "flush DNS",
+              "args": [
+                "ipconfig",
+                "/flushdns"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Reset Winsock and TCP/IP",
+          "description": "High risk: resets the network stack and needs a reboot.",
+          "commands": [
+            {
+              "kind": "native",
+              "label": "reset Winsock",
+              "args": [
+                "netsh",
+                "winsock",
+                "reset"
+              ]
+            },
+            {
+              "kind": "native",
+              "label": "reset IPv4",
+              "args": [
+                "netsh",
+                "int",
+                "ip",
+                "reset"
+              ]
+            },
+            {
+              "kind": "native",
+              "label": "reset IPv6",
+              "args": [
+                "netsh",
+                "int",
+                "ipv6",
+                "reset"
+              ]
+            }
+          ],
+          "risk": "high",
+          "requires_second_confirmation": true
+        },
+        {
+          "name": "Reboot and diagnose again",
+          "description": "Reboot Windows, then run netscope diagnose.",
+          "commands": []
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "corrupted Windows installation or network components",
+          "failed update",
+          "malware or LSP/filter drivers from old software",
+          "failing NIC or disk errors",
+          "outdated or corrupt drivers"
+        ],
+        "beyond_device": [
+          "the problem was never on this PC (confirm by testing another device on the same network)"
+        ],
+        "next_checks": [
+          "run sfc /scannow",
+          "run DISM /Online /Cleanup-Image /RestoreHealth",
+          "clean-boot to isolate software",
+          "boot a live USB or test another OS/device",
+          "restore point or Windows repair as a last resort"
+        ],
+        "evidence_to_collect": [
+          "all prior results",
+          "Event Viewer network errors",
+          "SFC and DISM output"
+        ]
+      }
+    },
+    {
+      "id": "STK-04",
+      "name": "Windows Network reset",
+      "symptom": "The final Windows recommendation removes and reinstalls all network adapters.",
+      "detection": "All other fixes failed; user asks for Windows Network reset",
+      "explanation": "DETECT-ONLY. Windows Network reset is not run by NetScope. It removes Wi-Fi passwords and VPN/virtual adapters, so run it manually from Settings after saving what you need.",
+      "admin": true,
+      "risk": "high",
+      "reboot": true,
+      "detection_only": true,
+      "verify_flag": false,
+      "verify": [
+        "STK-01"
+      ],
+      "state_changing": false,
+      "params": [],
+      "snapshot": [],
+      "rollback": [],
+      "rollback_notes": "",
+      "ladder": [],
+      "if_unresolved": {
+        "this_device": [
+          "corrupted Windows installation or network components",
+          "failed update",
+          "malware or LSP/filter drivers from old software",
+          "failing NIC or disk errors",
+          "outdated or corrupt drivers"
+        ],
+        "beyond_device": [
+          "the problem was never on this PC (confirm by testing another device on the same network)"
+        ],
+        "next_checks": [
+          "run sfc /scannow",
+          "run DISM /Online /Cleanup-Image /RestoreHealth",
+          "clean-boot to isolate software",
+          "boot a live USB or test another OS/device",
+          "restore point or Windows repair as a last resort"
+        ],
+        "evidence_to_collect": [
+          "all prior results",
+          "Event Viewer network errors",
+          "SFC and DISM output"
+        ]
+      }
+    }
+  ]
+}
