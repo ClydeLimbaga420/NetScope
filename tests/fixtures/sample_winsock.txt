@@ -1,0 +1,19 @@
+Winsock Catalog Provider Entry
+---------------------------------------------------------
+Entry Type: Base Service Provider
+Description:            MSAFD Tcpip [TCP/IP]
+Provider ID:            {E70F1AA0-AB8B-11CF-8CA3-00805F48A192}
+Catalog Entry ID:       1001
+Version:                2
+Address Family:        2
+...
+
+Winsock Catalog Provider Entry
+---------------------------------------------------------
+Entry Type: Layered Service Provider
+Description:            NetLimiter LSP
+Provider ID:            {11111111-2222-3333-4444-555555555555}
+Catalog Entry ID:       1050
+Version:                2
+Address Family:        2
+...

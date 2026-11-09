@@ -1,0 +1,19 @@
+Querying active state...
+
+TCP Global Parameters
+----------------------------------------------
+Receive-Side Scaling State          : enabled
+Chimney Offload State               : disabled
+NetDMA State                        : disabled
+Direct Cache Access (DCA)           : disabled
+Receive Window Auto-Tuning Level    : normal
+Add-On Congestion Control Provider  : default
+ECN Capability                      : disabled
+RFC 1323 Timestamps                 : disabled
+Initial RTO                         : 3000
+Receive Segment Coalescing State    : enabled
+Non Sack Rtt Resiliency             : disabled
+Max SYN Retransmissions             : 2
+Fast Open                           : enabled
+Fast Open Fallback                  : enabled
+Pacing Profile                      : off

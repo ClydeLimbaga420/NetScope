@@ -1,0 +1,17 @@
+Windows IP Configuration
+
+Ethernet adapter Ethernet:
+
+   Connection-specific DNS Suffix  . :
+   Description . . . . . . . . . . . : Intel(R) Ethernet Connection
+   Physical Address. . . . . . . . . : AA-BB-CC-DD-EE-01
+   DHCP Enabled. . . . . . . . . . . : Yes
+   IPv4 Address. . . . . . . . . . . : 192.168.1.10(Preferred)
+   Subnet Mask . . . . . . . . . . . : 255.255.255.0
+   Lease Obtained. . . . . . . . . . : Monday, November 9, 2026 10:00:00 AM
+   Lease Expires . . . . . . . . . . : Tuesday, November 10, 2026 10:00:00 AM
+   Default Gateway . . . . . . . . . : 192.168.1.1
+   DHCP Server . . . . . . . . . . . : 192.168.1.1
+   DNS Servers . . . . . . . . . . . : 192.168.1.1
+                                       9.9.9.9
+   NetBIOS over Tcpip. . . . . . . . : Enabled

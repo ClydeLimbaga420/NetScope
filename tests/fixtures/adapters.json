@@ -1,0 +1,15 @@
+[
+  {
+    "Name": "Ethernet",
+    "InterfaceAlias": "Ethernet",
+    "InterfaceDescription": "Intel(R) Ethernet Connection",
+    "Status": "Up",
+    "LinkSpeed": "1 Gbps",
+    "MacAddress": "AA-BB-CC-DD-EE-01",
+    "ifIndex": 5,
+    "MediaType": "802.3",
+    "PhysicalMediaType": "802.3",
+    "Virtual": false,
+    "ConnectorPresent": true
+  }
+]

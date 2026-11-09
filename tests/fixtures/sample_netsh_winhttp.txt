@@ -1,0 +1,4 @@
+Current WinHTTP proxy settings:
+
+    Proxy Server(s) :  proxy.corp.example:8080
+    Bypass List     :  *.local

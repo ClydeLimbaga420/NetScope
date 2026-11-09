@@ -1,0 +1,8 @@
+Ping wird ausgef?hrt f?r 1.1.1.1 mit 32 Bytes Daten:
+Antwort von 1.1.1.1: Bytes=32 Zeit=12ms TTL=57
+
+Ping-Statistik f?r 1.1.1.1:
+    Pakete: Gesendet = 1, Empfangen = 1, Verloren = 0
+    (0% Verlust),
+Ca. Zeitangaben in Millisek.:
+    Minimum = 12ms, Maximum = 12ms, Mittelwert = 12ms
