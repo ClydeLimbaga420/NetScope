@@ -19,3 +19,6 @@ venv/
 # Operating system
 .DS_Store
 Thumbs.db
+
+.pytest_cache/
+prompt.txt
