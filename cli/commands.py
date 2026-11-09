@@ -664,6 +664,12 @@ def cmd_uninstall(args: Any, ctx: CliContext) -> int:
     return exit_codes.FIX_FAILED
 
 
+def cmd_monitor(args: Any, ctx: CliContext) -> int:
+    """Run live monitoring dashboard."""
+    from cli.monitor import run_monitor
+    return run_monitor(ctx, interval=getattr(args, "interval", 3.0))
+
+
 HANDLERS: dict[str, Callable[[Any, CliContext], int]] = {
     "diagnose": cmd_diagnose,
     "fix": cmd_fix,
@@ -675,6 +681,7 @@ HANDLERS: dict[str, Callable[[Any, CliContext], int]] = {
     "routes": cmd_routes,
     "ports": cmd_ports,
     "mtu": cmd_mtu,
+    "monitor": cmd_monitor,
     "logs": cmd_logs,
     "report": cmd_report,
     "gui": cmd_gui,

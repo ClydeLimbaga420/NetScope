@@ -1,4 +1,4 @@
-"""Interactive ``netscope>`` shell with history, completion and a menu fallback."""
+"""Interactive ``netscope>`` shell with history, completion, menu fallback, and live monitor."""
 
 from __future__ import annotations
 
@@ -8,12 +8,18 @@ from typing import Callable
 from cli.context import CliContext
 from cli.exit_codes import describe
 
+try:
+    from cli.monitor import run_monitor
+except ImportError:
+    run_monitor = None
+
 BANNER = """NetScope interactive shell
 Type 'help' for commands, 'menu' for numbered choices, 'exit' to leave.
 """
 
 MENU: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("Run full diagnostics", "diagnose", ()),
+    ("Live monitoring dashboard", "monitor", ()),
     ("Show network information", "info", ()),
     ("Ping a host", "ping", ("host",)),
     ("Trace the route to a host", "trace", ("host",)),
@@ -113,6 +119,12 @@ def run_shell(
             continue
         if line.lower() == "menu":
             _run_menu(parser, ctx, input_func)
+            continue
+        if line.lower() == "monitor":
+            if run_monitor is None:
+                ctx.err("Monitor mode not available.")
+            else:
+                run_monitor(ctx)
             continue
         if line.lower().startswith("help "):
             topic = line.split(maxsplit=1)[1].strip()

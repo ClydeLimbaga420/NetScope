@@ -299,7 +299,21 @@ Session 3 (Phase 3):
 - If-unresolved engine: `rank_causes()` scores this_device vs beyond_device using evidence + isolation answer; `unresolved_section()` builds probabilistic wording ("probable"/"possible", never diagnosis); `build_unresolved_sections()` gated to only DETECT-ONLY findings by default (fixable findings shown only after ladder exhausted via executor).
 - CLI integration: `netscope fix [finding|fix-id] [--dry-run] [--yes] [--yes-i-understand-risk] [--rollback] [--adapter NAME] [--target VALUE] [--value VALUE] [--param NAME=VALUE]`. Non-interactive confirmation error when not TTY without `--yes`. Admin guidance printed for needs_admin. JSON output includes full outcome + preview on dry-run.
 - Report integration: `build_unresolved_sections()` called in `cmd_report`, rendered in both text and JSON reports.
-- Added `tests/test_fixes.py` (23 tests): catalog schema/completeness, DETECT-ONLY checks, verify flags, check fix_ids refer to catalog, executor resolve/dry-run/decline/admin/high-risk/rollback/detect-only, if_unresolved ranking/gating/wording/report inclusion, CLI dry-run/resolved/detect-only/unknown-id.
+- Added `tests/test_fixes.py` (22 tests): catalog schema/completeness, DETECT-ONLY checks, verify flags, check fix_ids refer to catalog, executor resolve/dry-run/decline/admin/high-risk/rollback/detect-only, if_unresolved ranking/gating/wording/report inclusion, CLI dry-run/resolved/detect-only/unknown-id.
 - Updated `tests/test_cli.py` to test unknown fix IDs properly.
 - All 106 tests pass (84 existing + 22 new).
+
+Session 4 (CLI Interactive Enhancement):
+- Added `monitor` subcommand: `netscope monitor [--interval SECONDS]` for live network status dashboard.
+- Implemented `cli/monitor.py` with ANSI-based live updating dashboard:
+  - Periodic diagnostic runs (configurable interval, default 3s)
+  - Real-time display of overall status, layer statuses, key findings
+  - Keyboard controls: `q` quit, `r` refresh, `i` change interval
+  - Requires TTY with color support; gracefully exits on non-TTY
+- Integrated monitor into interactive shell:
+  - Type `monitor` at `netscope>` prompt to enter live mode
+  - Added "Live monitoring dashboard" to numbered menu
+  - Press `q` to return to shell
+- Updated `cli/parser.py`, `cli/commands.py`, `cli/shell.py`, created `cli/monitor.py`
+- All 106 tests still pass.
 

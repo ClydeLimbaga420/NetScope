@@ -175,6 +175,20 @@ def build_parser() -> argparse.ArgumentParser:
     mtu = sub.add_parser("mtu", parents=[common], help="probe the path MTU to a host")
     mtu.add_argument("host")
 
+    monitor = sub.add_parser(
+        "monitor",
+        parents=[common],
+        help="live network status dashboard (press q to quit)",
+        description="Continuously run diagnostics and display a live updating dashboard.",
+    )
+    monitor.add_argument(
+        "--interval",
+        type=float,
+        default=3.0,
+        metavar="SECONDS",
+        help="update interval in seconds (default: 3.0)",
+    )
+
     logs = sub.add_parser("logs", parents=[common], help="view, open or export logs")
     logs.add_argument("--tail", type=int, default=50, metavar="N")
     logs.add_argument("--open", action="store_true", dest="open_log", help="open the log")

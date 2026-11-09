@@ -58,7 +58,7 @@ engine and two front ends (CLI + GUI). Work phase by phase; update this file and
 - Entry points: root `netscope.py`, `cli/main.py`, `python -m cli`. Rendering and
   terminal concerns stay in `cli/`; diagnostics stay in `core/`.
 - `cli/parser.py` — argparse commands: `diagnose`, `fix`, `info`, `ping`,
-  `trace`, `dns`, `arp`, `routes`, `ports`, `mtu`, `logs`, `report`, `gui`,
+  `trace`, `dns`, `arp`, `routes`, `ports`, `mtu`, `monitor`, `logs`, `report`, `gui`,
   `install`, `uninstall`, `--version`. Global flags: `--json`, `--no-color`,
   `--quiet`, `--verbose`, `--yes`, `--dry-run`, `--yes-i-understand-risk`.
   Usage errors exit 64 (custom `CliArgumentParser.error`).
@@ -78,7 +78,11 @@ engine and two front ends (CLI + GUI). Work phase by phase; update this file and
   `NO_COLOR`, `TERM=dumb`, `--json`/`--quiet`; enables Windows VT via ctypes.
 - `cli/shell.py` — `netscope>` shell, history/completion when stdlib `readline`
   exists, `help`, numbered `menu`, `exit`. Shell commands reuse the same parser
-  and dispatch.
+  and dispatch. Type `monitor` to enter live dashboard mode.
+- `cli/monitor.py` — ANSI-based live monitoring dashboard (`netscope monitor`).
+  Periodic diagnostics (default 3s interval), real-time overall/layer/key-findings
+  view, keyboard controls (`q` quit, `r` refresh, `i` interval). Requires TTY
+  with color support.
 - `cli/admin.py` — `is_admin()`, `format_admin_command()`,
   `relaunch_elevated()`; admin status is logged at startup and shown by `info`.
 - `cli/exit_codes.py` — 0/1/2/3/4/64/130 and `--help` text.
