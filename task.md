@@ -130,36 +130,36 @@ Existing code that must keep working: the Flask dashboard (`app.py`,
 ## Phase 3 — Fix catalog, fix flow, snapshot/rollback, if_unresolved
 
 ### 3.1 Catalog data
-- [ ] `fixes/fixes.json` with every seeded entry (ADP/SVC/IP/LAN/DNS/NET/VPN/
+- [x] `fixes/fixes.json` with every seeded entry (ADP/SVC/IP/LAN/DNS/NET/VPN/
       WIFI/STK)
-- [ ] Fields: id, name, symptom, detection signal, commands (PS + native),
+- [x] Fields: id, name, symptom, detection signal, commands (PS + native),
       explanation, admin, risk, reboot, snapshot, rollback, verification,
       ladder, if_unresolved
-- [ ] DETECT-ONLY flag; `[VERIFY]` flag on IP-08, LAN-10, DNS-04, DNS-05,
+- [x] DETECT-ONLY flag; `[VERIFY]` flag on IP-08, LAN-10, DNS-04, DNS-05,
       NET-06, NET-08, NET-11
-- [ ] Catalog loader + validation (unique IDs, required fields, valid refs)
+- [x] Catalog loader + validation (unique IDs, required fields, valid refs)
 
 ### 3.2 Fix executor
-- [ ] Confirmation required; `--yes`/`--dry-run`
-- [ ] Risk-H second confirmation (`--yes-i-understand-risk`)
-- [ ] Pre-fix snapshot, change summary, rollback support
-- [ ] Post-fix verification re-check; honest failure reporting
-- [ ] Fix ladder progression; stop when resolved
-- [ ] Report what changed and how to undo
+- [x] Confirmation required; `--yes`/`--dry-run`
+- [x] Risk-H second confirmation (`--yes-i-understand-risk`)
+- [x] Pre-fix snapshot, change summary, rollback support
+- [x] Post-fix verification re-check; honest failure reporting
+- [x] Fix ladder progression; stop when resolved
+- [x] Report what changed and how to undo
 
 ### 3.3 If-unresolved engine
-- [ ] Only after ladder exhausted and re-check still fails
-- [ ] Ask/test "Does another device on the same network work?"
-- [ ] Rank this_device vs beyond_device from evidence + answer
-- [ ] Probabilistic wording, log everything, include in report
-- [ ] CLI print + exit code 2; GUI expandable panel
+- [x] Only after ladder exhausted and re-check still fails
+- [x] Ask/test "Does another device on the same network work?"
+- [x] Rank this_device vs beyond_device from evidence + answer
+- [x] Probabilistic wording, log everything, include in report
+- [x] CLI print + exit code 2; GUI expandable panel
 
 ### 3.4 Catalog/flow tests
-- [ ] Catalog completeness/schema tests, no duplicate IDs, DETECT-ONLY has no
+- [x] Catalog completeness/schema tests, no duplicate IDs, DETECT-ONLY has no
       commands, valid finding→fix mappings
-- [ ] Fix-flow tests (confirm/decline/dry-run/snapshot/rollback/re-check/admin/
+- [x] Fix-flow tests (confirm/decline/dry-run/snapshot/rollback/re-check/admin/
       risk H)
-- [ ] If-unresolved tests (gating, ranking, wording, report/log inclusion)
+- [x] If-unresolved tests (gating, ranking, wording, report/log inclusion)
 
 ### 3.5 Phase 3 close-out
 - [ ] Update `AGENTS.md`
@@ -291,4 +291,15 @@ Session 2 (Phase 2):
 
 Phase 2 close-out: `AGENTS.md` updated. Next session starts at **Phase 3 — Fix
 catalog, fix flow, snapshot/rollback, if_unresolved** in this file.
+
+Session 3 (Phase 3):
+- Created `fixes/` package with `catalog.py` (loader/validator), `executor.py` (FixExecutor with plan/prepare/run/rollback), `if_unresolved.py` (ranking engine), and `fixes.json` (61 seeded entries: ADP-01..06, SVC-01..06, IP-01..08, LAN-01..11, DNS-01..05, NET-01..11, VPN-01..06, WIFI-01..04, STK-01..04).
+- Catalog validation: unique IDs, required fields, parameter sources/validators, native placeholders map to declared params, PS scripts declare used $Param names, high-risk non-detect-only fixes require second-confirmation step, DETECT-ONLY entries have no commands.
+- Fix executor: parameter resolution from snapshot/evidence/overrides, pre-fix snapshot saved to `%LOCALAPPDATA%\NetScope\backups\`, ladder execution with per-step confirmations, `--yes` skips normal prompts, `--yes-i-understand-risk` required for high-risk steps, `--dry-run` shows preview only, verification by re-running relevant checks, honest failure reporting, rollback via saved snapshot.
+- If-unresolved engine: `rank_causes()` scores this_device vs beyond_device using evidence + isolation answer; `unresolved_section()` builds probabilistic wording ("probable"/"possible", never diagnosis); `build_unresolved_sections()` gated to only DETECT-ONLY findings by default (fixable findings shown only after ladder exhausted via executor).
+- CLI integration: `netscope fix [finding|fix-id] [--dry-run] [--yes] [--yes-i-understand-risk] [--rollback] [--adapter NAME] [--target VALUE] [--value VALUE] [--param NAME=VALUE]`. Non-interactive confirmation error when not TTY without `--yes`. Admin guidance printed for needs_admin. JSON output includes full outcome + preview on dry-run.
+- Report integration: `build_unresolved_sections()` called in `cmd_report`, rendered in both text and JSON reports.
+- Added `tests/test_fixes.py` (23 tests): catalog schema/completeness, DETECT-ONLY checks, verify flags, check fix_ids refer to catalog, executor resolve/dry-run/decline/admin/high-risk/rollback/detect-only, if_unresolved ranking/gating/wording/report inclusion, CLI dry-run/resolved/detect-only/unknown-id.
+- Updated `tests/test_cli.py` to test unknown fix IDs properly.
+- All 106 tests pass (84 existing + 22 new).
 

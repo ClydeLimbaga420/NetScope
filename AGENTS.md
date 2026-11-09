@@ -5,7 +5,7 @@ dashboard into a universal Windows network troubleshooting tool with one shared
 engine and two front ends (CLI + GUI). Work phase by phase; update this file and
 `task.md` Notes at the end of every phase.
 
-**Current status: Phase 2 complete.** Phases 3-5 are not built yet.
+**Current status: Phase 3 complete.** Phases 4-5 are not built yet.
 
 ## Run / environment
 - The Flask dashboard still works unchanged: `python app.py` → http://127.0.0.1:5000
@@ -13,7 +13,7 @@ engine and two front ends (CLI + GUI). Work phase by phase; update this file and
 - This checkout originally had **no `.venv`**. A venv now exists (Python 3.14.7).
   Recreate with `py -m venv .venv`, then
   `.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt`.
-- Run tests: `.\.venv\Scripts\python.exe -m pytest` (pytest 9.x, 84 tests green).
+- Run tests: `.\.venv\Scripts\python.exe -m pytest` (pytest 9.x, 106 tests green).
 - Run the CLI: `.\.venv\Scripts\python.exe netscope.py --help`
   (or `python -m cli`). `netscope.py diagnose --json` is the machine interface.
 - PowerShell is required for diagnostics (Windows PowerShell 5.1).
@@ -64,7 +64,13 @@ engine and two front ends (CLI + GUI). Work phase by phase; update this file and
   Usage errors exit 64 (custom `CliArgumentParser.error`).
 - `cli/commands.py` — dispatch/handlers. `diagnose` streams each result to stdout
   as it completes (stderr shows collection), then a summary. `--json` emits one
-  document without the full snapshot. `info` uses `core/info.py`.
+  document without the full snapshot. `info` uses `core/info.py`. `fix` resolves a
+  finding or fix ID, shows the preview (finding, cause, exact commands,
+  admin/risk/reboot, snapshot plan), confirms, runs the ladder, verifies by
+  re-checking, and prints outcome + rollback/if-unresolved. Options: `--dry-run`,
+  `--yes`, `--yes-i-understand-risk`, `--rollback`, `--adapter`, `--target`,
+  `--value`, `--param`. Non-TTY without `--yes` errors with exit 64.
+  `report` includes unresolved sections from `build_unresolved_sections()`.
 - `cli/utilities.py` — validated `ping`, `trace`, `dns`, `arp`, `routes`,
   `ports` (port-spec expansion capped at 1024) and `mtu` (DF-ping binary search
   548-1472 payload → path MTU).
@@ -76,19 +82,69 @@ engine and two front ends (CLI + GUI). Work phase by phase; update this file and
 - `cli/admin.py` — `is_admin()`, `format_admin_command()`,
   `relaunch_elevated()`; admin status is logged at startup and shown by `info`.
 - `cli/exit_codes.py` — 0/1/2/3/4/64/130 and `--help` text.
-- Honest stubs for now: `fix` validates the ID, prints admin guidance, and exits
-  3 until Phase 3; `gui`/`install`/`uninstall` print phase messages and exit 3.
 - `logs` reads `%LOCALAPPDATA%\NetScope\logs\netscope.log`; `report` writes
   txt/json to `%LOCALAPPDATA%\NetScope\reports\` by default. `--output -` prints
   the report body to stdout.
 - `SubprocessRunner` now uses `Popen` so timeouts and Ctrl+C kill the child,
   preserve timeout exit code 124, and keep stderr clean.
 
+## Fixes (Phase 3)
+- `fixes/catalog.py` — `CommandSpec`, `FixStep`, `Parameter`, `IfUnresolved`,
+  `FixEntry`, `Catalog`; `parse_catalog()`, `load_catalog()`; validates unique
+  IDs, required fields, parameter sources/validators, PS `$Param` declarations,
+  native placeholders, high-risk second-confirmation, DETECT-ONLY restrictions,
+  `[VERIFY]` flag on IP-08, LAN-10, DNS-04, DNS-05, NET-06, NET-08, NET-11.
+- `fixes/fixes.json` — 61 seeded entries: ADP-01..06, SVC-01..06, IP-01..08,
+  LAN-01..11, DNS-01..05, NET-01..11, VPN-01..06, WIFI-01..04, STK-01..04.
+  Each has id, name, symptom, detection, explanation, admin, risk, reboot,
+  snapshot (PS commands), rollback (commands + notes), verify (check IDs),
+  ladder (steps with PS + native fallback), if_unresolved (this_device,
+  beyond_device, next_checks, evidence_to_collect).
+- `fixes/executor.py` — `FixExecutor`: `prepare()` builds `FixPlan` with
+  resolved parameter values and preview lines; `run()` executes ladder with
+  per-step confirmations (`--yes` skips normal, `--yes-i-understand-risk`
+  required for risk-H), takes pre-fix snapshot, verifies by re-checking,
+  stops when resolved, returns `FixOutcome` with status (resolved/dry_run/
+  rolled_back/needs_admin/declined/error/detection_only/unresolved), exit code,
+  step details, verification evidence, rollback availability, unresolved
+  causes. `rollback()` restores latest saved snapshot for the fix ID.
+- `fixes/if_unresolved.py` — `RankedCause`, `rank_causes()`, `unresolved_section()`,
+  `build_unresolved_sections()`, `unresolved_for_results()`. Ranks
+  this_device vs beyond_device using evidence + isolation answer; probabilistic
+  wording ("probable"/"possible", never diagnosis); `build_unresolved_sections()`
+  gated to DETECT-ONLY findings by default (fixable shown only after ladder
+  exhausted via executor). Included in CLI report output.
+- CLI `fix` subcommand: `netscope fix [finding|fix-id] [--dry-run] [--yes]
+  [--yes-i-understand-risk] [--rollback] [--adapter NAME] [--target VALUE]
+  [--value VALUE] [--param NAME=VALUE]`. Streams preview to stdout, prompts
+  interactively, logs confirmations/fix_applied/unresolved. JSON output
+  includes full outcome + preview on `--dry-run`.
+- `tests/test_fixes.py` — 22 tests: catalog completeness/schema, DETECT-ONLY,
+  verify flags, check fix_ids, executor resolve/dry-run/decline/admin/high-risk/
+  rollback/detect-only, if_unresolved ranking/gating/wording/report, CLI
+  dry-run/resolved/detect-only/unknown-id. Total 106 tests pass.
+
 Usage:
 ```python
 from core.engine import DiagnosticEngine
 report = DiagnosticEngine().diagnose(layers=["adapter", "ip"])
 print(report.exit_code, report.first_failing_layer, report.to_dict())
+```
+
+```python
+from fixes.catalog import load_catalog
+from fixes.executor import FixExecutor
+from core.engine import DiagnosticEngine
+
+catalog = load_catalog()
+engine = DiagnosticEngine()
+snapshot = engine.collect_snapshot()
+report = engine.diagnose(snapshot=snapshot)
+entry = catalog.require("IP-01")
+executor = FixExecutor(runner, ps, logger, engine, catalog)
+plan = executor.prepare(entry, snapshot=snapshot)
+outcome = executor.run(entry, plan=plan, assume_yes=True)
+print(outcome.exit_code, outcome.status, outcome.to_dict())
 ```
 
 ## Logging
@@ -146,9 +202,6 @@ print(report.exit_code, report.first_failing_layer, report.to_dict())
   default (DETECT-ONLY or second confirmation only).
 
 ## Next phases
-- Phase 3: `fixes/fixes.json` catalog, executor, snapshot/rollback,
-  if_unresolved engine, catalog/flow tests. Replace the `fix` stub and use
-  `cli/admin.py` guidance/relaunch.
 - Phase 4: tkinter GUI, dual-mode console/GUI launch, GUI smoke tests.
   Replace the `gui` stub.
 - Phase 5: PyInstaller exe, installer/uninstaller (PATH/App Paths/Start Menu),
