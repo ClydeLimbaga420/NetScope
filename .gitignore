@@ -19,3 +19,5 @@ venv/
 # Operating system
 .DS_Store
 Thumbs.db
+
+prompt.txt
