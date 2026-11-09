@@ -4,6 +4,7 @@ from modules.network_info import get_network_info
 from modules.bandwidth import BandwidthMonitor
 from modules.ping_monitor import ping_host
 from modules.device_scanner import get_arp_devices
+from modules.diagnostics import list_diagnostics, run_diagnostic
 
 app = Flask(__name__)
 
@@ -43,6 +44,22 @@ def api_devices():
     return jsonify({
         "devices": get_arp_devices()
     })
+
+
+@app.route("/api/diagnostics")
+def api_diagnostics():
+    return jsonify(list_diagnostics())
+
+
+@app.route("/api/diagnostics/<step_id>/run", methods=["POST"])
+def api_run_diagnostic(step_id):
+    try:
+        return jsonify(run_diagnostic(step_id))
+
+    except KeyError:
+        return jsonify({
+            "error": "Unknown diagnostic step"
+        }), 404
 
 
 if __name__ == "__main__":

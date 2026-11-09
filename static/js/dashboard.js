@@ -501,7 +501,67 @@ function escapeHtml(value) {
 
 const DEVICE_ALIAS_KEY = "netscope.device-aliases";
 
+const DEVICE_VISIBLE_ROWS = 8;
+
 let deviceNameRetryTimer = null;
+
+
+function applyDeviceScrollHeight() {
+
+    const wrap = $("device-table-wrap");
+
+    if (!wrap) {
+        return;
+    }
+
+    const head = wrap.querySelector("thead");
+    const rows = wrap.querySelectorAll("tbody tr");
+
+    if (
+        !head ||
+        rows.length <= DEVICE_VISIBLE_ROWS
+    ) {
+        wrap.style.maxHeight = "";
+        return;
+    }
+
+    const horizontalScrollbar = Math.max(
+        0,
+        wrap.offsetHeight - wrap.clientHeight
+    );
+
+    let height = head.offsetHeight + horizontalScrollbar;
+
+    for (
+        let index = 0;
+        index < DEVICE_VISIBLE_ROWS;
+        index += 1
+    ) {
+        height += rows[index].offsetHeight;
+    }
+
+    wrap.style.maxHeight = `${height}px`;
+
+}
+
+
+function updateDeviceCount(count) {
+
+    const element = $("device-count");
+
+    if (!element) {
+        return;
+    }
+
+    if (!Number.isFinite(count)) {
+        element.textContent = "";
+        return;
+    }
+
+    element.textContent =
+        `${count} device${count === 1 ? "" : "s"}`;
+
+}
 
 
 function loadDeviceAliases() {
@@ -703,6 +763,10 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
 
         }
 
+        updateDeviceCount(data.devices.length);
+
+        applyDeviceScrollHeight();
+
         if (retry && missingNames) {
             scheduleDeviceNameRetry();
         }
@@ -725,6 +789,593 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
 
         `;
 
+        updateDeviceCount(null);
+
+        applyDeviceScrollHeight();
+
+        console.error(error);
+
+    }
+
+}
+
+
+// =====================================
+// TROUBLESHOOTING
+// =====================================
+
+let diagnosticSteps = [];
+
+let diagnosticElevated = false;
+
+const diagnosticStates = {};
+
+let selectedDiagnosticId = null;
+
+
+function statusLabel(step, status) {
+
+    if (status === "running") {
+        return "Running";
+    }
+
+    if (status === "success") {
+        return step.kind === "repair" ? "Completed" : "Passed";
+    }
+
+    if (status === "error") {
+        return "Failed";
+    }
+
+    return "Not run";
+
+}
+
+
+function updateDiagnosticsSummary() {
+
+    const checks = diagnosticSteps.filter(
+        step => step.kind === "check"
+    );
+
+    const repairs = diagnosticSteps.filter(
+        step => step.kind === "repair"
+    );
+
+    const passed = checks.filter(
+        step => (diagnosticStates[step.id] || {}).status === "success"
+    ).length;
+
+    const failed = checks.filter(
+        step => (diagnosticStates[step.id] || {}).status === "error"
+    ).length;
+
+    const completedRepairs = repairs.filter(
+        step => (diagnosticStates[step.id] || {}).status === "success"
+    ).length;
+
+    let summary = `${passed} of ${checks.length} checks passed`;
+
+    if (failed > 0) {
+        summary += ` · ${failed} failed`;
+    }
+
+    if (repairs.length > 0) {
+        summary += ` · ${completedRepairs} of ${repairs.length} repairs applied`;
+    }
+
+    $("troubleshoot-summary").textContent = summary;
+
+    const percent = checks.length
+        ? Math.round(((passed + failed) / checks.length) * 100)
+        : 0;
+
+    $("troubleshoot-percent").textContent = `${percent}%`;
+
+    const fill = $("diag-progress-fill");
+
+    if (fill) {
+        fill.style.width = `${percent}%`;
+    }
+
+}
+
+
+function stepMarker(step, status, index) {
+
+    if (status === "success") {
+        return "✓";
+    }
+
+    if (status === "error") {
+        return "!";
+    }
+
+    if (status === "running") {
+        return "…";
+    }
+
+    return String(index + 1).padStart(2, "0");
+
+}
+
+
+function renderRailGroup(steps, container) {
+
+    if (!steps.length) {
+        container.innerHTML = "";
+        return;
+    }
+
+    container.innerHTML = steps.map(step => {
+
+        const index = diagnosticSteps.indexOf(step);
+
+        const status =
+            (diagnosticStates[step.id] || {}).status || "idle";
+
+        const selected =
+            step.id === selectedDiagnosticId ? "selected" : "";
+
+        const unavailable =
+            !step.supported || !step.available;
+
+        return `
+
+            <button
+                class="diag-item ${step.kind} ${status} ${selected} ${
+                    unavailable ? "unavailable" : ""
+                }"
+                type="button"
+                data-id="${escapeHtml(step.id)}">
+
+                <span class="diag-item-index">
+                    ${stepMarker(step, status, index)}
+                </span>
+
+                <span class="diag-item-text">
+                    <strong>${escapeHtml(step.title)}</strong>
+                    <small>${statusLabel(step, status)}</small>
+                </span>
+
+            </button>
+
+        `;
+
+    }).join("");
+
+}
+
+
+function consoleMarkup(step, state) {
+
+    if (!state || !state.result) {
+
+        return `
+
+            <span class="console-placeholder">
+                Run this step to see its command output here.
+            </span>
+
+        `;
+
+    }
+
+    const result = state.result;
+
+    const success = Boolean(result.success);
+
+    const statusClass = success ? "success" : "error";
+
+    const command = (result.commands && result.commands.length)
+
+        ? result.commands.join("  &&  ")
+
+        : step.command;
+
+    const duration = Number.isFinite(result.duration_ms)
+        ? `${result.duration_ms} ms`
+        : "";
+
+    return `
+
+        <div class="console-entry">
+
+            <div class="console-entry-head">
+
+                <span class="console-command">
+                    ${escapeHtml(command)}
+                </span>
+
+                <span class="console-meta">
+
+                    <span class="console-status ${statusClass}">
+                        ${success ? "Success" : "Failed"}
+                    </span>
+
+                    ${duration
+                        ? `<span class="console-time">${duration}</span>`
+                        : ""}
+
+                </span>
+
+            </div>
+
+            <pre class="console-text">${escapeHtml(
+                result.output || "No output."
+            )}</pre>
+
+        </div>
+
+    `;
+
+}
+
+
+function renderDetail() {
+
+    const stage = $("diag-stage");
+
+    if (!diagnosticSteps.length) {
+
+        stage.innerHTML = `
+            <p class="muted">No troubleshooting steps are available.</p>
+        `;
+
+        return;
+
+    }
+
+    const step = diagnosticSteps.find(
+        item => item.id === selectedDiagnosticId
+    ) || diagnosticSteps[0];
+
+    if (!selectedDiagnosticId) {
+        selectedDiagnosticId = step.id;
+    }
+
+    const state = diagnosticStates[step.id] || {};
+
+    const status = state.status || "idle";
+
+    const disabled =
+        !step.supported ||
+        !step.available ||
+        status === "running";
+
+    const kindLabel =
+        step.kind === "repair" ? "REPAIR" : "CHECK";
+
+    const runLabel =
+        step.kind === "repair" ? "Run repair" : "Run check";
+
+    const admin = step.requires_admin
+        ? '<span class="admin-tag">ADMIN</span>'
+        : "";
+
+    const unavailable =
+        step.reason && (!step.supported || !step.available)
+
+            ? `<p class="step-reason">${escapeHtml(step.reason)}</p>`
+
+            : "";
+
+    const hint = status === "running"
+
+        ? "Running the predefined command..."
+
+        : step.kind === "repair"
+
+            ? "This repair changes your network settings."
+
+            : "Read-only check. Nothing on your system is changed.";
+
+    stage.innerHTML = `
+
+        <div class="diag-detail ${step.kind} ${status}">
+
+            <div class="diag-detail-head">
+
+                <div class="diag-detail-title">
+
+                    <div class="diag-tags">
+
+                        <span class="step-kind ${step.kind}">
+                            ${kindLabel}
+                        </span>
+
+                        ${admin}
+
+                    </div>
+
+                    <h3>${escapeHtml(step.title)}</h3>
+
+                    <p class="diag-desc">
+                        ${escapeHtml(step.description)}
+                    </p>
+
+                </div>
+
+                <span class="step-status ${status}">
+                    ${statusLabel(step, status)}
+                </span>
+
+            </div>
+
+            <div class="diag-command">
+
+                <span class="diag-command-label">
+                    PREDEFINED COMMAND
+                </span>
+
+                <code>${escapeHtml(step.command)}</code>
+
+            </div>
+
+            ${unavailable}
+
+            <div class="diag-detail-actions">
+
+                <span class="diag-detail-hint">${hint}</span>
+
+                <button
+                    class="step-run"
+                    type="button"
+                    data-id="${escapeHtml(step.id)}"
+                    ${disabled ? "disabled" : ""}>
+                    ${
+                        status === "running"
+                            ? "Running..."
+                            : runLabel
+                    }
+                </button>
+
+            </div>
+
+            <div class="console-panel">
+
+                <div class="console-head">
+
+                    <span class="console-title">COMMAND OUTPUT</span>
+
+                    <span class="console-actions">
+
+                        <span class="console-time">
+                            ${step.kind === "repair"
+                                ? "Changes system settings"
+                                : "Read-only"}
+                        </span>
+
+                        <button
+                            class="ghost-button"
+                            id="clear-console"
+                            type="button">
+                            Clear
+                        </button>
+
+                    </span>
+
+                </div>
+
+                <div class="console" id="console-output">
+                    ${consoleMarkup(step, state)}
+                </div>
+
+            </div>
+
+        </div>
+
+    `;
+
+    const consoleBox = $("console-output");
+
+    if (consoleBox) {
+        consoleBox.scrollTop = consoleBox.scrollHeight;
+    }
+
+}
+
+
+function renderDiagnostics() {
+
+    if (!diagnosticSteps.length) {
+
+        $("check-steps").innerHTML = "";
+        $("repair-steps").innerHTML = "";
+
+        $("diag-stage").innerHTML = `
+            <p class="muted">No troubleshooting steps are available.</p>
+        `;
+
+        return;
+
+    }
+
+    renderRailGroup(
+        diagnosticSteps.filter(step => step.kind === "check"),
+        $("check-steps")
+    );
+
+    renderRailGroup(
+        diagnosticSteps.filter(step => step.kind === "repair"),
+        $("repair-steps")
+    );
+
+    renderDetail();
+
+}
+
+
+async function runDiagnostic(step) {
+
+    if ((diagnosticStates[step.id] || {}).status === "running") {
+        return;
+    }
+
+    if (step.kind === "repair") {
+
+        const adminWarning =
+            step.requires_admin && !diagnosticElevated
+
+                ? "NetScope is not running as administrator, " +
+                  "so this repair may fail.\n\n"
+
+                : "";
+
+        const confirmed = window.confirm(
+            adminWarning +
+            `${step.title} will change this computer's ` +
+            "network settings.\n\nContinue?"
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+    }
+
+    selectedDiagnosticId = step.id;
+
+    diagnosticStates[step.id] = { status: "running" };
+
+    renderDiagnostics();
+    updateDiagnosticsSummary();
+
+    try {
+
+        const response = await fetch(
+            `/api/diagnostics/${encodeURIComponent(step.id)}/run`,
+            { method: "POST" }
+        );
+
+        if (!response.ok) {
+            throw new Error("Diagnostic request failed");
+        }
+
+        const result = await response.json();
+
+        diagnosticStates[step.id] = {
+            status: result.success ? "success" : "error",
+            result: result
+        };
+
+    }
+
+    catch (error) {
+
+        diagnosticStates[step.id] = {
+            status: "error",
+            result: {
+                success: false,
+                commands: [],
+                output: `Could not run this step: ${error.message}`,
+                duration_ms: null
+            }
+        };
+
+        console.error(error);
+
+    }
+
+    finally {
+
+        renderDiagnostics();
+        updateDiagnosticsSummary();
+
+    }
+
+}
+
+
+async function runAllChecks() {
+
+    const button = $("run-all-checks");
+
+    const checks = diagnosticSteps.filter(
+        step =>
+            step.kind === "check" &&
+            step.supported &&
+            step.available
+    );
+
+    if (!checks.length) {
+        return;
+    }
+
+    button.disabled = true;
+    button.textContent = "Running checks...";
+
+    for (const step of checks) {
+
+        selectedDiagnosticId = step.id;
+
+        renderDiagnostics();
+
+        await runDiagnostic(step);
+
+    }
+
+    button.disabled = false;
+    button.textContent = "Run all checks";
+
+}
+
+
+async function loadDiagnostics() {
+
+    try {
+
+        const response = await fetch("/api/diagnostics");
+
+        if (!response.ok) {
+            throw new Error("Could not load diagnostics");
+        }
+
+        const data = await response.json();
+
+        diagnosticSteps = data.steps || [];
+
+        diagnosticElevated = Boolean(data.elevated);
+
+        if (
+            !selectedDiagnosticId &&
+            diagnosticSteps.length > 0
+        ) {
+            selectedDiagnosticId = diagnosticSteps[0].id;
+        }
+
+        const badge = $("elevation-badge");
+
+        if (badge) {
+
+            badge.textContent = diagnosticElevated
+                ? "ADMIN MODE"
+                : "STANDARD USER";
+
+            badge.className = diagnosticElevated
+                ? "elevation-badge elevated"
+                : "elevation-badge";
+
+            badge.hidden = false;
+
+        }
+
+        renderDiagnostics();
+        updateDiagnosticsSummary();
+
+    }
+
+    catch (error) {
+
+        $("check-steps").innerHTML = "";
+        $("repair-steps").innerHTML = "";
+
+        $("diag-stage").innerHTML =
+            '<p class="muted">Could not load troubleshooting steps.</p>';
+
+        $("troubleshoot-summary").textContent =
+            "Troubleshooting is unavailable.";
+
         console.error(error);
 
     }
@@ -739,6 +1390,88 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
 $("refresh-devices").addEventListener(
     "click",
     () => refreshDevices()
+);
+
+
+window.addEventListener(
+    "resize",
+    applyDeviceScrollHeight
+);
+
+
+function selectDiagnosticStep(event) {
+
+    const item = event.target.closest(".diag-item");
+
+    if (!item) {
+        return;
+    }
+
+    selectedDiagnosticId = item.dataset.id;
+
+    renderDiagnostics();
+
+}
+
+
+$("check-steps").addEventListener(
+    "click",
+    selectDiagnosticStep
+);
+
+
+$("repair-steps").addEventListener(
+    "click",
+    selectDiagnosticStep
+);
+
+
+$("diag-stage").addEventListener(
+    "click",
+    event => {
+
+        const runButton = event.target.closest(".step-run");
+
+        if (runButton) {
+
+            const step = diagnosticSteps.find(
+                item => item.id === runButton.dataset.id
+            );
+
+            if (step) {
+                runDiagnostic(step);
+            }
+
+            return;
+
+        }
+
+        const clearButton = event.target.closest("#clear-console");
+
+        if (clearButton) {
+
+            const step = diagnosticSteps.find(
+                item => item.id === selectedDiagnosticId
+            );
+
+            if (step) {
+
+                delete diagnosticStates[step.id];
+
+                renderDiagnostics();
+                updateDiagnosticsSummary();
+
+            }
+
+        }
+
+    }
+);
+
+
+$("run-all-checks").addEventListener(
+    "click",
+    runAllChecks
 );
 
 
@@ -783,6 +1516,8 @@ $("device-rows").addEventListener(
 refreshStatus();
 
 refreshDevices();
+
+loadDiagnostics();
 
 
 // UPDATE EVERY 2 SECONDS

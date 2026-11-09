@@ -47,6 +47,12 @@
             ⌁ Traffic
         </a>
 
+        <p class="nav-label spaced">TOOLS</p>
+
+        <a href="#troubleshoot" class="nav-item">
+            ⚙ Troubleshoot
+        </a>
+
         <div class="sidebar-bottom">
             <span class="pulse"></span>
             Local monitoring active
@@ -324,14 +330,20 @@
                     </p>
                 </div>
 
-                <button id="refresh-devices">
-                    Refresh devices
-                </button>
+                <div class="devices-actions">
+
+                    <span class="device-count" id="device-count"></span>
+
+                    <button id="refresh-devices">
+                        Refresh devices
+                    </button>
+
+                </div>
 
             </div>
 
 
-            <div class="table-wrap">
+            <div class="table-wrap" id="device-table-wrap">
 
                 <table>
 
@@ -365,7 +377,112 @@
                 Devices are discovered by probing the local subnet
                 and reading the ARP cache. Brands come from MAC
                 vendor data. Double-click a device name to save
-                a friendly label in this browser.
+                a friendly label in this browser. The table shows
+                eight devices at a time; scroll inside it to see
+                the rest.
+            </p>
+
+        </section>
+
+
+        <!-- TROUBLESHOOTING -->
+        <section class="panel troubleshoot-panel" id="troubleshoot">
+
+            <div class="panel-head troubleshoot-head">
+
+                <div>
+                    <p class="eyebrow">TOOLS / TROUBLESHOOTING</p>
+
+                    <h2>Network Troubleshooting</h2>
+
+                    <p class="muted">
+                        Follow the checks, then apply a repair when a
+                        step fails. No terminal required.
+                    </p>
+                </div>
+
+                <div class="troubleshoot-actions">
+
+                    <span
+                        class="elevation-badge"
+                        id="elevation-badge"
+                        hidden>
+                    </span>
+
+                    <button id="run-all-checks" type="button">
+                        Run all checks
+                    </button>
+
+                </div>
+
+            </div>
+
+            <div class="diag-progress">
+
+                <div class="diag-progress-head">
+
+                    <span
+                        class="diag-progress-label"
+                        id="troubleshoot-summary">
+                        Loading troubleshooting steps...
+                    </span>
+
+                    <span
+                        class="diag-progress-value"
+                        id="troubleshoot-percent">
+                        0%
+                    </span>
+
+                </div>
+
+                <div class="diag-progress-track">
+                    <span
+                        class="diag-progress-fill"
+                        id="diag-progress-fill">
+                    </span>
+                </div>
+
+            </div>
+
+            <div class="diag-layout">
+
+                <aside class="diag-rail">
+
+                    <div class="diag-group">
+
+                        <p class="diag-group-label">
+                            DIAGNOSTIC CHECKS
+                        </p>
+
+                        <div class="diag-items" id="check-steps">
+                            <p class="muted">Loading checks...</p>
+                        </div>
+
+                    </div>
+
+                    <div class="diag-group">
+
+                        <p class="diag-group-label">REPAIRS</p>
+
+                        <div class="diag-items" id="repair-steps">
+                            <p class="muted">Loading repairs...</p>
+                        </div>
+
+                    </div>
+
+                </aside>
+
+                <div class="diag-stage" id="diag-stage">
+                    <p class="muted">Loading step details...</p>
+                </div>
+
+            </div>
+
+            <p class="note">
+                Checks are read-only. Repairs change Windows network
+                settings and ask for confirmation. Winsock and TCP/IP
+                resets need administrator rights and a restart. Only
+                predefined commands are run.
             </p>
 
         </section>

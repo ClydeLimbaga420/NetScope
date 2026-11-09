@@ -9,7 +9,8 @@ Flask network dashboard. Windows is the target, with Linux/macOS command fallbac
 - `debug=False` means Python changes require restarting the server.
 
 ### Architecture / gotchas
-- `app.py` exposes only `/`, `/api/status`, `/api/devices`. `static/js/dashboard.js` polls `/api/status` every 2000 ms (hardcoded at the bottom; `config.REFRESH_INTERVAL_MS` is unused — only `PING_TIMEOUT_SECONDS` is read).
+- `app.py` exposes `/`, `/api/status`, `/api/devices`, `/api/diagnostics`, and `POST /api/diagnostics/<step_id>/run`. `static/js/dashboard.js` polls `/api/status` every 2000 ms (hardcoded at the bottom; `config.REFRESH_INTERVAL_MS` is unused — only `PING_TIMEOUT_SECONDS` is read).
+- `modules/diagnostics.py` is a registry of predefined checks/repairs (adapter status, IP config, loopback, gateway/internet ping, DNS, traceroute, DNS flush, DHCP renew, Winsock/TCP-IP reset). Commands are argv lists — never shell strings — and the client can only select a known `step_id`; there is no arbitrary command execution. Windows-only repairs report as unsupported elsewhere. `run_diagnostic` returns `{id, success, commands, output, duration_ms}`; `list_diagnostics` returns step metadata plus `elevated` (admin detection via `IsUserAnAdmin`/`geteuid`).
 - `BandwidthMonitor` is a module-level singleton in `app.py`; rates are deltas since the previous request, so multiple tabs or a changed poll interval distort readings. The dashboard applies EMA smoothing (`SMOOTHING_FACTOR = 0.34`) client-side before displaying or charting traffic.
 - Each `/api/status` call synchronously shells out to `ping` twice (hardcoded internet host `1.1.1.1` and the detected gateway). Ping output is regex-parsed per OS.
 - Device discovery first warms the ARP cache with a UDP sweep of local private subnets (max 1024 hosts, 15 s cache), then parses the OS ARP cache (`arp -a`), filtering multicast/broadcast entries. It never scans public/routed networks.
@@ -18,8 +19,8 @@ Flask network dashboard. Windows is the target, with Linux/macOS command fallbac
 - The device table has five columns: name, brand, IP, MAC, entry type. `/api/devices` returns each device as `name`, `vendor`, `ip`, `mac`, and `type`.
 - Device name overrides are stored client-side in `localStorage`; double-click a name to rename it.
 - Chart.js is loaded from a CDN in `templates/index.html`, so charts need internet.
-- `modules/diagnostics.py` is empty and `database/db.py` is not imported anywhere — the SQLite schema is unused scaffolding (`database/netscope.db` is gitignored).
-- No tests/lint/typecheck tooling exists; verify changes manually by running the app and hitting `/api/status` and `/api/devices`.
+- `database/db.py` is not imported anywhere — the SQLite schema is unused scaffolding (`database/netscope.db` is gitignored).
+- No tests/lint/typecheck tooling exists; verify changes manually by running the app and hitting `/api/status`, `/api/devices`, and `/api/diagnostics`.
 
 ### UI / behavior
 - First `/api/devices` load can take ~2 s (0.5 s scan settle plus up to 1.5 s name resolution); later calls reuse the scan/name caches.

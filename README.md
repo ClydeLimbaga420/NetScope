@@ -5,8 +5,14 @@ NetScope is a local-first network monitoring application
 built using Python and Flask.
 
 It provides real-time network statistics, internet
-connectivity checks, bandwidth monitoring, and active
-LAN device discovery.
+connectivity checks, bandwidth monitoring, active LAN
+device discovery, and guided troubleshooting.
+
+Network troubleshooting is handled through a
+step-by-step workflow. NetScope runs predefined Windows
+PowerShell and Command Prompt commands on your behalf, so
+common connectivity problems can be diagnosed and
+repaired from the interface instead of the terminal.
 
 ## Features
 
@@ -21,6 +27,10 @@ LAN device discovery.
 - Automatic device names (NetBIOS / reverse DNS)
 - Brand detection from MAC vendor data
 - Custom device labels saved in the browser
+- Guided network troubleshooting workflow
+- Predefined diagnostic checks with command output
+- One-click repairs (DNS flush, DHCP renew, Winsock/TCP-IP reset)
+- "Run all checks" sequential diagnosis
 - Dark, responsive dashboard interface
 
 ## Technologies
@@ -118,6 +128,12 @@ because no vendor can be determined.
 Double-click a device name to save a custom label in
 your browser's localStorage.
 
+The Troubleshoot panel runs only predefined commands
+against your own computer. Checks are read-only. Repair
+steps change system network settings and ask for
+confirmation before running. Winsock and TCP/IP resets
+require administrator rights and a restart.
+
 Ping results may be affected by firewall rules or
 network restrictions.
 
@@ -132,8 +148,6 @@ used by the application.
 - mDNS/SSDP device name discovery
 - Historical network statistics
 - SQLite monitoring history
-- DNS diagnostics
-- Traceroute
 - Packet loss monitoring
 - Per-device traffic analysis
 - Device type inference
