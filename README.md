@@ -27,8 +27,12 @@ repaired from the interface instead of the terminal.
 - Automatic device names (NetBIOS / reverse DNS)
 - Brand detection from MAC vendor data
 - Custom device labels saved in the browser
+- Device count indicator
+- Eight-row device table with in-panel scrolling
 - Guided network troubleshooting workflow
-- Predefined diagnostic checks with command output
+- Grouped diagnostic checks and repairs rail
+- Progress bar with pass/fail/repair summary
+- Per-step command output console
 - One-click repairs (DNS flush, DHCP renew, Winsock/TCP-IP reset)
 - "Run all checks" sequential diagnosis
 - Dark, responsive dashboard interface
@@ -128,17 +132,32 @@ because no vendor can be determined.
 Double-click a device name to save a custom label in
 your browser's localStorage.
 
+The device table shows up to eight rows at a time and
+scrolls vertically to reveal the rest. The header stays
+visible while scrolling, and the visible row height is
+measured in the browser so it stays exact across screen
+sizes.
+
 The Troubleshoot panel runs only predefined commands
 against your own computer. Checks are read-only. Repair
 steps change system network settings and ask for
 confirmation before running. Winsock and TCP/IP resets
-require administrator rights and a restart.
+require administrator rights and a restart. Each step
+shows its command output in a dedicated console, and the
+progress bar summarizes how many checks have passed or
+failed.
 
 Ping results may be affected by firewall rules or
 network restrictions.
 
-Chart.js is loaded through a CDN, so charts require
-an internet connection.
+Chart.js is loaded through a CDN, so charts require an
+internet connection. Everything else is served locally.
+If the dashboard is already open, device discovery and
+troubleshooting keep working without internet. On a
+fresh page load with no internet, Chart.js cannot load
+and the dashboard script stops early, so the device
+table and troubleshooting steps may remain in their
+loading state.
 
 The SQLite schema in database/db.py is not currently
 used by the application.
