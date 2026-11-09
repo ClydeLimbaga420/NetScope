@@ -217,3 +217,15 @@ def flush_logging() -> None:
                 handler.flush()
             except Exception:
                 pass
+
+
+class NullLogger:
+    """No-op logger used when the log directory cannot be created."""
+
+    session_id = "-"
+
+    def _noop(self, *args: Any, **kwargs: Any) -> None:
+        return None
+
+    event = debug = warning = error = command = check = confirmation = _noop
+    fix_applied = unresolved = action = _noop

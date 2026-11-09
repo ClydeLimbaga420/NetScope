@@ -117,37 +117,18 @@ class SubprocessRunner(CommandRunner):
             process_env = {**os.environ, **dict(env)}
 
         try:
-            completed = subprocess.run(
+            process = subprocess.Popen(
                 argv,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                stdin=subprocess.PIPE if stdin_data is not None else None,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=effective_timeout,
                 cwd=cwd,
                 env=process_env,
-                input=stdin_data,
                 shell=False,
                 creationflags=_creation_flags(),
-            )
-            duration = time.monotonic() - started
-            result = CommandResult(
-                args=tuple(argv),
-                returncode=int(completed.returncode),
-                stdout=completed.stdout or "",
-                stderr=completed.stderr or "",
-                duration_seconds=duration,
-            )
-        except subprocess.TimeoutExpired as exc:
-            duration = time.monotonic() - started
-            result = CommandResult(
-                args=tuple(argv),
-                returncode=124,
-                stdout=_decode(exc.stdout),
-                stderr=_decode(exc.stderr),
-                duration_seconds=duration,
-                timed_out=True,
-                error=f"timed out after {effective_timeout}s",
             )
         except (OSError, ValueError) as exc:
             duration = time.monotonic() - started
@@ -157,7 +138,58 @@ class SubprocessRunner(CommandRunner):
                 duration_seconds=duration,
                 error=f"{type(exc).__name__}: {exc}",
             )
+            self._log(argv, result, effective_timeout)
+            return result
 
+        try:
+            stdout, stderr = process.communicate(
+                input=stdin_data,
+                timeout=effective_timeout,
+            )
+            duration = time.monotonic() - started
+            result = CommandResult(
+                args=tuple(argv),
+                returncode=int(process.returncode),
+                stdout=_decode(stdout),
+                stderr=_decode(stderr),
+                duration_seconds=duration,
+            )
+        except subprocess.TimeoutExpired as exc:
+            try:
+                process.kill()
+            except OSError:
+                pass
+            try:
+                stdout, stderr = process.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                stdout, stderr = exc.output or b"", exc.stderr or b""
+            duration = time.monotonic() - started
+            result = CommandResult(
+                args=tuple(argv),
+                returncode=124,
+                stdout=_decode(stdout),
+                stderr=_decode(stderr),
+                duration_seconds=duration,
+                timed_out=True,
+                error=f"timed out after {effective_timeout}s",
+            )
+        except KeyboardInterrupt:
+            try:
+                process.kill()
+            except OSError:
+                pass
+            try:
+                process.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+            if self.logger is not None:
+                self.logger.event("command_interrupted", args=argv)
+            raise
+
+        self._log(argv, result, effective_timeout)
+        return result
+
+    def _log(self, argv: list[str], result: CommandResult, timeout: float | None) -> None:
         if self.logger is not None:
             self.logger.command(
                 argv,
@@ -165,11 +197,9 @@ class SubprocessRunner(CommandRunner):
                 duration_seconds=result.duration_seconds,
                 stdout=result.stdout,
                 stderr=result.stderr or (result.error or ""),
-                timeout=effective_timeout,
+                timeout=timeout,
                 timed_out=result.timed_out,
             )
-
-        return result
 
 
 class FakeRunner(CommandRunner):

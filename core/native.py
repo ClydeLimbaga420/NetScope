@@ -251,6 +251,38 @@ def parse_w32tm_status(output: str) -> dict[str, str]:
     return values
 
 
+_MTU_LINE = re.compile(r"^\s*(\d+)\s+\d+\s+\d+\s+\d+\s+(.+?)\s*$", re.M)
+
+
+def parse_mtu(output: str) -> dict[str, int]:
+    """Parse ``netsh interface ipv4 show subinterfaces`` into alias → MTU."""
+
+    values: dict[str, int] = {}
+    for match in _MTU_LINE.finditer(output or ""):
+        mtu_text, alias = match.groups()
+        try:
+            mtu = int(mtu_text)
+        except ValueError:
+            continue
+        if mtu <= 0 or mtu > 65535:
+            continue
+        values[alias.strip()] = mtu
+    return values
+
+
+def parse_mtu_probe_reply(output: str, returncode: int) -> tuple[bool, str]:
+    """Interpret a don't-fragment ping used for path-MTU probing."""
+
+    lowered = (output or "").lower()
+    if returncode != 0:
+        return False, lowered
+    if any(marker in lowered for marker in ("fragmented", "too big", "packet needs to be fragmented")):
+        return False, lowered
+    if any(marker in lowered for marker in ("ttl=", "ttl =", "bytes=", "reply from", "antwort von")):
+        return True, lowered
+    return False, lowered
+
+
 def _as_list(value: Any) -> list[Any]:
     if value is None:
         return []

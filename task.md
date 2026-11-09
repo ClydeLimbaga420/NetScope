@@ -91,39 +91,39 @@ Existing code that must keep working: the Flask dashboard (`app.py`,
 ## Phase 2 — CLI (argparse + interactive shell)
 
 ### 2.1 Argument parsing and global flags
-- [ ] `netscope diagnose [--layer ...]`, `fix`, `info`, `logs`, `report`,
+- [x] `netscope diagnose [--layer ...]`, `fix`, `info`, `logs`, `report`,
       `gui`, `install`, `uninstall`, `--version`
-- [ ] Built-in utilities: `ping`, `trace`, `dns`, `arp`, `routes`, `ports`,
+- [x] Built-in utilities: `ping`, `trace`, `dns`, `arp`, `routes`, `ports`,
       `mtu`
-- [ ] Global `--json`, `--no-color`, `--quiet`, `--verbose`, `--yes`,
+- [x] Global `--json`, `--no-color`, `--quiet`, `--verbose`, `--yes`,
       `--dry-run`, `--yes-i-understand-risk`
-- [ ] Documented exit codes (0/1/2/3/4/64) in `--help`
+- [x] Documented exit codes (0/1/2/3/4/64) in `--help`
 
 ### 2.2 Output layer
-- [ ] Color/symbol renderer with NO_COLOR + piped/non-TTY fallback
-- [ ] Enable Windows VT processing via ctypes
-- [ ] stdout = results, stderr = progress/errors
-- [ ] Live progress lines/spinner; JSON mode emits one valid document
-- [ ] Never prompt when stdin is not a TTY unless `--yes`
+- [x] Color/symbol renderer with NO_COLOR + piped/non-TTY fallback
+- [x] Enable Windows VT processing via ctypes
+- [x] stdout = results, stderr = progress/errors
+- [x] Live progress lines/spinner; JSON mode emits one valid document
+- [x] Never prompt when stdin is not a TTY unless `--yes`
 
 ### 2.3 Interactive shell
-- [ ] `netscope>` prompt, history, tab completion
-- [ ] Numbered beginner menu fallback
-- [ ] Shell commands mirror subcommands
-- [ ] Ctrl+C: kill children, log, restore terminal
+- [x] `netscope>` prompt, history, tab completion
+- [x] Numbered beginner menu fallback
+- [x] Shell commands mirror subcommands
+- [x] Ctrl+C: kill children, log, restore terminal
 
 ### 2.4 Admin handling
-- [ ] Elevation detection up front
-- [ ] Offer UAC relaunch or print exact admin command
+- [x] Elevation detection up front
+- [x] Offer UAC relaunch or print exact admin command
 
 ### 2.5 CLI tests
-- [ ] Parsing, every `--help`, exit codes, `--json` schema validation
-- [ ] No ANSI when piped/NO_COLOR
-- [ ] Non-TTY never prompts; Ctrl+C handling
+- [x] Parsing, every `--help`, exit codes, `--json` schema validation
+- [x] No ANSI when piped/NO_COLOR
+- [x] Non-TTY never prompts; Ctrl+C handling
 
 ### 2.6 Phase 2 close-out
-- [ ] Update `AGENTS.md`
-- [ ] Update Notes below
+- [x] Update `AGENTS.md`
+- [x] Update Notes below
 
 ---
 
@@ -258,4 +258,37 @@ Session 1 (Phase 1):
 
 Phase 1 close-out: `AGENTS.md` updated with the new architecture, commands and
 validated behaviour. Next session starts at **Phase 2 — CLI** in this file.
+
+Session 2 (Phase 2):
+- Added the CLI package (`cli/`) and root `netscope.py`: argparse parser,
+  dispatch/handlers, ANSI/ASCII renderer, `netscope>` shell (readline history +
+  completion when available, numbered menu), admin helpers, exit codes and
+  utilities (`ping`, `trace`, `dns`, `arp`, `routes`, `ports`, `mtu`).
+- `diagnose` streams each check result as it completes and prints a summary;
+  `--json` emits one document with `summary` and **no full snapshot**.
+  `DiagnosticReport.to_dict(include_snapshot=...)` keeps reports full and CLI
+  output small.
+- `core/info.py` + `parse_mtu` + `mtu_interfaces` snapshot command provide
+  adapters, addressing/origin/state, routes, ARP, DNS, proxy, VPN, Wi-Fi and MTU
+  for `netscope info`. Admin status is attached by the CLI.
+- `DiagnosticEngine` now accepts an `on_check` callback in addition to the
+  per-layer `progress` callback.
+- `SubprocessRunner` uses `Popen` + `communicate`: timeouts and Ctrl+C kill the
+  child, timeouts keep exit code 124, and interrupted commands are logged.
+- `logs` reads/opens/exports `%LOCALAPPDATA%\NetScope\logs\netscope.log`;
+  `report` writes txt/json to `%LOCALAPPDATA%\NetScope\reports\` (or `--output`,
+  with `-` for stdout). Config/log/report paths remain in `config.py`.
+- Honest stubs remain: `fix` validates the ID, prints admin guidance and exits 3
+  until Phase 3; `gui`/`install`/`uninstall` exit 3 with phase messages until
+  Phases 4/5.
+- Real-machine smoke tests passed for `--help`, `--version`, `info`, `diagnose`,
+  `ping`, `dns`, `arp`, `routes`, `ports`, `mtu`, `logs` and `report`.
+  Fixes found during validation: numeric `PrefixOrigin`/`AddressState` mapping,
+  filter placeholder `{}` DNS values, normalize Wi-Fi key casing, always
+  collect native ARP, and exclude ping summary lines from latency parsing.
+- Tests: 84 passing (`tests/test_cli.py` added). Lint/typecheck is still not
+  configured; `python -m compileall` is clean.
+
+Phase 2 close-out: `AGENTS.md` updated. Next session starts at **Phase 3 — Fix
+catalog, fix flow, snapshot/rollback, if_unresolved** in this file.
 

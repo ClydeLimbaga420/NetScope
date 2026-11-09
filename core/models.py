@@ -174,9 +174,9 @@ class DiagnosticReport:
             return 1
         return 0
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, include_snapshot: bool = True) -> dict[str, Any]:
         failing = self.first_failing_layer
-        return {
+        payload = {
             "app": "NetScope",
             "session_id": self.session_id,
             "started_at": self.started_at,
@@ -185,6 +185,12 @@ class DiagnosticReport:
             "overall_status": self.overall_status.value,
             "first_failing_layer": failing.value if failing else None,
             "exit_code": self.exit_code,
+            "summary": {
+                status.value: sum(1 for result in self.results if result.status is status)
+                for status in Status
+            },
             "results": [result.to_dict() for result in self.results],
-            "snapshot": self.snapshot,
         }
+        if include_snapshot:
+            payload["snapshot"] = self.snapshot
+        return payload

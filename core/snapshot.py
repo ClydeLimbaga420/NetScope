@@ -76,6 +76,7 @@ NATIVE_COMMANDS: dict[str, list[str]] = {
     "wlan_interfaces": ["netsh", "wlan", "show", "interfaces"],
     "winsock_catalog": ["netsh", "winsock", "show", "catalog"],
     "w32tm_status": ["w32tm", "/query", "/status"],
+    "mtu_interfaces": ["netsh", "interface", "ipv4", "show", "subinterfaces"],
 }
 
 
@@ -137,7 +138,7 @@ def collect_snapshot(
             )
 
         for name, argv in NATIVE_COMMANDS.items():
-            if name in {"ipconfig_all", "arp", "route_print"} and batch.available:
+            if name in {"ipconfig_all", "route_print"} and batch.available:
                 # Native fallbacks are only needed when the cmdlets failed.
                 continue
             result = runner.run(argv, timeout=native_timeout)

@@ -32,6 +32,7 @@ CHECK_MODULES = {
 }
 
 ProgressCallback = Callable[[Layer, list[CheckResult]], None]
+CheckCallback = Callable[[CheckResult], None]
 
 
 def resolve_layers(layers: Sequence[str | Layer] | None) -> list[Layer]:
@@ -70,12 +71,18 @@ class DiagnosticEngine:
         layer = self.ps or PowerShellLayer(self.runner, self.logger)
         return collect_snapshot(self.runner, layer, self.logger)
 
+    def collect_snapshot(self) -> Snapshot:
+        """Collect machine state without running any checks."""
+
+        return self._snapshot()
+
     def diagnose(
         self,
         layers: Sequence[str | Layer] | None = None,
         *,
         snapshot: Snapshot | None = None,
         progress: ProgressCallback | None = None,
+        on_check: CheckCallback | None = None,
         mode: str = "cli",
     ) -> DiagnosticReport:
         selected = resolve_layers(layers)
@@ -132,6 +139,8 @@ class DiagnosticEngine:
                     layer_results.append(result)
                     if self.logger is not None:
                         self.logger.check(result)
+                    if on_check is not None:
+                        on_check(result)
 
             if progress is not None:
                 progress(layer, layer_results)
