@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>NetScope | Network Monitor</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+
+        <div class="brand">
+            <div>
+                <h2>NetScope</h2>
+                <small>NETWORK MONITOR</small>
+            </div>
+        </div>
+
+        <p class="nav-label">MONITORING</p>
+
+        <a href="#overview" class="nav-item active" data-view="main" data-scroll="overview-top">
+            &#9707; Overview
+        </a>
+
+        <a href="#devices" class="nav-item" data-view="main" data-scroll="devices">
+            &#9638; Devices
+        </a>
+
+        <a href="#traffic" class="nav-item" data-view="main" data-scroll="traffic">
+            &#8961; Traffic
+        </a>
+
+        <p class="nav-label spaced">TOOLS</p>
+
+        <a href="#troubleshoot" class="nav-item" data-view="troubleshoot">
+            &#9881; Troubleshoot
+        </a>
+
+        <div class="sidebar-bottom">
+            <span class="pulse"></span>
+            Local monitoring active
+        </div>
+
+    </aside>
+
+
+    <!-- MAIN CONTENT -->
+    <main class="main">
+
+        <div class="page-view active" id="view-main" data-view="main">
+
+        <div id="overview-top"></div>
+
+        <!-- HEADER -->
+        <header class="topbar">
+
+            <div>
+                <p class="eyebrow">NETWORK / OVERVIEW</p>
+
+                <h1>Network Overview</h1>
+
+                <p class="muted">
+                    Your local network, at a glance.
+                </p>
+            </div>
+
+            <div class="top-status">
+                <span class="pulse"></span>
+                LIVE
+
+                <span id="last-updated">
+                    Waiting for data...
+                </span>
+            </div>
+
+        </header>
+
+
+        <!-- STATISTICS -->
+        <section class="cards">
+
+            <article class="card">
+
+                <div class="card-top">
+
+                    <p class="card-label">INTERNET STATUS</p>
+
+                    <span class="card-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="1.8"
+                             stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="9"></circle>
+                            <path d="M3 12h18"></path>
+                            <path d="M12 3c2.5 2.4 4 5.6 4 9s-1.5 6.6-4 9c-2.5-2.4-4-5.6-4-9s1.5-6.6 4-9z"></path>
+                        </svg>
+                    </span>
+
+                </div>
+
+                <div class="metric-line">
+
+                    <span
+                        class="status-dot"
+                        id="internet-dot">
+                    </span>
+
+                    <strong id="internet-status">
+                        Checking
+                    </strong>
+
+                </div>
+
+                <p class="card-foot" id="internet-host">
+                    Target: 1.1.1.1
+                </p>
+
+                <p class="card-foot card-reason" id="internet-reason" hidden></p>
+
+            </article>
+
+
+            <article class="card">
+
+                <div class="card-top">
+
+                    <p class="card-label">DOWNLOAD SPEED</p>
+
+                    <span class="card-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="1.8"
+                             stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 4v12"></path>
+                            <path d="m7 11 5 5 5-5"></path>
+                            <path d="M5 20h14"></path>
+                        </svg>
+                    </span>
+
+                </div>
+
+                <div class="metric-line">
+
+                    <strong id="download-speed">&mdash;</strong>
+
+                    <span class="unit">Mbps</span>
+
+                </div>
+
+                <p class="card-foot">
+                    Current receive rate
+                </p>
+
+            </article>
+
+
+            <article class="card">
+
+                <div class="card-top">
+
+                    <p class="card-label">UPLOAD SPEED</p>
+
+                    <span class="card-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="1.8"
+                             stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 20V8"></path>
+                            <path d="m7 13 5-5 5 5"></path>
+                            <path d="M5 4h14"></path>
+                        </svg>
+                    </span>
+
+                </div>
+
+                <div class="metric-line">
+
+                    <strong id="upload-speed">&mdash;</strong>
+
+                    <span class="unit">Mbps</span>
+
+                </div>
+
+                <p class="card-foot">
+                    Current transmit rate
+                </p>
+
+            </article>
+
+
+            <article class="card">
+
+                <div class="card-top">
+
+                    <p class="card-label">INTERNET LATENCY</p>
+
+                    <span class="card-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="1.8"
+                             stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="9"></circle>
+                            <path d="M12 7v5l3 2"></path>
+                        </svg>
+                    </span>
+
+                </div>
+
+                <div class="metric-line">
+
+                    <strong id="latency">&mdash;</strong>
+
+                    <span class="unit">ms</span>
+
+                </div>
+
+                <p class="card-foot">
+                    Ping to 1.1.1.1
+                </p>
+
+            </article>
+
+
+            <article class="card" id="packet-loss-card">
+
+                <div class="card-top">
+
+                    <p class="card-label">PACKET LOSS</p>
+
+                    <span class="card-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="1.8"
+                             stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 12h4l2-5 4 10 2-5h4"></path>
+                        </svg>
+                    </span>
+
+                </div>
+
+                <div class="metric-line">
+
+                    <strong id="packet-loss">&mdash;</strong>
+
+                    <span class="unit">%</span>
+
+                </div>
+
+                <p class="card-foot" id="packet-loss-detail">
+                    Monitoring internet (1.1.1.1)
+                </p>
+
+            </article>
+
+
+        </section>
+
+
+        <!-- CONTENT GRID -->
+        <section class="content-grid">
+
+
+            <!-- TRAFFIC CHART -->
+            <article class="panel wide" id="traffic">
+
+                <div class="panel-head">
+
+                    <div>
+                        <h2>Live Network Traffic</h2>
+
+                        <p class="muted">
+                            Upload and download throughput
+                        </p>
+                    </div>
+
+                    <span class="live-tag">
+                        <span class="live-dot" aria-hidden="true"></span>
+                        LIVE
+                    </span>
+
+                </div>
+
+                <div class="chart-wrap">
+
+                    <canvas id="traffic-chart"></canvas>
+
+                </div>
+
+            </article>
+
+
+            <!-- CONNECTION INFORMATION -->
+            <article class="panel">
+
+                <div class="panel-head">
+
+                    <div>
+                        <h2>Connection</h2>
+
+                        <p class="muted">
+                            This computer
+                        </p>
+                    </div>
+
+                </div>
+
+
+                <div class="info-list">
+
+                    <div>
+                        <span>Hostname</span>
+                        <strong id="hostname">&mdash;</strong>
+                    </div>
+
+                    <div>
+                        <span>Local IP</span>
+                        <strong id="local-ip">&mdash;</strong>
+                    </div>
+
+                    <div>
+                        <span>Default gateway</span>
+                        <strong id="gateway">&mdash;</strong>
+                    </div>
+
+                    <div>
+                        <span>Active interfaces</span>
+                        <strong id="interface-count">&mdash;</strong>
+                    </div>
+
+                </div>
+
+                <p class="info-reason" id="connection-reason" hidden></p>
+
+
+                <div class="subhead">
+                    NETWORK ADAPTERS
+                </div>
+
+                <div id="interfaces" class="adapter-list">
+                    <span class="muted">Loading...</span>
+                </div>
+
+            </article>
+
+        </section>
+
+
+        <!-- DEVICES -->
+        <section class="panel devices-panel" id="devices">
+
+            <div class="panel-head">
+
+                <div>
+                    <h2>Devices on Your Network</h2>
+
+                    <p class="muted">
+                        Devices seen on your network, with resolved names
+                    </p>
+                </div>
+
+                <div class="devices-actions">
+
+                    <span class="device-count" id="device-count"></span>
+
+                    <button id="refresh-devices">
+                        Refresh devices
+                    </button>
+
+                </div>
+
+            </div>
+
+
+            <div class="table-wrap" id="device-table-wrap">
+
+                <table>
+
+                    <thead>
+
+                        <tr>
+                            <th>DEVICE NAME</th>
+                            <th>BRAND</th>
+                            <th>IP ADDRESS</th>
+                            <th>MAC ADDRESS</th>
+                            <th>ENTRY TYPE</th>
+                        </tr>
+
+                    </thead>
+
+                    <tbody id="device-rows">
+
+                        <tr>
+                            <td colspan="5" class="empty">
+                                Loading devices...
+                            </td>
+                        </tr>
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+            <p class="note">
+                Devices are discovered by probing the local subnet
+                and reading the ARP cache. Brands come from MAC
+                vendor data. Double-click a device name to save
+                a friendly label in this browser. The table shows
+                eight devices at a time; scroll inside it to see
+                the rest.
+            </p>
+
+        </section>
+
+
+        </div>
+
+
+        <div class="page-view" id="view-troubleshoot" data-view="troubleshoot">
+
+        <!-- TROUBLESHOOTING -->
+        <section class="panel troubleshoot-panel" id="troubleshoot">
+
+            <div class="panel-head troubleshoot-head">
+
+                <div>
+                    <p class="eyebrow">TOOLS / TROUBLESHOOTING</p>
+
+                    <h2>Network Troubleshooting</h2>
+
+                    <p class="muted">
+                        Follow the checks, then apply a repair when a
+                        step fails. No terminal required.
+                    </p>
+                </div>
+
+                <div class="troubleshoot-actions">
+
+                    <span
+                        class="elevation-badge"
+                        id="elevation-badge"
+                        hidden>
+                    </span>
+
+                    <button id="run-all-checks" type="button">
+                        Run all checks
+                    </button>
+
+                </div>
+
+            </div>
+
+            <div class="diag-progress">
+
+                <div class="diag-progress-head">
+
+                    <span
+                        class="diag-progress-label"
+                        id="troubleshoot-summary">
+                        Loading troubleshooting steps...
+                    </span>
+
+                    <span
+                        class="diag-progress-value"
+                        id="troubleshoot-percent">
+                        0%
+                    </span>
+
+                </div>
+
+                <div class="diag-progress-track">
+                    <span
+                        class="diag-progress-fill"
+                        id="diag-progress-fill">
+                    </span>
+                </div>
+
+            </div>
+
+            <div class="diag-layout">
+
+                <aside class="diag-rail">
+
+                    <div class="diag-group">
+
+                        <p class="diag-group-label">
+                            DIAGNOSTIC CHECKS
+                        </p>
+
+                        <div class="diag-items" id="check-steps">
+                            <p class="muted">Loading checks...</p>
+                        </div>
+
+                    </div>
+
+                    <div class="diag-group">
+
+                        <p class="diag-group-label">REPAIRS</p>
+
+                        <div class="diag-items" id="repair-steps">
+                            <p class="muted">Loading repairs...</p>
+                        </div>
+
+                    </div>
+
+                </aside>
+
+                <div class="diag-stage" id="diag-stage">
+                    <p class="muted">Loading step details...</p>
+                </div>
+
+            </div>
+
+            <p class="note">
+                Checks are read-only. Repairs change Windows network
+                settings and ask for confirmation. Winsock and TCP/IP
+                resets need administrator rights and a restart. Only
+                predefined commands are run.
+            </p>
+
+        </section>
+
+        </div>
+
+        <footer>
+            NetScope &middot; Local Network Monitoring
+            &middot; <span id="footer-time"></span>
+        </footer>
+
+    </main>
+
+
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+
+</body>
+
+</html>

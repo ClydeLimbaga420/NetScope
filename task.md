@@ -224,6 +224,179 @@ Existing code that must keep working: the Flask dashboard (`app.py`,
 
 ---
 
+
+## Phase 6 — Web UI replacement (tkinter ? local web UI)
+
+Goal: replace the tkinter GUI with a local web UI served from inside
+`netscope.exe` (Flask, Jinja2, vanilla HTML/CSS/JS) that uses **main's
+design/layout** and **build's features** over the SAME engine/fix/logging
+APIs as the CLI. No new engine/catalog/CLI/log-format behavior except what
+is strictly required for the web front end (list any such change and why).
+
+Branch/scope rules (binding): verify branches first; merge `main` into
+`build` with `--no-ff` (safety tag, conflicts resolved by ownership: design
+files = main wins, engine/catalog/fix/CLI/logging/installer/tests = build
+wins), run tests/smoke, then do all web work on `feature/web-ui` from merged
+build. **main receives no commits; build receives only the Step 0 merge.**
+Do not redesign/restyle/rename/reorganize main's UI. Add only features that
+exist in build; wire/trace every UI element to a main element or build
+feature. Engine/catalog/CLI behavior and log formats stay unchanged unless
+strictly required for web (document why).
+
+### Phase A — Verification, merge, audit, plan, parity
+- [x] Verify branches (`git branch -a`, logs, contents); confirm roles (main =
+      design/layout + dashboard features incl. packet-loss/QOL; build = engine/
+      CLI/fix/GUI/logging features). Flagged overlap on shared dashboard files.
+- [x] Step 0: clean tree, tag `build-pre-merge` on build, `git merge --no-ff
+      main` into build (real merge). Resolved conflicts by ownership; listed
+      resolutions. main unchanged.
+- [x] Post-merge checks: pytest, `netscope --version`, `netscope diagnose
+      --json` (mocked CLI test) pass. Investigated real-run `diagnose --json`:
+      produces valid JSON and correct exit code (1/WARN on this host), no code
+      fix required.
+- [x] Create `feature/web-ui` from merged build; all subsequent work there.
+- [x] Summarize existing tkinter GUI, main's design (templates/static/JS), and
+      engine/fix/logging public APIs.
+- [ ] Full design audit: pages/regions/components/themes/animations/breakpoints
+      and conflicts with security/offline rules (CDN/fonts, inline
+      script/style/handlers, inline style attrs, eval/new Function,
+      innerHTML/document.write with dynamic data, mock data, browser-only
+      settings that must be CLI-shared).
+- [ ] Build-features inventory (engine checks, fix catalog/flow/snapshot/
+      rollback/unresolved, CLI utilities info/ping/trace/dns/arp/routes/ports/
+      mtu/logs/report/monitor, logging, install/uninstall semantics) mapped to
+      main's existing layout (TOOLS focus per decision).
+- [ ] Produce parity tables: (1) every tkinter GUI screen/button/feature and
+      every CLI-only build feature ? web equivalent + place in main's layout +
+      status; (2) main design elements with no build feature behind them; (3)
+      build features with no natural place in main's layout (flag, use closest
+      existing pattern; ask before new nav/pages/regions).
+- [ ] Confirm plan before large amounts of code (placement decisions for
+      CLI-only tools inside TOOLS, legacy Troubleshoot `/api/diagnostics` vs
+      engine/fix integration approach, any appearance-affecting conflicts).
+
+### Phase B — Server, API, jobs/SSE, security (+ tests)
+- [ ] `web/` package: `server.py`, `api.py`, `security.py`, `jobs.py`,
+      `templates/`, `static/{css,js,img}`; app factory `create_app`, Blueprints
+      (pages + `/api`), explicit template/static folders via resource-path
+      helper (dev + PyInstaller `sys._MEIPASS`).
+- [ ] Flask run: debug=False, reloader off, threaded=True, bound to 127.0.0.1;
+      suppress dev-server banner in packaged exe; route Werkzeug request
+      logging into NetScope log (not console).
+- [ ] Background jobs for long ops (diagnose, fix, ping/trace, mtu, etc.) with
+      job IDs; SSE `text/event-stream` progress/results (no buffering,
+      keep-alive, disconnected client stops generator) + polling fallback;
+      cancel kills child processes.
+- [ ] Security (mandatory): bind 127.0.0.1 only; per-session random token
+      exchanged to HttpOnly SameSite=Strict cookie, redirect to clean URL; all
+      API requires cookie; all POST require custom header + JSON content type;
+      Host allowlist (127.0.0.1/localhost:port) + Origin/Referer validation on
+      POST; no CORS; strict CSP (`default-src 'self'`, no inline/eval/external,
+      `frame-ancestors 'none'`), `X-Content-Type-Options: nosniff`,
+      `Referrer-Policy: no-referrer`. Template autoescaping; JS renders via
+      textContent/safe DOM only (command output/SSIDs/hostnames/names
+      attacker-influenced).
+- [ ] Server-side fix confirmation: `POST /api/fix/plan` ? exact commands,
+      admin/risk/reboot, snapshot/rollback, single-use bound `confirmation_token`
+      (expiring); `POST /api/fix/execute` requires valid token, Risk H requires
+      `second_confirmation=true`, dry-run enforced server-side; only one fix at
+      a time. API accepts only catalog fix IDs/built-in utility names (no
+      command strings); params validated same as CLI, never concatenated.
+- [ ] JSON API routes (build features only + web infra): `/api/status`,
+      `/api/diagnose`, `/api/jobs/<id>`, `/api/jobs/<id>/events`,
+      `/api/jobs/<id>/cancel`, `/api/findings`, `/api/fix/plan`,
+      `/api/fix/execute`, `/api/fix/rollback`, `/api/unresolved/answer`,
+      `/api/info`, `/api/tools/<name>` (ping,trace,dns,arp,routes,ports,mtu),
+      `/api/logs`, `/api/logs/stream`, `/api/report`, `/api/open-log-folder`,
+      `/api/ui-event`, `/api/heartbeat`, `/api/shutdown`, `/api/elevate`.
+      Consistent error objects (code + plain message). JSON shapes aligned with
+      engine/CLI `--json`.
+- [ ] Logging (web): same module/JSON-lines/session semantics with `source:
+      "web"`; log server start/stop+port, every API call/outcome, plan/confirm
+      accepted|declined, every command (args/params/timestamps/exit/stdout/
+      stderr/duration), snapshots/rollbacks, unresolved+isolation answer,
+      UI-only actions, heartbeat loss/shutdown, security rejections, errors
+      with tracebacks.
+- [ ] Tests: API (Flask test client + real test server for SSE) success/error
+      shapes aligned to engine; security; confirmation; injection (template+JS
+      paths); jobs (ordered SSE, cancel kills children, disconnect safe, matches
+      CLI `--json` for mocked scenarios).
+
+### Phase C — Templates, wiring, CSP/offline fixes, feature integration
+- [ ] Convert main's `index.html` to Jinja2 templates (shared base: header/nav/
+      status chips/toast/footer) with identical markup/class structure/appearance;
+      server-rendered shells, JS fills live data.
+- [ ] Resolve security/offline conflicts with smallest identical-looking diffs:
+      move inline scripts/styles/handlers to `static/` + `addEventListener`;
+      bundle CDN assets/fonts/icons locally (Chart.js, Inter) or propose nearest
+      alternative before changing; replace `innerHTML` with textContent/safe DOM
+      for dynamic data preserving structure. Keep class names/CSS/layout/
+      interactions/copy/order.
+- [ ] Wire build features into main's existing layout/components only:
+      Dashboard (run/layers/dry-run, live progress, summary); Findings+fixes
+      (detail/evidence, Proceed-to-Fix modal with explanation+exact commands+
+      snapshot/rollback+admin/risk/reboot+dry-run, Risk H typed confirm, live
+      exec output/timings/exit + re-check, ladder/unresolved, fix history+
+      rollback); Unresolved panel (Yes/No/Not sure isolation re-rank, on/off
+      device ranked probable causes, next-check checklist, evidence); Network
+      info cards/tables (adapters/routes/ARP/DNS/proxy/VPN/Wi-Fi, copy/refresh);
+      TOOLS (ping/trace/dns/arp/routes/ports/mtu + info/logs/report surfaces as
+      needed, validated streaming/cancel/copy-export) in existing TOOLS patterns;
+      Settings/status (build-existing only, persisted in %LOCALAPPDATA%\NetScope
+      shared with CLI). No new nav/pages/layout regions without asking.
+- [ ] Main elements without build backing left as-is and listed; add only
+      states/components main lacks (e.g. modal) in main's style in separate
+      file(s) loaded after main CSS/JS.
+- [ ] Changelog of every edit to main's design files (file/lines/reason) and
+      list of every new design file.
+- [ ] Tests: template render with mocked data + autoescape; referenced static
+      assets exist; design-fidelity (screenshot compare small tolerance,
+      computed styles of key elements match) and changelog/unchanged-main-CSS
+      assertions where feasible.
+
+### Phase D — Launch/lifecycle, packaging, build tests
+- [ ] `netscope gui` / no-args from Win+R|Start|double-click start server+open UI;
+      no-args in terminal still opens interactive CLI shell. `netscope gui
+      --no-browser` and `--port N` (default random free). Open app-style window
+      (Edge --app, Chrome --app, fallback default browser). Preserve hidden
+      console on Win+R/Start and detach on `netscope gui`.
+- [ ] Single instance per user (lock/port file in %LOCALAPPDATA%\NetScope) opens
+      existing instance. Heartbeat (~few s); shutdown when no heartbeat ~20s and
+      no job/fix running; "Quit NetScope" (POST /api/shutdown); Ctrl+C exits
+      cleanly.
+- [ ] Elevation: Administrator status chip, non-admin banner, "Restart as
+      administrator" (UAC relaunch, exit old); disable/annotate admin-only
+      fixes when not elevated.
+- [ ] Bundle `templates/` and `static/` into exe (PyInstaller --add-data) via
+      resource-path helper; exclude unused Flask/Werkzeug/Jinja2 extras; verify
+      lightweight.
+- [ ] Tests: lifecycle (heartbeat shutdown, no shutdown while job runs,
+      single-instance, clean Ctrl+C, elevation/non-admin state); build tests
+      (`netscope.exe gui --no-browser --port <p>` serves dashboard, a static
+      CSS, `/api/status` from inside exe); report exe size (tkinter before vs
+      Flask web UI after).
+
+### Phase E — Remove tkinter, docs, CI, final reports
+- [ ] Remove tkinter from project and exe only after parity checklist passes
+      (all rows done/tested); delete tkinter code/imports.
+- [ ] Update README (dev run, server security, API reference, adding
+      page/route/static asset, exe bundling), Start Menu/shortcut behavior,
+      install/uninstall steps.
+- [ ] Update GitHub Actions `windows-latest`: run all web+core+fixes tests with
+      coverage; include headless browser smoke (Playwright) skipped gracefully
+      where unavailable.
+- [ ] Deliverables complete: branch/merge report, existing GUI+design+engine
+      summary & plan, exe size before/after, parity checklist (+ 2 extra
+      tables), web layer/templates/CSS/JS changes file-by-file + design
+      changelog + git diff --stat vs main, test suite + CI, build/launch/
+      installer updates, manual test checklist (VM scenarios incl. unfixable ?
+      unresolved panel).
+- [ ] Final: confirm `git log main..feature/web-ui`, `git diff --stat` vs main
+      for design files, `main` has no new commits, `build` has only Step 0
+      merge commit.
+
+---
+
 ## Notes
 
 Session 1 (Phase 1):
@@ -428,3 +601,40 @@ Session 7 (Phase 4, tkinter GUI):
   `gui_start` (venv redirector shows as two chained `python.exe` processes â€”
   normal venv behaviour, one GUI). `netscope --help` shows the new gui text.
 
+
+
+Session 8 (Web UI replacement — Phase A start, on `feature/web-ui`):
+- Branch verification: `main` @ 9d670d9 (design/layout + packet-loss/QOL
+  dashboard), `build` @ 9e8be23 (engine/CLI/fixes/GUI/logging). Diverged
+  `main +2 / build +11` (base 7b05eed); shared overlap in dashboard files and
+  `AGENTS.md`; `build/` dir untracked/ignored local artifact.
+- Step 0 complete: safety tag `build-pre-merge` @ 9e8be23; `git merge --no-ff
+  main` into `build` ? merge commit **7ae6f8b** (`Merge main into build (keep
+  main design/features intact, add build features)`). `main` unchanged.
+  Conflicts: `AGENTS.md` only (content) — resolved by merging build
+  architecture docs with compatible run/legacy notes (markers removed).
+  `app.py/modules/ping_monitor/network_info/diagnostics`, `templates/index.html`,
+  `static/css/style.css`, `static/js/dashboard.js` auto-merged from `main`
+  (kept intact). `config.py` remained build’s but preserves dashboard keys
+  (`APP_NAME/HOST/PORT/REFRESH_INTERVAL_MS/PING_TIMEOUT_SECONDS`). Created and
+  moved to `feature/web-ui` @ 7ae6f8b (all web work here).
+- Post-merge validation: `pytest -q` ? **128 passed**; `netscope --version` ?
+  `NetScope 0.3.0`; mocked `tests/test_cli.py -k "diagnose and json"` ? 1
+  passed. Real `netscope diagnose --json`/text investigated: emits complete
+  valid JSON and **exit 1 (WARN)** consistent with text output (NlaSvc/manual,
+  sharing services/firewall on this host) — not a regression; no engine/CLI/log
+  change made.
+- Phase A audit (initial): documented engine public API
+  (`DiagnosticEngine.collect_snapshot/diagnose`, models/report/exit codes,
+  runner/snapshot/probes), fix flow (`Catalog/load_catalog`, `FixExecutor
+  prepare/run/rollback`, `FixOutcome` statuses, if_unresolved probabilistic
+  ranking), logging (`setup_logging`/`StructuredLogger` JSON-lines fields &
+  helpers), tkinter GUI (layout/buttons, queue/worker/DialogBridge, fix
+  preview/confirm/risk-H/detect-only/unresolved/export/logs, launch/runtime),
+  and main design (shell/views, cards/traffic/devices/troubleshoot, JS
+  polling/CDN/`innerHTML` hotspots) for web parity planning.
+- `task.md` updated with Phase 6 (Web UI replacement) checklist A–E and this
+  session note. Remaining: detailed design/security audit, build-feature
+  inventory mapped to TOOLS, parity tables, confirmed plan, then Phase B.
+- Branch safety (current): `main` has no new commits; `build` has only Step 0
+  merge commit (7ae6f8b) beyond pre-merge tag; work on `feature/web-ui`.
