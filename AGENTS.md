@@ -8,12 +8,15 @@ engine and two front ends (CLI + GUI). Work phase by phase; update this file and
 **Current status: Phase 3 complete.** Phases 4-5 are not built yet.
 
 ## Run / environment
-- The Flask dashboard still works unchanged: `python app.py` → http://127.0.0.1:5000
-  (binds localhost, `debug=False`, `threaded=True`).
+- The Flask dashboard still works: `python app.py` → http://127.0.0.1:5000
+  locally, or `http://<LAN-IP>:5000` from another device. It binds
+  `HOST`/`PORT` from `config.py` (`0.0.0.0`, `debug=False`, `threaded=True`)
+  and prints reachable LAN URLs via `_lan_urls()`. No authentication — keep
+  it on a trusted LAN; never port-forward it to the internet.
 - This checkout originally had **no `.venv`**. A venv now exists (Python 3.14.7).
   Recreate with `py -m venv .venv`, then
   `.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt`.
-- Run tests: `.\.venv\Scripts\python.exe -m pytest` (pytest 9.x, 106 tests green).
+- Run tests: `.\.venv\Scripts\python.exe -m pytest` (pytest 9.x, 108 tests green).
 - Run the CLI: `.\.venv\Scripts\python.exe netscope.py --help`
   (or `python -m cli`). `netscope.py diagnose --json` is the machine interface.
 - PowerShell is required for diagnostics (Windows PowerShell 5.1).
@@ -180,19 +183,57 @@ print(outcome.exit_code, outcome.status, outcome.to_dict())
 - Firewall discovery check evaluates a group as enabled if any inbound Allow rule
   is enabled (avoids false "62 rules disabled").
 
-## Legacy dashboard notes (still true)
-- `app.py` exposes only `/`, `/api/status`, `/api/devices`; `static/js/dashboard.js`
+## Legacy dashboard notes (still true, merged from main)
+- `app.py` exposes `/`, `/api/status`, `/api/devices`, `/api/diagnostics`, and
+  `POST /api/diagnostics/<step_id>/run`; `static/js/dashboard.js`
   polls `/api/status` every 2000 ms (`config.REFRESH_INTERVAL_MS` is unused; only
-  `PING_TIMEOUT_SECONDS` is read).
+  `PING_TIMEOUT_SECONDS` is read). No authentication: the dashboard and the
+  diagnostics/repair endpoints are reachable by anyone who can access port 5000.
+- `modules/diagnostics.py` is a registry of predefined checks/repairs (adapter
+  status, IP config, loopback, gateway/internet ping, DNS, traceroute, DNS
+  flush, DHCP renew, Winsock/TCP-IP reset). Commands are argv lists — never
+  shell strings — and the client can only select a known `step_id`; there is
+  no arbitrary command execution. Windows-only repairs report as unsupported
+  elsewhere. `run_diagnostic` returns `{id, success, commands, output,
+  duration_ms}`; `list_diagnostics` returns each step's `id`, `title`,
+  `description`, `kind`, `requires_admin`, `supported`, `available`,
+  `command`, `reason`, `timeout`, plus `elevated`, `system`, `check_count`,
+  `repair_count`.
 - `BandwidthMonitor` is a module-level singleton; rates are deltas between
-  requests; the dashboard applies EMA smoothing client-side.
+  requests (multiple tabs or a changed poll interval distort readings); the
+  dashboard applies EMA smoothing (`SMOOTHING_FACTOR = 0.34`) client-side.
+- Each `/api/status` call synchronously shells out to `ping` twice
+  (hardcoded internet host `1.1.1.1` and the detected gateway); ping output
+  is regex-parsed per OS.
 - Device discovery warms the ARP cache (private subnets, max 1024 hosts, 15 s
-  cache) then parses `arp -a`; names via NetBIOS UDP 137 then reverse DNS
-  (1.5 s budget, 300 s/60 s caches). The dashboard retries `/api/devices` after 6 s.
-- Brands come from `modules/oui_vendors.py`; locally administered MACs show
-  `Private MAC`. Device overrides are in browser localStorage.
-- Chart.js loads from a CDN (charts need internet).
-- `modules/diagnostics.py` is empty and `database/db.py` is unused scaffolding.
+  cache) then parses `arp -a`, filtering multicast/broadcast entries; it never
+  scans public/routed networks. Names via NetBIOS UDP 137 then reverse DNS
+  (1.5 s budget, 300 s/60 s caches). The dashboard retries `/api/devices`
+  after 6 s.
+- Brands come from the offline OUI map in `modules/oui_vendors.py`
+  (common-prefix subset generated from Wireshark's `manuf` data at
+  `https://www.wireshark.org/download/automated/data/manuf`); locally
+  administered MACs show `Private MAC`. Regenerate this data if vendor
+  coverage is insufficient. The device table has five columns (name, brand,
+  IP, MAC, entry type); `/api/devices` returns `name`, `vendor`, `ip`, `mac`,
+  `type`. Device overrides are in browser localStorage; double-click a name
+  to rename it. The table shows up to 8 rows (`DEVICE_VISIBLE_ROWS` in
+  `dashboard.js`; `applyDeviceScrollHeight()` measures the sticky `thead`
+  plus the first 8 rows and sets `.table-wrap` max-height, rerun on device
+  refresh and window resize; 420px CSS fallback). `#device-count` is a pill
+  updated on each `/api/devices` render.
+- Chart.js loads from a CDN (charts need internet). `dashboard.js` calls
+  `new Chart(...)` unguarded near the top; if the CDN fails on a fresh load,
+  the rest of the script (devices, scroll sizing, diagnostics) never executes.
+- The Troubleshoot panel is a master-detail UI: `#check-steps`/`#repair-steps`
+  render a grouped rail and `#diag-stage` renders the selected step.
+  Per-step results live in `diagnosticStates`;
+  `updateDiagnosticsSummary()` drives the progress bar
+  (`#diag-progress-fill`, `#troubleshoot-percent`). Unsupported steps stay
+  selectable so their `reason` is visible, but their run button is disabled.
+  Repairs prompt via `window.confirm` and warn when not elevated.
+- `database/db.py` is not imported anywhere — the SQLite schema is unused
+  scaffolding (`database/netscope.db` is gitignored).
 - Do not delete `modules/`, `templates/`, `static/`, SQLite scaffolding until a
   later phase explicitly replaces them.
 

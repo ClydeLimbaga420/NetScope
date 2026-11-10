@@ -20,5 +20,8 @@ venv/
 .DS_Store
 Thumbs.db
 
+# Test cache
 .pytest_cache/
+
+# Project prompt (internal)
 prompt.txt

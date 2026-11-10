@@ -12,6 +12,10 @@ from pathlib import Path
 APP_NAME = "NetScope"
 APP_VERSION = "0.3.0"
 
+HOST = "0.0.0.0"
+
+PORT = 5000
+
 REFRESH_INTERVAL_MS = 2000
 
 PING_TIMEOUT_SECONDS = 1

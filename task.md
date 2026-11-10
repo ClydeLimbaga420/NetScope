@@ -343,3 +343,24 @@ Session 5 (Phase 3 review before Phase 4):
   does not script ("outside this safe flow"). Document it in Phase 5 README.
 - All tests pass (106 existing + 2 new in `tests/test_fixes.py`).
 
+Session 6 (merge main into build, pre-Phase-4):
+- User confirmed LAN-09 stays DETECT-ONLY; review patches committed as
+  `22050f1` on `build`.
+- Merged `main` (dashboard work: filled `modules/diagnostics.py` registry,
+  `/api/diagnostics` + `POST /api/diagnostics/<step_id>/run`, Troubleshoot
+  panel, expanded dashboard UI) into `build`.
+- Conflicts resolved: `.gitignore` (union: pytest cache + prompt.txt) and
+  `AGENTS.md` — this file had leftover committed conflict markers from an
+  earlier attempt; resolved properly now: kept the build-side architecture
+  doc, folded main's dashboard notes into one updated "Legacy dashboard
+  notes" section, corrected stale facts (dashboard binds `HOST`/`PORT`
+  0.0.0.0 with `_lan_urls()`; `modules/diagnostics.py` is no longer empty;
+  tests 106 -> 108).
+- `app.py`/`config.py`/`README.md` auto-merged; app now binds `0.0.0.0`
+  from `config.HOST/PORT` and prints LAN URLs.
+- Verified post-merge: 108 pytest tests pass; Flask test client smoke of
+  `/`, `/api/status`, `/api/devices`, `/api/diagnostics` (11 steps,
+  check_count 7 / repair_count 4) and `POST /api/diagnostics/<id>/run`
+  all work.
+- Phase 4 (tkinter GUI) starts next from this merged state.
+
