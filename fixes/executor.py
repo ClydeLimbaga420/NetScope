@@ -25,7 +25,7 @@ from core.native import (
     parse_tcp_autotuning,
     parse_wlan_interfaces,
 )
-from core.runner import CommandResult, CommandRunner
+from core.runner import CommandCancelled, CommandResult, CommandRunner
 from core.snapshot import Snapshot
 from fixes.catalog import (
     Catalog,
@@ -495,7 +495,7 @@ class FixExecutor:
                 format_args(command.args, values),
                 timeout=command.timeout or config.DEFAULT_COMMAND_TIMEOUT_SECONDS,
             )
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, CommandCancelled):
             raise
         except Exception as exc:
             return CommandResult(

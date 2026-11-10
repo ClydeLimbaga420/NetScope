@@ -10,11 +10,29 @@ import locale
 import os
 import subprocess
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Mapping, Sequence
+from threading import Event
+from typing import Any, Iterator, Mapping, Sequence
 
 import config
+
+_CANCEL_EVENT: ContextVar[Event | None] = ContextVar("netscope_cancel_event", default=None)
+
+
+class CommandCancelled(Exception):
+    """Raised when the active background job cancels a running command."""
+
+
+@contextmanager
+def cancellation_scope(event: Event) -> Iterator[None]:
+    token = _CANCEL_EVENT.set(event)
+    try:
+        yield
+    finally:
+        _CANCEL_EVENT.reset(token)
 
 
 @dataclass(frozen=True)
@@ -111,6 +129,9 @@ class SubprocessRunner(CommandRunner):
 
         effective_timeout = timeout if timeout is not None else self.default_timeout
         started = time.monotonic()
+        cancel_event = _CANCEL_EVENT.get()
+        if cancel_event is not None and cancel_event.is_set():
+            raise CommandCancelled("job cancelled")
 
         process_env = None
         if env:
@@ -142,10 +163,37 @@ class SubprocessRunner(CommandRunner):
             return result
 
         try:
-            stdout, stderr = process.communicate(
-                input=stdin_data,
-                timeout=effective_timeout,
-            )
+            if cancel_event is None:
+                stdout, stderr = process.communicate(
+                    input=stdin_data,
+                    timeout=effective_timeout,
+                )
+            else:
+                deadline = (
+                    started + effective_timeout if effective_timeout is not None else None
+                )
+                pending_input = stdin_data
+                while True:
+                    if cancel_event.is_set():
+                        process.kill()
+                        try:
+                            process.communicate(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            pass
+                        if self.logger is not None:
+                            self.logger.event("command_cancelled", args=argv)
+                        raise CommandCancelled("job cancelled")
+                    remaining = deadline - time.monotonic() if deadline is not None else 0.1
+                    if remaining <= 0:
+                        raise subprocess.TimeoutExpired(argv, effective_timeout)
+                    try:
+                        stdout, stderr = process.communicate(
+                            input=pending_input,
+                            timeout=min(remaining, 0.1),
+                        )
+                        break
+                    except subprocess.TimeoutExpired:
+                        pending_input = None
             duration = time.monotonic() - started
             result = CommandResult(
                 args=tuple(argv),
@@ -184,6 +232,8 @@ class SubprocessRunner(CommandRunner):
                 pass
             if self.logger is not None:
                 self.logger.event("command_interrupted", args=argv)
+            raise
+        except CommandCancelled:
             raise
 
         self._log(argv, result, effective_timeout)

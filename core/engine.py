@@ -16,7 +16,7 @@ from core.models import (
     new_session_id,
 )
 from core.probes import NetworkProbe
-from core.runner import CommandRunner, SubprocessRunner
+from core.runner import CommandCancelled, CommandRunner, SubprocessRunner
 from core.snapshot import Snapshot, collect_snapshot
 from powershell.runner import PowerShellLayer
 
@@ -113,7 +113,7 @@ class DiagnosticEngine:
             for module in CHECK_MODULES[layer]:
                 try:
                     produced = module.run(ctx)
-                except KeyboardInterrupt:
+                except (KeyboardInterrupt, CommandCancelled):
                     if self.logger is not None:
                         self.logger.event("interrupted", phase=layer.value)
                     raise

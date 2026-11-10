@@ -257,21 +257,21 @@ strictly required for web (document why).
 - [x] Create `feature/web-ui` from merged build; all subsequent work there.
 - [x] Summarize existing tkinter GUI, main's design (templates/static/JS), and
       engine/fix/logging public APIs.
-- [ ] Full design audit: pages/regions/components/themes/animations/breakpoints
+- [x] Full design audit: pages/regions/components/themes/animations/breakpoints
       and conflicts with security/offline rules (CDN/fonts, inline
       script/style/handlers, inline style attrs, eval/new Function,
       innerHTML/document.write with dynamic data, mock data, browser-only
-      settings that must be CLI-shared).
-- [ ] Build-features inventory (engine checks, fix catalog/flow/snapshot/
+      settings that must be CLI-shared). Documented in `docs/phaseA-web-ui.md`.
+- [x] Build-features inventory (engine checks, fix catalog/flow/snapshot/
       rollback/unresolved, CLI utilities info/ping/trace/dns/arp/routes/ports/
       mtu/logs/report/monitor, logging, install/uninstall semantics) mapped to
       main's existing layout (TOOLS focus per decision).
-- [ ] Produce parity tables: (1) every tkinter GUI screen/button/feature and
+- [x] Produce parity tables: (1) every tkinter GUI screen/button/feature and
       every CLI-only build feature ? web equivalent + place in main's layout +
       status; (2) main design elements with no build feature behind them; (3)
       build features with no natural place in main's layout (flag, use closest
       existing pattern; ask before new nav/pages/regions).
-- [ ] Confirm plan before large amounts of code (placement decisions for
+- [x] Confirm plan before large amounts of code (placement decisions for
       CLI-only tools inside TOOLS, legacy Troubleshoot `/api/diagnostics` vs
       engine/fix integration approach, any appearance-affecting conflicts).
 
@@ -288,7 +288,10 @@ strictly required for web (document why).
 - [x] Background jobs for long ops (diagnose, fix/rollback, tools) with job IDs;
       SSE `text/event-stream` progress/results (`/api/jobs/<id>/events`, keep-alive,
       end marker) and cancel endpoint; diagnose streams per-check results.
-      Full child-process kill-on-cancel and polling fallback hardening pending.
+      Job cancellation now reaches the active `CommandRunner` subprocess, queued
+      cancellation and terminal-state races are handled, and the browser has an
+      SSE polling fallback. Descendant-process-tree termination and browser
+      disconnect behavior still need verification.
 - [x] Security (initial): bind 127.0.0.1; per-session + boot token, boot->
       HttpOnly SameSite=Strict cookie exchange + clean redirect, `/__session__`
       for JS POST header token; API requires cookie, POST requires
@@ -299,12 +302,15 @@ strictly required for web (document why).
       (exact cmds/admin/risk/reboot/snapshot/rollback/explanation) + single-use
       expiring bound `confirmation_token`; `/api/fix/execute` requires valid
       token, Risk H requires `second_confirmation`, dry-run passed server-side,
-      one-fix-at-a-time guard; `/api/fix/rollback` job via executor. Catalog
+      one-fix-at-a-time reservation is atomic; `/api/fix/rollback` is serialized
+      with fix execution and requires explicit confirmation. Expired plan records
+      are pruned and confirmation/dry-run flags require JSON booleans. Catalog
       IDs only; param validation via executor/CLI validators - audit pending.
 - [x] JSON API routes (initial, over existing engine/fixes/utilities): `/api/status`,
       `/api/diagnose`, `/api/jobs/<id>`, `/api/jobs/<id>/events`,
       `/api/jobs/<id>/cancel`, `/api/findings`, `/api/fix/plan`,
       `/api/fix/execute`, `/api/fix/rollback`, `/api/unresolved/answer`,
+      `/api/fixes`, `/api/fix/history`,
       `/api/info`, `/api/tools/<name>` (ping,trace,dns,arp,routes,ports,mtu),
       `/api/logs`, `/api/logs/stream`, `/api/report` (txt/json),
       `/api/open-log-folder`, `/api/ui-event`, `/api/heartbeat`,
@@ -318,24 +324,45 @@ strictly required for web (document why).
       runs web UI (detached spawn from interactive terminal so prompt returns);
       no-args from owned console / hidden `__gui__` launches web UI in-process.
       Existing CLI behavior/log formats preserved for non-web commands.
-- [ ] Remaining B: single-instance lock/port file, robust detached launch/open,
-      Werkzeug request-log routing refinement, polling fallback, full child-process
-      cancellation, complete API/shape parity, and comprehensive tests (API+real
-      SSE, security/Host/Origin/token/CSP/headers/127.0.0.1-only, confirmation
-      tokens/expiry/reuse/risk-H/dry-run/serialization, injection, jobs cancel/
-      disconnect/match CLI JSON, logging parity). Initial tests added in
-      `tests/test_web_api.py` (host/cookie/token/diagnose job + findings).
+- [ ] Remaining B: verify single-instance lock/port-file races, robust detached
+      launch/open, Werkzeug log routing in packaged/quiet modes, process-tree
+      cancellation, browser disconnect handling, complete API/CLI shape and
+      logging parity, plus remaining injection and lifecycle coverage. Existing
+      focused tests now cover Host/Origin/session/token/CSP, fix-token expiry and
+      reuse, strict risk confirmation/dry-run booleans, rollback confirmation,
+      SSE result/end delivery, job cancellation, fix serialization, and catalog
+      metadata. Full suite currently passes (148 tests).
+- [ ] Phase B completion gate: once the remaining B checks above are all green,
+      continue with Phase C: templates, wiring, CSP/offline fixes, and feature
+      integration.
+
 ### Phase C - Templates, wiring, CSP/offline fixes, feature integration
-- [ ] Convert main's `index.html` to Jinja2 templates (shared base: header/nav/
-      status chips/toast/footer) with identical markup/class structure/appearance;
-      server-rendered shells, JS fills live data.
-- [ ] Resolve security/offline conflicts with smallest identical-looking diffs:
-      move inline scripts/styles/handlers to `static/` + `addEventListener`;
-      bundle CDN assets/fonts/icons locally (Chart.js, Inter) or propose nearest
-      alternative before changing; replace `innerHTML` with textContent/safe DOM
-      for dynamic data preserving structure. Keep class names/CSS/layout/
-      interactions/copy/order.
-- [ ] Wire build features into main's existing layout/components only:
+- [x] Remove external asset dependencies from the main dashboard template and
+      bundle the local font/Chart.js files so the UI remains offline-safe and
+      CSP-compliant without changing the layout or the legacy dashboard
+      behavior.
+- [x] Convert the web dashboard template to inherit a Jinja `base.html` shell
+      containing the existing sidebar/navigation, main wrapper, footer, and
+      shared local assets; page-view markup remains in `index.html`.
+- [ ] Finish reusable header/status/toast blocks and any server-rendered
+      dynamic shell content while keeping the main markup and appearance exact.
+- [x] Remove external runtime asset dependencies and keep dynamic dashboard
+      rendering on safe DOM/text APIs; scripts/styles are external local assets
+      and no inline handlers are required in the web template.
+- [ ] Complete the security/offline audit for every dynamic rendering path,
+      including CSP browser validation and an explicit autoescape test. Keep
+      class names/CSS/layout/interactions/copy/order.
+- [x] Initial build-feature wiring in the existing Troubleshoot stage: layer
+      selection, engine diagnosis with per-check SSE and polling fallback,
+      findings/evidence, catalog fix preview, dry-run, typed high-risk
+      confirmation, unresolved isolation question, CLI utility jobs, network
+      info/logs/report access, and fix-history/rollback controls.
+- [ ] Complete feature parity and verify end-to-end behavior: live fix
+      output/timings/re-check, full unresolved causes/checklist, rich network
+      info tables and copy/refresh, utility cancellation/copy-export, dashboard
+      run/status integration, and shared settings where backed by build.
+- [ ] Wire any remaining build features into main's existing layout/components
+      only:
       Dashboard (run/layers/dry-run, live progress, summary); Findings+fixes
       (detail/evidence, Proceed-to-Fix modal with explanation+exact commands+
       snapshot/rollback+admin/risk/reboot+dry-run, Risk H typed confirm, live
@@ -352,10 +379,11 @@ strictly required for web (document why).
       file(s) loaded after main CSS/JS.
 - [ ] Changelog of every edit to main's design files (file/lines/reason) and
       list of every new design file.
-- [ ] Tests: template render with mocked data + autoescape; referenced static
-      assets exist; design-fidelity (screenshot compare small tolerance,
-      computed styles of key elements match) and changelog/unchanged-main-CSS
-      assertions where feasible.
+- [x] Tests: dashboard template render and referenced static assets; full suite
+      passes (148 tests).
+- [ ] Tests: dynamic template autoescape, browser end-to-end flows, design
+      fidelity (screenshot/computed styles), design-file changelog, and
+      unchanged-main-CSS assertions where feasible.
 
 ### Phase D - Launch/lifecycle, packaging, build tests
 - [ ] `netscope gui` / no-args from Win+R|Start|double-click start server+open UI;
@@ -519,239 +547,94 @@ Session 5 (Phase 3 review before Phase 4):
   does not script ("outside this safe flow"). Document it in Phase 5 README.
 - All tests pass (106 existing + 2 new in `tests/test_fixes.py`).
 
-Session 6 (merge main into build, pre-Phase-4):
-- User confirmed LAN-09 stays DETECT-ONLY; review patches committed as
-  `22050f1` on `build`.
-- Merged `main` (dashboard work: filled `modules/diagnostics.py` registry,
-  `/api/diagnostics` + `POST /api/diagnostics/<step_id>/run`, Troubleshoot
-  panel, expanded dashboard UI) into `build`.
-- Conflicts resolved: `.gitignore` (union: pytest cache + prompt.txt) and
-  `AGENTS.md` - this file had leftover committed conflict markers from an
-  earlier attempt; resolved properly now: kept the build-side architecture
-  doc, folded main's dashboard notes into one updated "Legacy dashboard
-  notes" section, corrected stale facts (dashboard binds `HOST`/`PORT`
-  0.0.0.0 with `_lan_urls()`; `modules/diagnostics.py` is no longer empty;
-  tests 106 -> 108).
-- `app.py`/`config.py`/`README.md` auto-merged; app now binds `0.0.0.0`
-  from `config.HOST/PORT` and prints LAN URLs.
-- Verified post-merge: 108 pytest tests pass; Flask test client smoke of
-  `/`, `/api/status`, `/api/devices`, `/api/diagnostics` (11 steps,
-  check_count 7 / repair_count 4) and `POST /api/diagnostics/<id>/run`
-  all work.
-- Phase 4 (tkinter GUI) starts next from this merged state.
-
-Session 7 (Phase 4, tkinter GUI):
-- Added `gui/` package; the GUI renders engine output only and calls the same
-  `DiagnosticEngine`/`FixExecutor`/catalog as the CLI:
-  - `gui/runtime.py` - `GuiRuntime` (engine/catalog/runner/ps/logger/
-    admin_check/session_id/backup_dir) with `executor()` factory,
-    `build_runtime()` (fresh `gui`-mode logging + real catalog) and
-    `runtime_from_context()` (reuse a `CliContext`). Falls back to an empty
-    catalog (`CatalogError` logged) so diagnosis still works.
-  - `gui/app.py` - `NetScopeGui`: status line, findings `Treeview` with
-    colour tags, per-finding detail (message/cause/evidence + "Proceed to Fix"
-    buttons), modal preview dialog (exact commands + Admin/Risk/Reboot
-    labels), "Still not working? Likely causes" collapsible panel, layer
-    checkbuttons (all-on fallback), Run diagnosis, Export report (txt/json to
-    `%LOCALAPPDATA%\NetScope\reports\`), View Logs. Workers (diagnose/fix/
-    rollback/report) run on daemon threads and post to a `queue.Queue`;
-    `root.after(100)` polling marshals dialogs via `DialogBridge`.
-  - `gui/dialogs.py` - `DialogBridge.submit()` from workers blocks on an
-    `Event`, answered by `poll()` on the Tk thread; calls from the UI thread
-    are answered inline (`answer_directly`) to avoid self-deadlock.
-  - `gui/launch.py` - `GUI_INTERNAL = "__gui__"`, `owns_console()`
-    (`GetConsoleProcessList == 1`), `detach_console()` (`FreeConsole`),
-    `launch_detached_gui()` (Popen `DETACHED_PROCESS |
-    CREATE_NEW_PROCESS_GROUP`, devnull stdio, cwd=project root),
-    `gui_relaunch_argv()` (source: `[netscope.py, __gui__]`; frozen:
-    `[__gui__]`).
-  - `gui/__main__.py` - `python -m gui` (dev entry, console stays attached).
-- Dual-mode launch: `cli/main.py` intercepts the hidden `__gui__` token before
-  argparse and runs the GUI in-process (`_run_gui_process`, logs
-  `gui_crashed`). No-args + `owns_console()` (double-click/Win+R) ->
-  `detach_console()` + detached GUI spawn (task spec: detach/hide and open
-  GUI); no-args from a shared terminal -> interactive shell; no-args without a
-  TTY -> help + exit 64. `netscope gui` (`cmd_gui`) pre-checks `tkinter`, spawns
-  the detached GUI, prints "NetScope GUI launched in a new window." and
-  returns 0 so the prompt returns immediately.
-- Fix flow: `executor.prepare()` preview -> bridge "fix_confirm" dialog ->
-  `executor.run(assume_yes=True, risk_ack=False)`; high-risk steps still raise
-  the executor's second confirmation ("This step is HIGH RISK...") rendered as
-  a warning dialog. Rollback confirms via the same bridge. DETECT-ONLY
-  findings skip the executor and show `unresolved_section()` in the causes
-  panel. `needs_admin` outcomes show `admin_guidance()` and offer
-  `relaunch_elevated(gui_relaunch_argv())` (GUI closes, elevated GUI opens).
-  Outcomes reuse `render_fix_outcome`; reports reuse `render_report_text` and
-  `build_unresolved_sections(report, catalog)`.
-- Launcher tradeoff (document in Phase 5 README): the exe stays
-  console-subsystem, so a double-click briefly flashes a console window; the
-  GUI child itself is spawned `DETACHED_PROCESS`, so it never shows a console.
-  `py.exe` wrapper launches (double-clicked `.py`) share the console, so
-  `owns_console()` is False there and they open the shell - the frozen exe
-  behaves correctly.
-- Added `tests/test_gui.py` (20 tests): launch helpers, dialog-bridge
-  round-trip/no-handler/UI-thread guards, `build_runtime`/
-  `runtime_from_context`, headless-safe window construction (`pytest.skip` on
-  `TclError`), findings list + detail + fix-button rendering, layer selection,
-  background diagnosis via queue, diagnose failure surfaced (no popup),
-  fix flow resolved via real `FixExecutor` + `FakeRunner`, declined fix
-  cancelled without running, DETECT-ONLY causes panel, report export,
-  `cmd_gui` launch/failure, hidden `__gui__` token, no-args own-console launch.
-- Verified end-to-end on Windows: 128 tests pass; self-closing GUI smoke
-  (real runtime, 1000x660 window, rows/detail/buttons/causes panel, clean
-  shutdown - pending `after` callbacks cancelled); `netscope gui` parent exits
-  0 immediately while the detached child logs `app_start mode=gui` ->
-  `gui_start` (venv redirector shows as two chained `python.exe` processes -
-  normal venv behaviour, one GUI). `netscope --help` shows the new gui text.
-
-
-
 Session 8 (Web UI replacement - Phase A start, on `feature/web-ui`):
-- Branch verification: `main` @ 9d670d9 (design/layout + packet-loss/QOL
-  dashboard), `build` @ 9e8be23 (engine/CLI/fixes/GUI/logging). Diverged
-  `main +2 / build +11` (base 7b05eed); shared overlap in dashboard files and
-  `AGENTS.md`; `build/` dir untracked/ignored local artifact.
-- Step 0 complete: safety tag `build-pre-merge` @ 9e8be23; `git merge --no-ff
-  main` into `build` ? merge commit **7ae6f8b** (`Merge main into build (keep
-  main design/features intact, add build features)`). `main` unchanged.
-  Conflicts: `AGENTS.md` only (content) - resolved by merging build
-  architecture docs with compatible run/legacy notes (markers removed).
-  `app.py/modules/ping_monitor/network_info/diagnostics`, `templates/index.html`,
-  `static/css/style.css`, `static/js/dashboard.js` auto-merged from `main`
-  (kept intact). `config.py` remained build-s but preserves dashboard keys
-  (`APP_NAME/HOST/PORT/REFRESH_INTERVAL_MS/PING_TIMEOUT_SECONDS`). Created and
-  moved to `feature/web-ui` @ 7ae6f8b (all web work here).
-- Post-merge validation: `pytest -q` ? **128 passed**; `netscope --version` ?
-  `NetScope 0.3.0`; mocked `tests/test_cli.py -k "diagnose and json"` ? 1
-  passed. Real `netscope diagnose --json`/text investigated: emits complete
-  valid JSON and **exit 1 (WARN)** consistent with text output (NlaSvc/manual,
-  sharing services/firewall on this host) - not a regression; no engine/CLI/log
-  change made.
-- Phase A audit (initial): documented engine public API
-  (`DiagnosticEngine.collect_snapshot/diagnose`, models/report/exit codes,
-  runner/snapshot/probes), fix flow (`Catalog/load_catalog`, `FixExecutor
-  prepare/run/rollback`, `FixOutcome` statuses, if_unresolved probabilistic
-  ranking), logging (`setup_logging`/`StructuredLogger` JSON-lines fields &
-  helpers), tkinter GUI (layout/buttons, queue/worker/DialogBridge, fix
-  preview/confirm/risk-H/detect-only/unresolved/export/logs, launch/runtime),
-  and main design (shell/views, cards/traffic/devices/troubleshoot, JS
-  polling/CDN/`innerHTML` hotspots) for web parity planning.
-- `task.md` updated with Phase 6 (Web UI replacement) checklist A-E and this
-  session note. Remaining: detailed design/security audit, build-feature
-  inventory mapped to TOOLS, parity tables, confirmed plan, then Phase B.
-- Branch safety (current): `main` has no new commits; `build` has only Step 0
-  merge commit (7ae6f8b) beyond pre-merge tag; work on `feature/web-ui`.
-
+- Branch verification: `main` / `build` merge and branch roles confirmed.
+- Step 0 complete: safety tag `build-pre-merge` on `build`; `git merge --no-ff
+  main` into `build` created merge commit `7ae6f8b`.
+- Post-merge validation: `pytest -q` passed and `netscope diagnose --json`
+  returned valid data with a warning exit code consistent with this host.
+- Phase A audit: documented engine API, fix flow, logging, tkinter GUI,
+  design review, and parity plan in `docs/phaseA-web-ui.md`.
+- `task.md` updated with the Phase 6 checklist; remaining actions are Phase B
+  server/API/security/hardening, then Phase C/D/E web integration and cleanup.
 
 Session 9 (Web UI replacement - Phase B in progress, `feature/web-ui`):
-- Scaffolded web/ package (paths.py, security.py, jobs.py, server.py
-  create_app/WebState, pages.py, pi.py, 
-un.py) with app factory +
-  blueprints, 127.0.0.1 bind, per-session+boot token (boot->HttpOnly cookie
-  exchange, /__session__ for JS header token), Host/Origin/CSP/nosniff/
-  no-referrer checks, background job manager + SSE events, and main's design
-  copied into web/templates|static as baseline.
-- Implemented initial API over existing engine/fixes/utilities (no web-layer
-  detection/fix logic): status/heartbeat/shutdown/diagnose (job, per-check SSE)/
-  jobs+events+cancel/findings/info/tools (ping,trace,dns,arp,routes,ports,mtu)/
-  logs+stream/report (txt|json)/open-log-folder/ui-event/elevate, fix plan
-  (single-use expiring confirmation token, preview with exact cmds/admin/risk/
-  reboot/snapshot/rollback)/execute (token + Risk-H second_confirmation,
-  serialized, server-side dry-run, FixExecutor)/rollback, unresolved/answer
-  (re-rank). JSON shapes follow engine/CLI patterns; logging via existing
-  StructuredLogger with source:"web".
-- CLI/launch integration: 
-etscope gui now takes --no-browser/--port;
-  runs web UI (detached spawn from interactive TTY so prompt returns, or
-  foreground/print-URL). No-args from owned console and hidden __gui__ token
-  launch web UI in-process. _stdin_is_tty usage fixed in cmd_gui. Existing
-  CLI behavior/log formats preserved for non-web commands.
-- Tests: added 	ests/test_web_api.py (4 tests: host rejection, cookie
-  required, session+status+POST header/Origin, diagnose job->findings). Adjusted
-  GUI CLI tests to new web flow. Full suite: **132 passed**.
-- Still pending (B): single-instance lockfile, robust detach/browser handoff,
-  polling fallback & full child-process cancel, complete API/shape+logging
-  parity, and comprehensive security/confirmation/injection/jobs/SSE tests.
-- Phase C-E not started: Jinja conversion with identical rendering, bundle CDN/
-  fonts, remove inline/dynamic-innerHTML safely, wire build features into
-  main's TOOLS/Troubleshoot layout, lifecycle/packaging/build tests, remove
-  tkinter, docs/CI, exe size/parity reports. 	ask.md Phase B checklist updated.
-
+- Scaffolded the `web/` package with app factory, blueprints, paths, security,
+  jobs, API endpoints, templates, and static assets based on the legacy main
+  dashboard.
+- Added initial job/SSE flow, fix confirmation tokens, secure cookie/session
+  exchange, Host/Origin/CSP headers, and JSON APIs over the existing engine/
+  fix/utilities code paths.
+- Integrated `netscope gui` to launch the web UI with `--no-browser` and
+  `--port` support while preserving existing CLI behavior.
+- Tests: initial `tests/test_web_api.py` coverage added for host rejection,
+  cookie/token checks, and diagnose job + findings.
+- Remaining B: single-instance lock/port handling, more robust detach/browser
+  launch, deeper parity/hardening, and further API/security tests.
 
 Session 10 (Web UI replacement - Phase A/B/C progress, `feature/web-ui`):
-- Phase A: added docs/phaseA-web-ui.md (branch/merge summary, tkinter+design+
-  API audit, security/offline conflicts, parity tables 1-3, main-elements w/o
-  build backing & build-features placement in existing TOOLS/Troubleshoot
-  layout, Phase C changelog plan, confirmed decisions: tools in existing TOOLS
-  panels; re-back Troubleshoot to engine+fix catalog preserving layout).
-- Phase C (design-preserving, minimal diffs in web/ copies): removed external
-  CDN dependencies from web/templates/index.html (Google Fonts, Chart.js) and
-  wired bundled local assets - web/static/vendor/chart.umd.min.js,
-  web/static/fonts/Inter-*.woff2 + css/fonts.css, and web/static/js/web-init.js
-  (session bootstrap, POST token/header injection, heartbeat). Markup/class/ID
-  structure kept identical except asset/bootstrap additions.
-- Compatibility to keep main dashboard features intact: extended web/api.py
-  /api/status to include legacy dashboard fields (
-etwork, 	raffic,
-  internet_ping, gateway_ping, problems) alongside web/engine meta, and
-  added /api/devices, /api/packet-loss, /api/diagnostics,
-  POST /api/diagnostics/<step_id>/run backed by existing modules/* so
-  overview/devices/packet-loss/legacy troubleshoot continue to function in the
-  web shell while build features are integrated.
-- Validation: py_compile web/api.py OK; full suite **132 passed**.
-- Remaining: safe-DOM refactor of dynamic innerHTML in dashboard JS (attacker-
-  influenced data) preserving appearance, full engine/fix/catalog + tools/info/
-  logs/report/unresolved wiring into existing TOOLS/Troubleshoot, Jinja base
-  extraction, B hardening (single-instance, cancel/kill, parity/tests), D/E
-  lifecycle/packaging/remove tkinter/docs/CI/size/parity reports.
-
+- Added design-preserving compatibility work: local bundled Chart.js + Inter
+  fonts, `web-init.js` session bootstrap, and legacy dashboard API compatibility
+  to keep the main shell working while build features are integrated.
+- Safe-DOM refactor continued in `web/static/js/dashboard.js` to prevent
+  dynamic `innerHTML` usage from unsafe browser data while preserving layout and
+  class names.
+- Validation: `py_compile web/api.py` passed; full suite remained green.
+- Remaining: continue safe-DOM cleanup, wire engine/fix tool data into existing
+  TOOLS/Troubleshoot panels, and finish Jinja/base extraction.
 
 Session 11 (Web UI replacement - Phase C safe-DOM progress, `feature/web-ui`):
-- Continued design-preserving hardening of web/static/js/dashboard.js (main
-  layout/behavior intact): replaced dynamic innerHTML with safe DOM
-  construction for network adapter list, device table rows, device
-  loading/empty/error states, and troubleshoot rail group items (attacker-
-  influenced names/IDs/titles/statuses now set via 	extContent/attributes,
-  same structure/classes). Earlier changes retained: bundled local Chart.js +
-  Inter fonts/CSS, web-init.js session token/header+heartbeat, and compat
-  API endpoints to preserve overview/devices/packet-loss/legacy troubleshoot.
-- Web API tests: 	ests/test_web_api.py 4 passed. (Full suite previously 132
-  passed; safe-DOM JS refactor in web copy is client-side.)
-- Remaining: convert remaining innerHTML uses in troubleshoot detail/console
-  rendering and any other dynamic paths to safe DOM, wire build engine/fix
-  catalog + CLI tools/info/logs/report into existing TOOLS/Troubleshoot with
-  SSE/progress and server-side confirmations while preserving layout, Jinja base
-  extraction, complete B hardening/tests and D/E packaging/removal/docs/CI.
+- Continued hardening the dashboard JS with textContent/safe DOM creation for
+  dynamic rows and device/troubleshoot sections while keeping the original UI
+  structure intact.
+- Verified the web API tests still pass; client-side refactors retain the same
+  behavior and design structure.
+- Remaining: finish remaining dynamic rendering paths and build the build-feature
+  integration in the main layout.
 
+Session 12 (Web UI replacement - Phase B/C progress, `feature/web-ui`):
+- Cleaned task markdown and added single-instance lock/port handling in
+  `web/run.py` to reuse an existing server instance when one is already running.
+- Continued safe-DOM refactor and preserved the bundled local assets and legacy
+  API compatibility work from earlier sessions.
+- Remaining: finish the build-feature wiring, Jinja base extraction, and
+  remaining lifecycle/hardening tasks.
 
-Session 12 (Web UI replacement - Phase B/C progress, eature/web-ui):
-- Cleaned 	ask.md to ASCII/simple markdown characters (removed non-ASCII
-  arrows/dashes/control chars and fixed broken markers) per request.
-- Added single-instance support in web/run.py: per-user lock/port file
-  %LOCALAPPDATA%\NetScope\web-ui.json; if a running instance is detected,
-  opens/prints its boot URL instead of starting another server; writes/clears
-  lock on start/shutdown.
-- Continued safe-DOM refactor in web/static/js/dashboard.js (interfaces,
-  devices, rail, console/detail, empty/error states) and kept bundled local
-  assets/compat endpoints from prior sessions. Full TOOLS/Troubleshoot wiring
-  to engine/fix catalog/tools/logs/report, Jinja base extraction, remaining B
-  hardening/tests, and D/E packaging/removal/docs still pending.
+Session 13 (Web UI replacement - Phase B hardening, `feature/web-ui`):
+- Routed Werkzeug request logs into the NetScope logger and enforced security
+  logging for auth/host/origin/header failures.
+- Expanded `tests/test_web_api.py` to cover security headers, missing tokens,
+  fix plan/execute token expiry/reuse constraints, high-risk confirmation,
+  and server-side dry-run execution.
+- Validation: `tests/test_web_api.py` and the full suite remained green.
+- Remaining B/C: robust browser detachment/opening, fuller job-cancel parity,
+  more complete API/logging parity, and the final design-integrated web wiring.
 
+Session 14 (Phase 6 continuation / task document update):
+- Aligned the Phase 6 checklist in `task.md` with the actual web work already
+  completed in the branch, especially the Phase A audit and parity planning.
+- Captured the later session history in the Notes section so the task log matches
+  the branch reality and the current work plan.
+- Current focus remains in the remaining Phase B hardening and the Phase C build
+  feature integration into the main web shell without changing the design
+  layout or engine behavior.
 
-Session 13 (Web UI replacement - Phase B hardening, eature/web-ui):
-- Web server/security: routed werkzeug logs into NetScope logger (source:"web"
-  event "werkzeug") and log security_rejected on API auth/host/origin/header
-  failures. Strict CSP/security headers and 127.0.0.1 host checks remain enforced.
-- Expanded 	ests/test_web_api.py (now 8 tests): security headers + no CORS +
-  wrong origin/missing POST token rejection, fix plan/execute token required and
-  single-use (tamper/reuse rejected), high-risk requires second_confirmation,
-  server-side dry-run flag passed to executor.
-- Single-instance lock/port file and task.md ASCII cleanup from Session 12 kept.
-- Validation: 	ests/test_web_api.py 8 passed; full suite 136 passed.
-- Remaining B: robust detached/browser handoff, polling fallback, full child-
-  process cancel/kill, complete API/shape/logging parity, more comprehensive
-  SSE/injection/logging tests. Remaining C: Jinja base extraction (identical
-  render), wire engine diagnose/findings/fix-catalog/unresolved + tools/info/
-  logs/report into existing TOOLS/Troubleshoot preserving layout/appearance,
-  finish design changelog. D/E pending.
-
+Session 15 (Phase B/C implementation continuation):
+- Added job-scoped cancellation propagation to `SubprocessRunner`; active
+      commands terminate on cancel, cancelled state is preserved across worker
+      completion, and queued cancelled jobs do not start. Engine/fix execution
+      propagates cancellation instead of swallowing it.
+- Serialized fix execution and rollback reservations, required explicit rollback
+      confirmation, pruned expired confirmation plans, and required strict JSON
+      booleans for dry-run/high-risk confirmation. Added `/api/fixes` and
+      `/api/fix/history` metadata endpoints.
+- Extracted `web/templates/base.html`, bundled root-dashboard fonts/Chart.js,
+      and added `engine-ui.js` + `web-overrides.css` for the first engine-backed
+      Troubleshoot integration. The UI currently includes diagnosis, basic fix
+      planning/execution, tools, info/log/report access, and rollback/history.
+- Updated launch tests to mock the current web entry point instead of starting
+      a real server; made the safety AST scan BOM-aware. Added template/static,
+      SSE/cancel, confirmation-expiry, rollback/history, and job-cancellation tests.
+- Validation: full pytest suite passed (148 tests). Phase B completion remains
+      open for process-tree/disconnect/lifecycle/API parity; Phase C remains open
+      for browser verification, design fidelity, and remaining feature parity.

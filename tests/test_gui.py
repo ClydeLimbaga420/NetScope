@@ -377,35 +377,36 @@ def test_gui_report_export_writes_txt_report(tk_root, tmp_path, snapshot_factory
 
 
 def test_cmd_gui_reports_launch(monkeypatch):
-    monkeypatch.setattr("gui.launch.launch_detached_gui", lambda: True)
+    calls = []
+    monkeypatch.setattr("web.run.run_web_ui", lambda **kwargs: calls.append(kwargs) or 0)
     args = apply_defaults(build_parser().parse_args(["gui"]))
     ctx = make_cli_ctx()
     assert cmd_gui(args, ctx) == exit_codes.OK
-    assert "launched" in ctx.stderr.getvalue()
+    assert calls == [{"port": None, "no_browser": False}]
 
 
 def test_cmd_gui_failure_is_reported(monkeypatch):
-    monkeypatch.setattr("gui.launch.launch_detached_gui", lambda: False)
+    def fail_to_start(**_kwargs):
+        raise RuntimeError("server failed")
+
+    monkeypatch.setattr("web.run.run_web_ui", fail_to_start)
     args = apply_defaults(build_parser().parse_args(["gui"]))
     ctx = make_cli_ctx()
     assert cmd_gui(args, ctx) == exit_codes.FAILURES
-    assert "could not start the GUI" in ctx.stderr.getvalue()
+    assert "could not start web UI" in ctx.stderr.getvalue()
 
 
 def test_main_hidden_gui_token_runs_gui(monkeypatch):
-    seen: dict[str, Any] = {}
-
-    def fake_run_gui(runtime=None):
-        seen["runtime"] = runtime
-        return 7
-
-    monkeypatch.setattr("gui.app.run_gui", fake_run_gui)
+    calls = []
+    monkeypatch.setattr("web.run.run_web_ui", lambda **kwargs: calls.append(kwargs) or 7)
     assert main([GUI_INTERNAL]) == 7
-    assert seen["runtime"] is not None
+    assert calls == [{}]
 
 
 def test_main_no_args_with_owned_console_launches_gui(monkeypatch):
     monkeypatch.setattr("cli.main.owns_console", lambda: True)
     monkeypatch.setattr("cli.main.detach_console", lambda: True)
-    monkeypatch.setattr("cli.main.launch_detached_gui", lambda: True)
+    calls = []
+    monkeypatch.setattr("web.run.run_web_ui", lambda **kwargs: calls.append(kwargs) or 0)
     assert main([]) == exit_codes.OK
+    assert calls == [{}]

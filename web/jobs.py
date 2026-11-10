@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Iterator
 
 from flask import Response, stream_with_context
+from core.runner import cancellation_scope
 
 
 @dataclass
@@ -70,6 +71,14 @@ class JobManager:
         with self._lock:
             self._active_fix_job = job_id
 
+    def try_mark_fix_started(self, job_id: str) -> bool:
+        with self._lock:
+            active = self._jobs.get(self._active_fix_job or "")
+            if active and active.status in {"queued", "running"}:
+                return False
+            self._active_fix_job = job_id
+            return True
+
     def mark_fix_finished(self, job_id: str) -> None:
         with self._lock:
             if self._active_fix_job == job_id:
@@ -78,13 +87,20 @@ class JobManager:
     def submit(self, job: Job, fn: Callable[[Job], Any]) -> Job:
         def runner() -> None:
             with job.lock:
+                if job.cancel_event.is_set():
+                    job.status = "cancelled"
+                    job.finished_at = time.time()
+                    job.events.put({"type": "status", "status": "cancelled"})
+                    job.events.put({"type": "end"})
+                    return
                 job.status = "running"
                 job.started_at = time.time()
             job.events.put({"type": "status", "status": "running"})
             try:
-                result = fn(job)
+                with cancellation_scope(job.cancel_event):
+                    result = fn(job)
                 with job.lock:
-                    if job.cancel_event.is_set() and job.status == "running":
+                    if job.cancel_event.is_set():
                         job.status = "cancelled"
                     else:
                         job.status = "done"
@@ -111,13 +127,9 @@ class JobManager:
         if not job:
             return False
         job.cancel_event.set()
-        procs = job.meta.get("processes") or []
-        for proc in list(procs):
-            try:
-                proc.kill()
-            except Exception:
-                pass
         with job.lock:
+            if job.status in {"done", "error", "cancelled"}:
+                return job.status == "cancelled"
             if job.status in {"queued", "running"}:
                 job.status = "cancelled"
                 job.finished_at = time.time()
@@ -128,9 +140,6 @@ class JobManager:
         def generate() -> Iterator[str]:
             yield ": ok\n\n"
             while True:
-                if job.cancel_event.is_set() and job.status == "cancelled":
-                    # drain remaining quickly
-                    pass
                 try:
                     event = job.events.get(timeout=15)
                 except queue.Empty:

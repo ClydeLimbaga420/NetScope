@@ -17,7 +17,7 @@ def python_files():
 def test_no_shell_true_anywhere():
     offenders = []
     for path in python_files():
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
@@ -31,7 +31,7 @@ def test_no_shell_true_anywhere():
 def test_no_os_system_calls():
     offenders = []
     for path in python_files():
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
                 func = node.func

@@ -5,7 +5,7 @@ dashboard into a universal Windows network troubleshooting tool with one shared
 engine and two front ends (CLI + GUI). Work phase by phase; update this file and
 `task.md` Notes at the end of every phase.
 
-**Current status: Phase 4 complete.** Phase 5 is not built yet.
+**Current status: Phase 4 complete.** Phase 5 is not built yet. Phase C asset hardening is in progress, with the local offline/CSP-safe bundle for the dashboard now in place.
 
 ## Run / environment
 - The Flask dashboard still works: `python app.py` → http://127.0.0.1:5000

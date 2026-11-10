@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>NetScope | Network Monitor</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/fonts.css') }}">
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+        <link rel="stylesheet"
+            href="{{ url_for('static', filename='css/web-overrides.css') }}">
+
+    <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/web-init.js') }}"></script>
+</head>
+
+<body>
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+
+        <div class="brand">
+            <div>
+                <h2>NetScope</h2>
+                <small>NETWORK MONITOR</small>
+            </div>
+        </div>
+
+        <p class="nav-label">MONITORING</p>
+
+        <a href="#overview" class="nav-item active" data-view="main" data-scroll="overview-top">
+            &#9707; Overview
+        </a>
+
+        <a href="#devices" class="nav-item" data-view="main" data-scroll="devices">
+            &#9638; Devices
+        </a>
+
+        <a href="#traffic" class="nav-item" data-view="main" data-scroll="traffic">
+            &#8961; Traffic
+        </a>
+
+        <p class="nav-label spaced">TOOLS</p>
+
+        <a href="#troubleshoot" class="nav-item" data-view="troubleshoot">
+            &#9881; Troubleshoot
+        </a>
+
+        <div class="sidebar-bottom">
+            <span class="pulse"></span>
+            Local monitoring active
+        </div>
+
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="main">
+        {% block content %}{% endblock %}
+
+        <footer>
+            NetScope &middot; Local Network Monitoring
+            &middot; <span id="footer-time"></span>
+        </footer>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/engine-ui.js') }}"></script>
+
+</body>
+
+</html>

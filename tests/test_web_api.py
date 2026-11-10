@@ -146,6 +146,81 @@ def test_diagnose_job(client):
     assert len(rf.get_json()['findings']) == 1
 
 
+def test_job_events_endpoint_streams_sse(client):
+    c, st = client
+    _boot(c, st)
+    job = st.jobs.create("test")
+    st.jobs.submit(job, lambda _job: {"ok": True})
+    import time
+    deadline = time.monotonic() + 2
+    while job.status in {"queued", "running"} and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+    response = c.get(f"/api/jobs/{job.id}/events", headers={"Host": "127.0.0.1:5000"})
+    payload = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert response.mimetype == "text/event-stream"
+    assert '"type": "result"' in payload
+    assert '"ok": true' in payload
+    assert '"type": "end"' in payload
+
+
+def test_job_cancel_endpoint_marks_job_cancelled(client):
+    c, st = client
+    token = _boot(c, st)
+    started = __import__('threading').Event()
+    release = __import__('threading').Event()
+    job = st.jobs.create("test")
+    st.jobs.submit(job, lambda _job: (started.set(), release.wait(2)))
+    assert started.wait(1)
+
+    response = c.post(
+        f"/api/jobs/{job.id}/cancel",
+        headers=_post_headers(st, token),
+        json={},
+    )
+    release.set()
+
+    assert response.status_code == 200
+    assert job.status == "cancelled"
+
+
+def test_fixes_endpoint_returns_catalog_metadata(client):
+    c, st = client
+    st.runtime.catalog = types.SimpleNamespace(
+        entries={
+            "IP-01": types.SimpleNamespace(
+                id="IP-01",
+                name="Renew address",
+                symptom="Address issue",
+                explanation="Refresh the lease.",
+                admin=False,
+                risk="low",
+                reboot=False,
+                detection_only=False,
+            )
+        }
+    )
+    _boot(c, st)
+
+    response = c.get("/api/fixes", headers={"Host": "127.0.0.1:5000"})
+
+    assert response.status_code == 200
+    assert response.get_json()["fixes"] == [
+        {
+            "id": "IP-01",
+            "name": "Renew address",
+            "symptom": "Address issue",
+            "explanation": "Refresh the lease.",
+            "admin": False,
+            "risk": "low",
+            "reboot": False,
+            "detection_only": False,
+        }
+    ]
+
+
 
 def _boot(c, st):
     c.get(f'/__boot__?token={st.security.boot_token}', headers={'Host': '127.0.0.1:5000'})
@@ -173,6 +248,30 @@ def test_security_headers_and_origin(client):
     # missing header token
     r = c.post('/api/heartbeat', headers={'Host': '127.0.0.1:5000', 'Origin': 'http://127.0.0.1:5000', 'Content-Type': 'application/json'}, json={})
     assert r.status_code == 403
+
+
+def test_dashboard_template_uses_shared_shell_and_local_assets(client):
+    c, _st = client
+    response = c.get("/", headers={"Host": "127.0.0.1:5000"})
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert '<aside class="sidebar">' in html
+    assert '<main class="main">' in html
+    assert '<footer>' in html
+    assert "fonts.googleapis.com" not in html
+    assert "cdn.jsdelivr.net" not in html
+
+    for path in (
+        "/static/css/fonts.css",
+        "/static/css/style.css",
+        "/static/css/web-overrides.css",
+        "/static/js/web-init.js",
+        "/static/js/dashboard.js",
+        "/static/js/engine-ui.js",
+        "/static/vendor/chart.umd.min.js",
+        "/static/fonts/Inter-Regular.woff2",
+    ):
+        assert c.get(path, headers={"Host": "127.0.0.1:5000"}).status_code == 200
 
 
 class FakeEntry:
@@ -261,8 +360,60 @@ def test_fix_high_risk_requires_second_confirmation(client):
     conf = r.get_json()['confirmation_token']
     r = c.post('/api/fix/execute', headers=_post_headers(st, token), json={'confirmation_token': conf})
     assert r.status_code == 403
+    r = c.post('/api/fix/execute', headers=_post_headers(st, token), json={'confirmation_token': conf, 'second_confirmation': 'false'})
+    assert r.status_code == 403
     r = c.post('/api/fix/execute', headers=_post_headers(st, token), json={'confirmation_token': conf, 'second_confirmation': True})
     assert r.status_code == 200
+
+
+def test_fix_confirmation_token_expiry(client):
+    c, st, token, _executor = _setup_fix(client, risk='low')
+    response = c.post('/api/fix/plan', headers=_post_headers(st, token), json={'fix_id': 'IP-01'})
+    confirmation_token = response.get_json()['confirmation_token']
+
+    from web import api as web_api
+    web_api._FIX_PLANS[confirmation_token]['expires'] = 0
+    response = c.post('/api/fix/execute', headers=_post_headers(st, token), json={'confirmation_token': confirmation_token})
+
+    assert response.status_code == 403
+    assert response.get_json()['error']['code'] == 'expired_token'
+
+
+def test_fix_rollback_requires_confirmation_and_runs(client):
+    c, st, token, _executor = _setup_fix(client)
+    response = c.post('/api/fix/rollback', headers=_post_headers(st, token), json={'fix_id': 'IP-01'})
+    assert response.status_code == 403
+
+    response = c.post('/api/fix/rollback', headers=_post_headers(st, token), json={'fix_id': 'IP-01', 'confirmed': True})
+    assert response.status_code == 200
+    assert response.get_json()['fix_id'] == 'IP-01'
+
+
+def test_fix_history_returns_only_backup_metadata(client, tmp_path, monkeypatch):
+    import json
+    from datetime import datetime, timezone
+
+    c, st = client
+    backup_dir = tmp_path / 'backups'
+    backup_dir.mkdir()
+    (backup_dir / '20260101-IP-01.json').write_text(json.dumps({
+        'fix_id': 'IP-01',
+        'name': 'Renew address',
+        'captured_at': datetime(2026, 1, 1, tzinfo=timezone.utc).isoformat(),
+        'snapshot': {'private': 'not returned'},
+    }), encoding='utf-8')
+    monkeypatch.setattr('web.api.config.backup_dir', lambda: backup_dir)
+    _boot(c, st)
+
+    response = c.get('/api/fix/history', headers={'Host': '127.0.0.1:5000'})
+
+    assert response.status_code == 200
+    assert response.get_json()['history'] == [{
+        'fix_id': 'IP-01',
+        'name': 'Renew address',
+        'captured_at': '2026-01-01T00:00:00+00:00',
+        'rollback_available': True,
+    }]
 
 
 def test_fix_dry_run_flag_passed(client):

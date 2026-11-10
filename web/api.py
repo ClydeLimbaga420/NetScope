@@ -208,6 +208,27 @@ def api_findings():  # type: ignore[no-untyped-def]
     return jsonify({"report": report.to_dict(include_snapshot=False), "findings": findings})
 
 
+@api_bp.get("/fixes")
+def api_fixes():  # type: ignore[no-untyped-def]
+    st = _state()
+    entries = getattr(st.runtime.catalog, "entries", {})
+    fixes = [
+        {
+            "id": entry.id,
+            "name": entry.name,
+            "symptom": entry.symptom,
+            "explanation": entry.explanation,
+            "admin": entry.admin,
+            "risk": entry.risk,
+            "reboot": entry.reboot,
+            "detection_only": entry.detection_only,
+        }
+        for entry in entries.values()
+    ]
+    fixes.sort(key=lambda item: item["id"])
+    return jsonify({"fixes": fixes})
+
+
 @api_bp.get("/info")
 def api_info():  # type: ignore[no-untyped-def]
     st = _state()
@@ -414,6 +435,7 @@ def api_elevate():  # type: ignore[no-untyped-def]
 # --- fix plan/execute/rollback (server-side confirmation enforced) ---
 
 _FIX_PLANS: dict[str, dict[str, Any]] = {}
+_FIX_PLANS_LOCK = threading.Lock()
 _PLAN_TTL = 300
 
 
@@ -454,7 +476,14 @@ def api_fix_plan():  # type: ignore[no-untyped-def]
         "snapshot": snap,
         "used": False,
     }
-    _FIX_PLANS[token] = record
+    with _FIX_PLANS_LOCK:
+        now = time.time()
+        for expired_token in [
+            key for key, value in _FIX_PLANS.items()
+            if float(value.get("expires", 0)) < now
+        ]:
+            _FIX_PLANS.pop(expired_token, None)
+        _FIX_PLANS[token] = record
     st.logger.action("web", "fix_plan_requested", fix_id=fix_id, risk=entry.risk, admin=entry.admin)
     return jsonify(
         {
@@ -480,25 +509,26 @@ def api_fix_execute():  # type: ignore[no-untyped-def]
     st = _state()
     body = _json_body()
     token = str(body.get("confirmation_token") or "")
-    record = _FIX_PLANS.get(token)
-    if not record or record.get("used"):
-        st.logger.event("security_rejected", source="web", reason="invalid_or_used_token")
-        return _err("invalid_token", "Invalid or used confirmation token.", 403)
-    if time.time() > float(record.get("expires", 0)):
-        st.logger.event("security_rejected", source="web", reason="expired_token")
-        return _err("expired_token", "Confirmation token expired.", 403)
-    entry = record["entry"]
-    plan = record["plan"]
-    if str(getattr(entry, "risk", "")).lower() == "high" and not bool(body.get("second_confirmation")):
-        st.logger.event("security_rejected", source="web", reason="risk_h_second_confirmation_missing", fix_id=entry.id)
-        return _err("second_confirmation_required", "High-risk fix requires second confirmation.", 403)
-    if not st.jobs.can_start_fix():
-        return _err("fix_in_progress", "Another fix is already running.", 409)
-    dry_run = bool(body.get("dry_run", False))
-    record["used"] = True
+    with _FIX_PLANS_LOCK:
+        record = _FIX_PLANS.get(token)
+        if not record or record.get("used"):
+            st.logger.event("security_rejected", source="web", reason="invalid_or_used_token")
+            return _err("invalid_token", "Invalid or used confirmation token.", 403)
+        if time.time() > float(record.get("expires", 0)):
+            st.logger.event("security_rejected", source="web", reason="expired_token")
+            return _err("expired_token", "Confirmation token expired.", 403)
+        entry = record["entry"]
+        plan = record["plan"]
+        if str(getattr(entry, "risk", "")).lower() == "high" and body.get("second_confirmation") is not True:
+            st.logger.event("security_rejected", source="web", reason="risk_h_second_confirmation_missing", fix_id=entry.id)
+            return _err("second_confirmation_required", "High-risk fix requires second confirmation.", 403)
+        dry_run = body.get("dry_run") is True
+        job = st.jobs.create("fix", meta={"fix_id": entry.id, "dry_run": dry_run})
+        if not st.jobs.try_mark_fix_started(job.id):
+            st.jobs.cancel(job.id)
+            return _err("fix_in_progress", "Another fix is already running.", 409)
+        record["used"] = True
     st.logger.confirmation(f"fix_execute:{entry.id}", True, source="web", dry_run=dry_run)
-    job = st.jobs.create("fix", meta={"fix_id": entry.id, "dry_run": dry_run})
-    st.jobs.mark_fix_started(job.id)
 
     def work(_job):  # type: ignore[no-untyped-def]
         try:
@@ -525,6 +555,8 @@ def api_fix_execute():  # type: ignore[no-untyped-def]
 def api_fix_rollback():  # type: ignore[no-untyped-def]
     st = _state()
     body = _json_body()
+    if body.get("confirmed") is not True:
+        return _err("confirmation_required", "Rollback requires explicit confirmation.", 403)
     fix_id = str(body.get("fix_id") or "")
     if not fix_id:
         return _err("missing_fix_id", "fix_id is required", 400)
@@ -533,15 +565,46 @@ def api_fix_rollback():  # type: ignore[no-untyped-def]
     except Exception:
         return _err("unknown_fix_id", f"Unknown fix id: {fix_id}", 404)
     job = st.jobs.create("rollback", meta={"fix_id": fix_id})
+    if not st.jobs.try_mark_fix_started(job.id):
+        st.jobs.cancel(job.id)
+        return _err("fix_in_progress", "Another fix is already running.", 409)
 
     def work(_job):  # type: ignore[no-untyped-def]
-        executor = st.runtime.executor()
-        outcome = executor.rollback(entry, assume_yes=True, confirm=lambda _q: True)
-        st.logger.action("web", "fix_rollback", fix_id=fix_id, status=outcome.status)
-        return outcome.to_dict()
+        try:
+            executor = st.runtime.executor()
+            outcome = executor.rollback(entry, assume_yes=True, confirm=lambda _q: True)
+            st.logger.action("web", "fix_rollback", fix_id=fix_id, status=outcome.status)
+            return outcome.to_dict()
+        finally:
+            st.jobs.mark_fix_finished(job.id)
 
     st.jobs.submit(job, work)
     return jsonify({"job_id": job.id, "fix_id": fix_id})
+
+
+@api_bp.get("/fix/history")
+def api_fix_history():  # type: ignore[no-untyped-def]
+    backup_dir = config.backup_dir()
+    history = []
+    try:
+        backups = sorted(backup_dir.glob("*-*.json"), key=lambda path: path.stat().st_mtime, reverse=True)
+    except OSError:
+        backups = []
+    for path in backups[:100]:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        fix_id = str(data.get("fix_id") or "")
+        if not fix_id:
+            continue
+        history.append({
+            "fix_id": fix_id,
+            "name": str(data.get("name") or fix_id),
+            "captured_at": data.get("captured_at"),
+            "rollback_available": True,
+        })
+    return jsonify({"history": history})
 
 
 @api_bp.post("/unresolved/answer")
