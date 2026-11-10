@@ -703,7 +703,7 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
         body.innerHTML = `
 
             <tr>
-                <td colspan="5" class="empty">
+                <td colspan="6" class="empty">
                     Scanning local network and resolving names...
                 </td>
             </tr>
@@ -750,6 +750,15 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
                     ? "Randomized or locally administered MAC address"
                     : "Vendor derived from the MAC address";
 
+                const connectionLabel =
+                    device.connection || "Unknown";
+
+                const connectionClass =
+                    "device-connection " +
+                    String(connectionLabel)
+                        .toLowerCase()
+                        .replace(/\s+/g, "-");
+
                 return `
 
                     <tr>
@@ -780,6 +789,14 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
                         </td>
 
                         <td>
+                            <span
+                                class="${connectionClass}"
+                                title="${escapeHtml(device.connection_detail || "")}">
+                                ${escapeHtml(connectionLabel)}
+                            </span>
+                        </td>
+
+                        <td>
                             ${escapeHtml(device.type)}
                         </td>
 
@@ -797,7 +814,7 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
 
                 <tr>
 
-                    <td colspan="5" class="empty">
+                    <td colspan="6" class="empty">
 
                         No devices found.
 
@@ -828,7 +845,7 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
 
             <tr>
 
-                <td colspan="5" class="empty">
+                <td colspan="6" class="empty">
 
                     Could not retrieve device list.
 

@@ -388,6 +388,7 @@
                             <th>BRAND</th>
                             <th>IP ADDRESS</th>
                             <th>MAC ADDRESS</th>
+                            <th>CONNECTION</th>
                             <th>ENTRY TYPE</th>
                         </tr>
 
@@ -396,7 +397,7 @@
                     <tbody id="device-rows">
 
                         <tr>
-                            <td colspan="5" class="empty">
+                            <td colspan="6" class="empty">
                                 Loading devices...
                             </td>
                         </tr>
@@ -410,7 +411,10 @@
             <p class="note">
                 Devices are discovered by probing the local subnet
                 and reading the ARP cache. Brands come from MAC
-                vendor data. Double-click a device name to save
+                vendor data. The connection column labels this PC,
+                the router, and devices seen through a Wi-Fi adapter;
+                phones and other devices with randomized MACs are
+                marked wireless. Double-click a device name to save
                 a friendly label in this browser. The table shows
                 eight devices at a time; scroll inside it to see
                 the rest.

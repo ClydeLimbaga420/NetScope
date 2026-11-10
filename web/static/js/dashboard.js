@@ -696,7 +696,7 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
         body.replaceChildren();
         const tr = document.createElement("tr");
         const td = document.createElement("td");
-        td.colSpan = 5;
+        td.colSpan = 6;
         td.className = "empty";
         td.textContent = "Scanning local network and resolving names...";
         tr.appendChild(td);
@@ -751,6 +751,14 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
                 tdIp.textContent = String(device.ip || "");
                 const tdMac = document.createElement("td");
                 tdMac.textContent = String(device.mac || "");
+                const tdConnection = document.createElement("td");
+                const connectionSpan = document.createElement("span");
+                const connectionLabel = String(device.connection || "Unknown");
+                connectionSpan.className = "device-connection " +
+                    connectionLabel.toLowerCase().replace(/\s+/g, "-");
+                connectionSpan.title = String(device.connection_detail || "");
+                connectionSpan.textContent = connectionLabel;
+                tdConnection.appendChild(connectionSpan);
                 const tdType = document.createElement("td");
                 tdType.textContent = String(device.type || "");
 
@@ -758,6 +766,7 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
                 tr.appendChild(tdBrand);
                 tr.appendChild(tdIp);
                 tr.appendChild(tdMac);
+                tr.appendChild(tdConnection);
                 tr.appendChild(tdType);
                 body.appendChild(tr);
             });
@@ -768,7 +777,7 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
             body.replaceChildren();
             const tr = document.createElement("tr");
             const td = document.createElement("td");
-            td.colSpan = 5;
+            td.colSpan = 6;
             td.className = "empty";
             td.textContent = "No devices found. Make sure you are connected to a local network, then refresh devices.";
             tr.appendChild(td);
@@ -789,7 +798,7 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
         body.replaceChildren();
         const tr = document.createElement("tr");
         const td = document.createElement("td");
-        td.colSpan = 5;
+        td.colSpan = 6;
         td.className = "empty";
         td.textContent = "Could not retrieve device list.";
         tr.appendChild(td);

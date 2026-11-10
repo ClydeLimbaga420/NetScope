@@ -288,9 +288,14 @@ raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
   (common-prefix subset generated from Wireshark's `manuf` data at
   `https://www.wireshark.org/download/automated/data/manuf`); locally
   administered MACs show `Private MAC`. Regenerate this data if vendor
-  coverage is insufficient. The device table has five columns (name, brand,
-  IP, MAC, entry type); `/api/devices` returns `name`, `vendor`, `ip`, `mac`,
-  `type`. Device overrides are in browser localStorage; double-click a name
+  coverage is insufficient. The device table has six columns (name, brand,
+  IP, MAC, connection, entry type); `/api/devices` returns `name`, `vendor`,
+  `ip`, `mac`, `connection`, `connection_detail`, `type`. `connection` is a
+  best-effort label (`This PC`, `Router`, `Wireless`, `Wired`, `Unknown`)
+  derived from ARP interface mapping (Wi-Fi adapter names), the default
+  gateway (with `route print -4` fallback), randomized MACs, and
+  mobile/IoT vendor OUIs — Windows does not expose the AP's client list.
+  Device overrides are in browser localStorage; double-click a name
   to rename it. The table shows up to 8 rows (`DEVICE_VISIBLE_ROWS` in
   `dashboard.js`; `applyDeviceScrollHeight()` measures the sticky `thead`
   plus the first 8 rows and sets `.table-wrap` max-height, rerun on device

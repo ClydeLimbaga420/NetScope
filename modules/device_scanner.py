@@ -28,6 +28,39 @@ SCAN_SETTLE_SECONDS = 0.5
 SCAN_LOCK = threading.Lock()
 LAST_SCAN = 0.0
 
+WIFI_INTERFACE_HINTS = ("wi-fi", "wifi", "wireless", "wlan", "802.11")
+
+WIRELESS_VENDOR_HINTS = (
+    "apple",
+    "samsung",
+    "xiaomi",
+    "huawei",
+    "honor",
+    "oneplus",
+    "oppo",
+    "vivo",
+    "realme",
+    "google",
+    "motorola",
+    "lg electronics",
+    "nintendo",
+    "amazon",
+    "roku",
+    "sonos",
+    "espressif",
+    "tuya",
+    "ring llc",
+    "nest labs",
+    "tcl",
+    "hisense",
+    "vizio",
+    "nothing technology",
+)
+
+INTERFACE_LINE = re.compile(
+    r"([0-9]{1,3}(?:\.[0-9]{1,3}){3})\s+---\s+0x[0-9a-fA-F]+"
+)
+
 
 def _creation_flags():
     return getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -389,10 +422,150 @@ def _add_vendors(devices):
         device["vendor"] = _vendor_for_mac(device["mac"])
 
 
+def _normalize_mac(mac):
+    return (mac or "").replace("-", ":").lower()
+
+
+def _is_wireless_interface(name):
+    haystack = (name or "").lower()
+
+    return any(hint in haystack for hint in WIFI_INTERFACE_HINTS)
+
+
+def _is_wireless_vendor(vendor):
+    haystack = (vendor or "").lower()
+
+    return any(hint in haystack for hint in WIRELESS_VENDOR_HINTS)
+
+
+def _local_context():
+    context = {
+        "own_ips": set(),
+        "own_macs": set(),
+        "interfaces": {}
+    }
+
+    try:
+        addresses = psutil.net_if_addrs()
+    except Exception:
+        return context
+
+    for name, interface_addresses in addresses.items():
+        wireless = _is_wireless_interface(name)
+
+        for address in interface_addresses:
+            if address.family == socket.AF_INET and address.address:
+                context["own_ips"].add(address.address)
+                context["interfaces"][address.address] = {
+                    "name": name,
+                    "wireless": wireless
+                }
+
+            family_name = getattr(address.family, "name", "")
+
+            if (
+                family_name == "AF_LINK"
+                or str(address.family) == "-1"
+            ):
+                mac = _normalize_mac(address.address)
+
+                if mac and mac != "??:??:??:??:??:??":
+                    context["own_macs"].add(mac)
+
+    return context
+
+
+def _default_gateway():
+    try:
+        from modules.network_info import get_default_gateway
+
+        gateway = get_default_gateway()
+
+        if gateway:
+            return gateway
+    except Exception:
+        pass
+
+    if platform.system().lower() != "windows":
+        return None
+
+    try:
+        result = subprocess.run(
+            ["route", "print", "-4"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            creationflags=_creation_flags()
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+    return _parse_route_gateway(result.stdout)
+
+
+def _parse_route_gateway(output):
+    match = re.search(
+        r"^\s*0\.0\.0\.0\s+0\.0\.0\.0\s+"
+        r"([0-9]{1,3}(?:\.[0-9]{1,3}){3})",
+        output,
+        re.MULTILINE
+    )
+
+    if not match:
+        return None
+
+    gateway = match.group(1)
+
+    return None if gateway == "0.0.0.0" else gateway
+
+
+def _classify_connection(device, context, gateway):
+    ip = device.get("ip")
+    mac = _normalize_mac(device.get("mac"))
+    interface = context["interfaces"].get(device.get("interface_ip"))
+
+    if ip in context["own_ips"] or (mac and mac in context["own_macs"]):
+        return "This PC", "Address belongs to a local adapter"
+
+    if gateway and ip == gateway:
+        return "Router", "Default gateway of this PC"
+
+    if interface and interface["wireless"]:
+        return "Wireless", "Reached through the Wi-Fi adapter"
+
+    if mac and _is_locally_administered_mac(mac):
+        return "Wireless", "Randomized (private) MAC, typical of Wi-Fi devices"
+
+    if _is_wireless_vendor(device.get("vendor")):
+        return "Wireless", "Mobile or IoT vendor commonly seen on Wi-Fi"
+
+    if interface and not interface["wireless"]:
+        return "Wired", "Reached through an Ethernet adapter"
+
+    return "Unknown", "Connection type could not be determined"
+
+
+def _add_connections(devices):
+    context = _local_context()
+    gateway = _default_gateway()
+
+    for device in devices:
+        label, detail = _classify_connection(device, context, gateway)
+        device["connection"] = label
+        device["connection_detail"] = detail
+
+
 def _parse_windows(output, devices, seen):
     pattern = r"^\s*([0-9.]+)\s+([0-9a-fA-F-]{17})\s+(\w+)"
+    interface_ip = None
 
     for line in output.splitlines():
+        header = INTERFACE_LINE.search(line)
+
+        if header:
+            interface_ip = header.group(1)
+            continue
+
         match = re.match(pattern, line)
 
         if not match:
@@ -410,7 +583,8 @@ def _parse_windows(output, devices, seen):
             "ip": ip,
             "mac": mac.replace("-", ":").lower(),
             "type": kind,
-            "vendor": None
+            "vendor": None,
+            "interface_ip": interface_ip
         })
 
 
@@ -439,7 +613,8 @@ def _parse_unix(output, devices, seen):
             "ip": ip,
             "mac": match.group("mac").lower(),
             "type": "arp",
-            "vendor": None
+            "vendor": None,
+            "interface_ip": None
         })
 
 
@@ -469,6 +644,8 @@ def get_arp_devices():
         _parse_unix(output, devices, seen)
 
     _add_vendors(devices)
+
+    _add_connections(devices)
 
     _resolve_names(devices)
 

@@ -1119,6 +1119,39 @@ tbody tr:last-child td {
 }
 
 
+.device-connection {
+    display: inline-block;
+
+    vertical-align: bottom;
+
+    color: #b9c8e2;
+
+    font-size: 10.5px;
+
+    cursor: help;
+}
+
+
+.device-connection.wireless {
+    color: #7ad0a2;
+}
+
+
+.device-connection.router {
+    color: #e0c07a;
+}
+
+
+.device-connection.this-pc {
+    color: #9ac7ff;
+}
+
+
+.device-connection.unknown {
+    color: var(--muted);
+}
+
+
 .empty {
     color: var(--muted);
 
