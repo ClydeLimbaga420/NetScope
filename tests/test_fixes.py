@@ -193,6 +193,22 @@ def test_catalog_rejects_unknown_fix_id():
         catalog.require("NOPE-99")
 
 
+def test_ip06_route_flush_is_gated_last_resort():
+    catalog = load_catalog()
+    entry = catalog.require("IP-06")
+
+    final = entry.ladder[-1]
+    assert final.risk == "high"
+    assert final.requires_second_confirmation is True
+    native = [command for command in final.commands if command.kind == "native"]
+    assert any("route" in command.args and "-f" in command.args for command in native)
+
+    for step in entry.ladder[:-1]:
+        for command in step.commands:
+            if command.kind == "native":
+                assert not ("route" in command.args and "-f" in command.args)
+
+
 # -- executor ----------------------------------------------------------------
 
 
@@ -333,6 +349,27 @@ def test_executor_detect_only_never_runs_commands(tmp_path, snapshot_factory):
     assert outcome.unresolved is not None
     assert outcome.unresolved["another_device_works"] is True
     assert executor.runner.calls == []
+
+
+def test_executor_declined_optional_step_is_skipped(tmp_path, snapshot_factory):
+    catalog = load_catalog()
+    entry = catalog.require("NET-10")
+    snapshot = snapshot_factory()
+    engine = StaticEngine(snapshot, check_id="NET-10", statuses=[Status.FAIL])
+    executor = make_executor(tmp_path, snapshot, engine, catalog)
+
+    def confirm(prompt: str) -> bool:
+        return "Run step 2" not in prompt
+
+    outcome = executor.run(entry, assume_yes=False, confirm=confirm)
+
+    assert outcome.status == "unresolved"
+    assert outcome.exit_code == 2
+    assert outcome.steps[0].status == "ran"
+    assert outcome.steps[1].status == "skipped"
+    assert outcome.unresolved is not None
+    assert any("autotuninglevel=normal" in " ".join(call) for call in executor.runner.calls)
+    assert not any("highlyrestricted" in " ".join(call) for call in executor.runner.calls)
 
 
 # -- if_unresolved -----------------------------------------------------------

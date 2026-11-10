@@ -365,7 +365,7 @@ def cmd_fix(args: Any, ctx: CliContext) -> int:
         args,
         outcome,
         entry,
-        preview=plan.preview_lines if args.dry_run else None,
+        preview=plan.preview_lines if args.dry_run and args.json else None,
     )
 
 

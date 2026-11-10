@@ -695,6 +695,9 @@ class FixExecutor:
                     accepted=accepted,
                 )
                 if not accepted:
+                    if step.optional:
+                        step_outcome.status = "skipped"
+                        continue
                     step_outcome.status = "declined"
                     outcome.status = "declined"
                     outcome.message = "High-risk step was not confirmed."
@@ -711,6 +714,9 @@ class FixExecutor:
                     accepted=accepted,
                 )
                 if not accepted:
+                    if step.optional:
+                        step_outcome.status = "skipped"
+                        continue
                     step_outcome.status = "declined"
                     outcome.status = "declined"
                     outcome.message = "Fix was not confirmed."

@@ -162,8 +162,8 @@ Existing code that must keep working: the Flask dashboard (`app.py`,
 - [x] If-unresolved tests (gating, ranking, wording, report/log inclusion)
 
 ### 3.5 Phase 3 close-out
-- [ ] Update `AGENTS.md`
-- [ ] Update Notes below
+- [x] Update `AGENTS.md`
+- [x] Update Notes below
 
 ---
 
@@ -316,4 +316,30 @@ Session 4 (CLI Interactive Enhancement):
   - Press `q` to return to shell
 - Updated `cli/parser.py`, `cli/commands.py`, `cli/shell.py`, created `cli/monitor.py`
 - All 106 tests still pass.
+
+Session 5 (Phase 3 review before Phase 4):
+- Reviewed Phase 3 (fixes catalog/executor/if_unresolved, CLI integration,
+  tests) against `prompt.txt` seed spec. Verified: 61 entries with correct
+  family counts, admin/risk/reboot flags, DETECT-ONLY set, [VERIFY] set,
+  high-risk second-confirmation steps (NET-07, STK-03), no SMB1/signing/
+  NCSI-probing regressions, check fix_ids all resolve, verify refs resolve
+  (SVC via prefix matching), DNS-03 backs up hosts before selective removal.
+- Misalignments found and patched:
+  - IP-06 was missing the spec's `route -f` last-resort ladder step (risk H,
+    second explicit confirmation, reboot noted). Added the step and honest
+    explanation/rollback notes; entry risk stays medium, the step is the
+    high-risk one.
+  - `FixStep.optional` was parsed but ignored by the executor: declining an
+    optional step (e.g. NET-10 step 2) aborted the whole fix as "declined"
+    (exit 3). The executor now marks optional declined steps "skipped" and
+    continues the ladder to an honest unresolved outcome (exit 2).
+  - task.md 3.5 close-out boxes were unchecked although done; ticked.
+  - Non-JSON `netscope fix X --dry-run` printed the preview twice (once in
+    `cmd_fix`, again via `_finish_fix`); the preview now prints once and is
+    only embedded in the JSON payload.
+- Known deliberate deviation (confirmed by user, keep): LAN-09 is fully
+  DETECT-ONLY; `prompt.txt` seeds an optional AllowInsecureGuestAuth=1
+  registry fix behind a second confirmation, which the catalog intentionally
+  does not script ("outside this safe flow"). Document it in Phase 5 README.
+- All tests pass (106 existing + 2 new in `tests/test_fixes.py`).
 

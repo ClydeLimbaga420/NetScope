@@ -1610,7 +1610,7 @@
       "name": "Overlapping or stale routes",
       "symptom": "Multiple routes share the same destination prefix, often after a VPN or virtual switch.",
       "detection": "Duplicate destination prefixes or persistent stale routes",
-      "explanation": "Removes one specific stale route. Interface metrics can also be adjusted separately. route -f is not used.",
+      "explanation": "Removes one specific stale route; interface metrics can be adjusted with ADP-06. As a last resort, route -f can clear every route; it breaks VPN tunnels and needs a reboot, and it asks for a second explicit confirmation.",
       "admin": true,
       "risk": "medium",
       "reboot": false,
@@ -1643,7 +1643,7 @@
         }
       ],
       "rollback": [],
-      "rollback_notes": "Re-add the route only if the VPN or virtual adapter needs it; most stale routes should not return.",
+      "rollback_notes": "The pre-fix snapshot stores the full route table. After removing the specific route, re-add it only if the VPN or virtual adapter needs it; most stale routes should not return. After route -f, routes are rebuilt by DHCP on renew or reboot; VPN and persistent routes must be re-added manually from the snapshot.",
       "ladder": [
         {
           "name": "Remove the specific stale route",
@@ -1656,6 +1656,22 @@
               "params": [
                 "DestinationPrefix",
                 "NextHop"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Clear all routes (last resort)",
+          "description": "route -f deletes every route, including VPN and persistent routes; it breaks active VPN tunnels and requires a reboot afterwards. Use only if removing the specific stale route did not resolve the problem.",
+          "risk": "high",
+          "requires_second_confirmation": true,
+          "commands": [
+            {
+              "kind": "native",
+              "label": "clear the route table",
+              "args": [
+                "route",
+                "-f"
               ]
             }
           ]
