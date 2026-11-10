@@ -294,7 +294,8 @@ strictly required for web (document why).
       browser has an SSE polling fallback. Windows commands run in kill-on-close Job Objects;
       cancellation/timeout/Ctrl+C terminate descendants, covered by a spawned
       parent-child process test. API-level disconnect recovery is tested;
-      browser EventSource reconnect behavior still needs a browser smoke test.
+      Node tests cover EventSource-error and unavailable-EventSource polling
+      fallback. Browser end-to-end reconnect verification stays in Phase C.
 - [x] Security (initial): bind 127.0.0.1; per-session + boot token, boot->
       HttpOnly SameSite=Strict cookie exchange + clean redirect, `/__session__`
       for JS POST header token; API requires cookie, POST requires
@@ -322,7 +323,9 @@ strictly required for web (document why).
 - [x] Logging (initial): web mode logger, `source:"web"` events for server
       start/stop, API requests/responses, diagnose/tool/fix actions, security
       rejections, UI events. Command-level/snapshot/rollback/unresolved-detail
-      parity with CLI logging pending.
+      events continue through the shared logger/runner; API request/response,
+      utility command, and primary report/fix result shapes have focused parity
+      tests. Packaged-mode output remains a Phase D verification.
 - [x] CLI integration: `gui` gains `--no-browser`/`--port`; `netscope gui`
       runs web UI (detached spawn from interactive terminal so prompt returns);
       no-args from owned console / hidden `__gui__` launches web UI in-process.
@@ -334,18 +337,16 @@ strictly required for web (document why).
       loopback boot URL, opens the app/browser from the parent, and terminates
       a child that fails to publish a valid URL. Source/frozen launch argv are
       selected explicitly; mocked launch and failure paths are tested.
-- [ ] Remaining B: frozen-executable launch smoke test, verify structured
-      Werkzeug request logs in quiet/packaged modes, complete API/CLI shape and logging parity, plus
-      remaining injection and lifecycle coverage. Existing focused tests cover
-      Host/Origin/session/token/CSP, fix-token expiry and reuse, strict risk
-      confirmation/dry-run booleans, rollback confirmation, SSE result/end and
-      disconnect recovery, job cancellation, utility-host injection rejection,
-      fix serialization, and catalog metadata. Full suite last passed with 148
-      tests; focused launch/job/GUI run passed with 34 tests on 2026-11-10.
-      Rerun the full suite after remaining changes.
-- [ ] Phase B completion gate: once the remaining B checks above are all green,
-      continue with Phase C: templates, wiring, CSP/offline fixes, and feature
-      integration.
+- [x] Werkzeug request records are routed to structured NetScope `source:web`
+      events without duplicate handlers; source startup is banner-free.
+- [x] Phase B completion: single-instance ownership, source launch handoff,
+      security/fix confirmations, API contracts, SSE/polling/disconnect recovery,
+      job/process-tree cancellation, injection rejection, and structured web/
+      command logging are implemented and covered. The full suite passed
+      (171 tests, 2026-11-10).
+- [x] Phase B completion gate: proceed with Phase C. Browser E2E/design-fidelity
+      checks remain Phase C; frozen launch and packaged log visibility remain
+      Phase D because no executable artifact exists yet.
 
 ### Phase C - Templates, wiring, CSP/offline fixes, feature integration
 - [x] Remove external asset dependencies from the main dashboard template and
@@ -416,7 +417,8 @@ strictly required for web (document why).
       single-instance, clean Ctrl+C, elevation/non-admin state); build tests
       (`netscope.exe gui --no-browser --port <p>` serves dashboard, a static
       CSS, `/api/status` from inside exe); report exe size (tkinter before vs
-      Flask web UI after).
+      Flask web UI after); verify frozen-mode structured log routing and quiet
+      console behavior.
 
 ### Phase E - Remove tkinter, docs, CI, final reports
 - [ ] Remove tkinter from project and exe only after parity checklist passes
@@ -722,3 +724,56 @@ Session 23 (Phase B quiet startup verification):
 - Validation: focused `tests/test_web_run.py tests/test_jobs.py tests/test_gui.py`
       passed (34 tests). Structured Werkzeug request-log routing and browser-level
       reconnect verification remain open.
+
+Session 24 (Phase B Werkzeug request logging):
+- Added coverage that a Werkzeug INFO request record becomes a structured
+      NetScope event with `source="web"`, and that configuring the handler twice
+      does not duplicate records.
+- Source startup banner suppression remains verified by the real CLI smoke
+      test. Packaged-mode log visibility remains pending with Phase D packaging.
+- Validation: the targeted request-log routing test passed.
+
+Session 25 (Phase B API parity and input validation):
+- Diagnosis-job and findings responses are asserted against the shared engine
+      report serialization. Shell-like host/name inputs are tested across ping,
+      trace, DNS, ports, and MTU and must fail before reaching the command runner.
+- Added idle-shutdown coverage proving a `cancelling` job keeps the server alive.
+- Validation: the focused parity/injection/lifecycle selection passed (7 tests).
+- Remaining: audit fix-parameter injection and complete CLI/API shape and logging
+      parity; these checks are not claimed complete based on the focused tests.
+
+Session 26 (Phase B job-stream polling fallback):
+- Extracted EventSource and polling behavior to `web/static/js/job-stream.js`;
+      `engine-ui.js` supplies event/fallback callbacks while the helper owns stream
+      closure, terminal status, polling, and error propagation.
+- Added Node VM tests for EventSource failure falling back to `/api/jobs/<id>`
+      polling and for environments without EventSource. The template asset test
+      verifies the helper is served locally.
+- Validation: 3 Node/template tests passed; both job-stream and engine UI
+      scripts pass `node --check`. Browser-level reconnect remains a Phase C test.
+
+Session 27 (Phase B fix-parameter validation):
+- Added an authenticated `/api/fix/plan` test using the real catalog and
+      `FixExecutor`; an injected adapter name fails planning and produces no call
+      to the shared command runner.
+- Validation: the targeted fix-parameter injection test passed. API/CLI
+      serialization and command-logging parity remain open.
+
+Session 28 (Phase B API/CLI contract and logging parity):
+- Added exact report and fix outcome serialization checks, a utility result
+      schema check against the shared CLI `UtilityRunner`, and a live loopback ping
+      proving web utilities use the shared `SubprocessRunner` and structured command
+      log fields. Added API request/response event field assertions.
+- Packaged log visibility and frozen launch were moved to Phase D because there
+      is no built executable; browser reconnect remains a Phase C browser test.
+- Validation: 4 focused report/fix/utility/request-log tests passed. Rerun the
+      full suite before closing Phase B.
+
+Session 29 (Phase B close-out):
+- Full suite passed: 171 tests in 3.79 seconds on 2026-11-10.
+- Closed Phase B after validating source launch, singleton locking, web
+      security/confirmation, API/core result shapes, utility/fix parameter
+      rejection, request/command logging, SSE polling fallback/disconnect recovery,
+      and cancellation through Windows process descendants.
+- Browser E2E/design fidelity remains in Phase C; frozen executable launch and
+      packaged log visibility remain in Phase D.

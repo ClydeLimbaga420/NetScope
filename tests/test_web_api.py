@@ -1,9 +1,13 @@
 ﻿from __future__ import annotations
 
 import types
+import shutil
 
 import pytest
 
+from core.runner import FakeRunner, SubprocessRunner
+from fixes.catalog import load_catalog
+from fixes.executor import FixExecutor
 from web.server import WebState, create_app
 
 
@@ -141,9 +145,34 @@ def test_diagnose_job(client):
         time.sleep(0.05)
     assert j['status'] == 'done'
     assert j['result']['overall_status'] == 'fail'
+    expected_report = st.last_report.to_dict(include_snapshot=False)
+    assert j["result"] == expected_report
     rf = c.get('/api/findings', headers={'Host': '127.0.0.1:5000'})
     assert rf.status_code == 200
     assert len(rf.get_json()['findings']) == 1
+    assert rf.get_json()["report"] == expected_report
+
+
+def test_report_api_matches_cli_report_payload_contract(client, monkeypatch):
+    c, st = client
+    st.last_report = DummyReport()
+    st.last_snapshot = DummySnap()
+    monkeypatch.setattr("web.api.build_info", lambda _snapshot: {"adapters": []})
+    monkeypatch.setattr(
+        "web.api.build_unresolved_sections",
+        lambda _report, _catalog: [{"fix_id": "IP-01"}],
+    )
+    monkeypatch.setattr("web.api.load_catalog", lambda: object())
+    _boot(c, st)
+
+    response = c.get("/api/report?format=json", headers={"Host": "127.0.0.1:5000"})
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert set(payload) == {"info", "diagnostic", "unresolved"}
+    assert payload["info"] == {"adapters": []}
+    assert payload["diagnostic"] == st.last_report.to_dict(include_snapshot=False)
+    assert payload["unresolved"] == [{"fix_id": "IP-01"}]
 
 
 def test_job_events_endpoint_streams_sse(client):
@@ -223,7 +252,17 @@ def test_job_cancel_endpoint_marks_job_cancelled(client):
     assert job.status == "cancelled"
 
 
-def test_tool_api_rejects_command_injection_before_runner(client):
+@pytest.mark.parametrize(
+    ("tool_name", "body"),
+    [
+        ("ping", {"host": "127.0.0.1; whoami"}),
+        ("trace", {"host": "127.0.0.1; whoami"}),
+        ("dns", {"name": "example.com; whoami"}),
+        ("ports", {"host": "127.0.0.1; whoami", "ports": "80"}),
+        ("mtu", {"host": "127.0.0.1; whoami"}),
+    ],
+)
+def test_tool_api_rejects_command_injection_before_runner(client, tool_name, body):
     c, st = client
     token = _boot(c, st)
 
@@ -237,9 +276,9 @@ def test_tool_api_rejects_command_injection_before_runner(client):
     runner = Runner()
     st.runtime.runner = runner
     response = c.post(
-        "/api/tools/ping",
+        f"/api/tools/{tool_name}",
         headers=_post_headers(st, token),
-        json={"host": "127.0.0.1; whoami"},
+        json=body,
     )
     job_id = response.get_json()["job_id"]
     import time
@@ -251,6 +290,18 @@ def test_tool_api_rejects_command_injection_before_runner(client):
     assert response.status_code == 200
     assert job.status == "error"
     assert runner.calls == []
+
+
+def test_idle_shutdown_waits_for_cancelling_job(client):
+    _client, st = client
+    st.last_heartbeat = __import__('time').monotonic() - 21
+
+    assert st.should_shutdown()
+    job = st.jobs.create("fix")
+    job.status = "cancelling"
+    assert not st.should_shutdown()
+    job.status = "done"
+    assert st.should_shutdown()
 
 
 def test_fixes_endpoint_returns_catalog_metadata(client):
@@ -317,6 +368,30 @@ def test_security_headers_and_origin(client):
     assert r.status_code == 403
 
 
+def test_api_request_and_response_are_logged(client):
+    c, st = client
+
+    class Recorder:
+        def __init__(self):
+            self.events = []
+
+        def event(self, name, **fields):
+            self.events.append((name, fields))
+
+    recorder = Recorder()
+    st.logger = recorder
+    _boot(c, st)
+    recorder.events.clear()
+
+    response = c.get("/api/fixes", headers={"Host": "127.0.0.1:5000"})
+
+    assert response.status_code == 200
+    assert recorder.events == [
+        ("api_request", {"source": "web", "method": "GET", "path": "/api/fixes"}),
+        ("api_response", {"source": "web", "method": "GET", "path": "/api/fixes", "status": 200}),
+    ]
+
+
 def test_dashboard_template_uses_shared_shell_and_local_assets(client):
     c, _st = client
     response = c.get("/", headers={"Host": "127.0.0.1:5000"})
@@ -334,6 +409,7 @@ def test_dashboard_template_uses_shared_shell_and_local_assets(client):
         "/static/css/web-overrides.css",
         "/static/js/web-init.js",
         "/static/js/dashboard.js",
+        "/static/js/job-stream.js",
         "/static/js/engine-ui.js",
         "/static/vendor/chart.umd.min.js",
         "/static/fonts/Inter-Regular.woff2",
@@ -416,6 +492,7 @@ def test_fix_plan_execute_requires_token(client):
             break
         time.sleep(0.05)
     assert j['status'] == 'done'
+    assert j["result"] == FakeOutcome().to_dict()
     # reused token rejected
     r = c.post('/api/fix/execute', headers=_post_headers(st, token), json={'confirmation_token': conf})
     assert r.status_code == 403
@@ -444,6 +521,37 @@ def test_fix_confirmation_token_expiry(client):
 
     assert response.status_code == 403
     assert response.get_json()['error']['code'] == 'expired_token'
+
+
+def test_fix_plan_rejects_injected_parameter_before_command_runner(client, tmp_path):
+    c, st = client
+    token = _boot(c, st)
+    runner = FakeRunner(default=(0, "", ""))
+    catalog = load_catalog()
+    st.runtime.runner = runner
+    st.runtime.catalog = catalog
+    st.last_snapshot = DummySnap()
+    st.runtime.executor = lambda: FixExecutor(
+        runner,
+        None,
+        st.logger,
+        st.runtime.engine,
+        catalog,
+        backup_dir=tmp_path,
+    )
+
+    response = c.post(
+        "/api/fix/plan",
+        headers=_post_headers(st, token),
+        json={
+            "fix_id": "ADP-01",
+            "params": {"AdapterName": "Ethernet; whoami"},
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["error"]["code"] == "plan_failed"
+    assert runner.calls == []
 
 
 def test_fix_rollback_requires_confirmation_and_runs(client):
@@ -481,6 +589,68 @@ def test_fix_history_returns_only_backup_metadata(client, tmp_path, monkeypatch)
         'captured_at': '2026-01-01T00:00:00+00:00',
         'rollback_available': True,
     }]
+
+
+@pytest.mark.skipif(shutil.which("ping") is None, reason="ping executable unavailable")
+def test_web_utility_command_uses_shared_structured_runner(client):
+    c, st = client
+
+    class Recorder:
+        def __init__(self):
+            self.events = []
+            self.commands = []
+
+        def event(self, name, **fields):
+            self.events.append((name, fields))
+
+        def action(self, source, name, **fields):
+            self.events.append((name, {"source": source, **fields}))
+
+        def command(self, args, **fields):
+            self.commands.append((args, fields))
+
+        def error(self, *_args, **_kwargs):
+            return None
+
+    recorder = Recorder()
+    st.logger = recorder
+    st.runtime.logger = recorder
+    st.runtime.runner = SubprocessRunner(logger=recorder)
+    token = _boot(c, st)
+    response = c.post(
+        "/api/tools/ping",
+        headers=_post_headers(st, token),
+        json={"host": "127.0.0.1", "count": 1, "timeout": 0.1},
+    )
+    job_id = response.get_json()["job_id"]
+    import time
+    deadline = time.monotonic() + 5
+    job = st.jobs.get(job_id)
+    while job.status in {"queued", "running", "cancelling"} and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+    assert job.status == "done"
+    assert set(job.result) == {
+        "host",
+        "count",
+        "returncode",
+        "online",
+        "latencies_ms",
+        "packet_loss_percent",
+        "output",
+    }
+    assert job.result["host"] == "127.0.0.1"
+    assert len(recorder.commands) == 1
+    assert recorder.commands[0][0][0].lower() == "ping"
+    assert {
+        "returncode",
+        "duration_seconds",
+        "stdout",
+        "stderr",
+        "timeout",
+        "timed_out",
+    } <= set(recorder.commands[0][1])
+    assert any(name == "tool_complete" for name, _fields in recorder.events)
 
 
 def test_fix_dry_run_flag_passed(client):

@@ -160,52 +160,25 @@
     render();
   }
 
-  async function pollJob(jobId) {
-    while (true) {
-      const job = await api(`/api/jobs/${encodeURIComponent(jobId)}`);
-      if (["done", "error", "cancelled"].includes(job.status)) return job;
-      await new Promise((resolve) => setTimeout(resolve, 750));
-    }
-  }
-
   function followJob(jobId) {
-    return new Promise((resolve, reject) => {
-      if (!("EventSource" in window)) {
-        pollJob(jobId).then(resolve, reject);
-        return;
-      }
-      const source = new EventSource(`/api/jobs/${encodeURIComponent(jobId)}/events`);
-      let fallbackStarted = false;
-      let finalStatus = "done";
-      source.onmessage = (event) => {
-        let payload;
-        try { payload = JSON.parse(event.data); } catch (_error) { return; }
-        if (payload.type === "status") finalStatus = payload.status || finalStatus;
+    return window.NetScopeJobStream.follow(jobId, {
+      request: api,
+      onEvent(payload) {
         if (payload.type === "check" && payload.result) receiveCheck(payload.result);
         if (payload.type === "result") {
           state.report = payload.result;
           if (state.report && state.report.results) state.report.results.forEach(receiveCheck);
         }
-        if (payload.type === "end") {
-          source.close();
-          state.jobId = null;
-          resolve({ status: finalStatus, result: state.report });
+        if (payload.type === "end") state.jobId = null;
+      },
+      onFallback(job) {
+        state.jobId = null;
+        if (job.result && job.result.results) {
+          state.report = job.result;
+          state.checks = [];
+          job.result.results.forEach(receiveCheck);
         }
-      };
-      source.onerror = () => {
-        if (fallbackStarted) return;
-        fallbackStarted = true;
-        source.close();
-        pollJob(jobId).then((job) => {
-          state.jobId = null;
-          if (job.result && job.result.results) {
-            state.report = job.result;
-            state.checks = [];
-            job.result.results.forEach(receiveCheck);
-          }
-          resolve(job);
-        }, reject);
-      };
+      },
     });
   }
 

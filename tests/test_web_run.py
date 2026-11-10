@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import queue
 import subprocess
@@ -11,6 +12,7 @@ import urllib.request
 
 import config
 from web import run
+from web.server import _configure_werkzeug
 
 
 def test_instance_lock_is_exclusive_until_released(tmp_path, monkeypatch):
@@ -88,6 +90,39 @@ def test_existing_instance_rejects_non_netscope_service(monkeypatch):
     monkeypatch.setattr(run.urllib.request, "build_opener", lambda *_handlers: Opener())
 
     assert run._existing_instance_url({"port": 54321, "boot_token": "token"}) is None
+
+
+def test_werkzeug_request_logs_route_to_netscope_without_duplicate_handlers():
+    class Recorder:
+        def __init__(self):
+            self.events = []
+
+        def event(self, name, **fields):
+            self.events.append((name, fields))
+
+    log = logging.getLogger("werkzeug")
+    original_handlers = log.handlers[:]
+    original_level = log.level
+    original_propagate = log.propagate
+    recorder = Recorder()
+    try:
+        _configure_werkzeug(recorder)
+        log.handle(logging.LogRecord(
+            "werkzeug", logging.INFO, __file__, 1, '127.0.0.1 "GET /health HTTP/1.1" 200', (), None
+        ))
+        _configure_werkzeug(recorder)
+
+        assert len(log.handlers) == 1
+        assert len(recorder.events) == 1
+        name, fields = recorder.events[0]
+        assert name == "werkzeug"
+        assert fields["source"] == "web"
+        assert fields["level"] == "INFO"
+        assert "GET /health" in fields["message"]
+    finally:
+        log.handlers = original_handlers
+        log.setLevel(original_level)
+        log.propagate = original_propagate
 
 
 def test_source_cli_starts_local_web_server(tmp_path):

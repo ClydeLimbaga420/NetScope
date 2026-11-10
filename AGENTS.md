@@ -5,7 +5,7 @@ dashboard into a universal Windows network troubleshooting tool with one shared
 engine and two front ends (CLI + GUI). Work phase by phase; update this file and
 `task.md` Notes at the end of every phase.
 
-**Current status: Phase 4 complete.** Phase 5 is not built yet. Phase C asset hardening is in progress, with the local offline/CSP-safe bundle for the dashboard now in place.
+**Current status: Phase 4 complete; Phase 6 Phase B complete and Phase C in progress.** Phase 5 packaging is pending. The web UI now has its localhost server/API/job/security foundation, local assets, and initial engine-backed Troubleshoot integration.
 
 ## Run / environment
 - The Flask dashboard still works: `python app.py` → http://127.0.0.1:5000
@@ -16,13 +16,13 @@ engine and two front ends (CLI + GUI). Work phase by phase; update this file and
 - This checkout originally had **no `.venv`**. A venv now exists (Python 3.14.7).
   Recreate with `py -m venv .venv`, then
   `.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt`.
-- Run tests: `.\.venv\Scripts\python.exe -m pytest` (pytest 9.x, 128 tests green).
+- Run tests: `.\.venv\Scripts\python.exe -m pytest` (latest full run: 171 passed, 2026-11-10).
 - Run the CLI: `.\.venv\Scripts\python.exe netscope.py --help`
   (or `python -m cli`). `netscope.py diagnose --json` is the machine interface.
-- Run the GUI: `netscope gui` spawns it detached (prompt returns); the GUI
-  process itself is `.venv\Scripts\python.exe netscope.py __gui__` (hidden
-  token, handled before argparse). `python -m gui` runs it in the current
-  process for development (console stays attached).
+- Run the web UI: `netscope gui` launches the localhost interface; use
+  `netscope gui --no-browser --port N` to run it in the foreground and print
+  its boot URL. The hidden `__gui__` entry serves the UI in-process. The legacy
+  tkinter code remains until the Phase 6 parity checklist is complete.
 - Double-clicking a terminal (no args) opens the interactive shell; double-
   clicking a launcher that owns its console detaches and opens the GUI.
 - PowerShell is required for diagnostics (Windows PowerShell 5.1).
@@ -213,6 +213,21 @@ from gui.runtime import build_runtime
 raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
 ```
 
+## Web UI (Phase 6B complete; Phase 6C in progress)
+- `web/run.py` serves on `127.0.0.1`, owns a per-user process lock, atomically
+  publishes its port/boot token, validates existing instances with `/health`,
+  and uses a bounded detached-launch URL handoff. Source startup is banner-free.
+- `web/security.py` enforces localhost Host checks, boot/session tokens,
+  same-origin state-changing requests, CSP, and security headers.
+- `web/jobs.py` provides SSE plus job polling, cancellation states, and a
+  job-scoped command cancellation context. Windows commands use kill-on-close
+  Job Objects so cancelled commands and descendants terminate together.
+- `web/api.py` routes operations through the existing engine, catalog,
+  `FixExecutor`, `UtilityRunner`, report builder, and structured logger. Do not
+  add diagnostic or fix business logic to the web layer.
+- Tests: latest full suite is 171 passing. Phase C still needs browser E2E and
+  design-fidelity verification; Phase D owns frozen-build launch/log checks.
+
 ## Logging
 - JSON-lines file at `%LOCALAPPDATA%\NetScope\logs\netscope.log`, rotating
   (5 MB × 5). Every record has `ts`, `level`, `logger`, `session_id`, `event`,
@@ -281,9 +296,10 @@ raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
   plus the first 8 rows and sets `.table-wrap` max-height, rerun on device
   refresh and window resize; 420px CSS fallback). `#device-count` is a pill
   updated on each `/api/devices` render.
-- Chart.js loads from a CDN (charts need internet). `dashboard.js` calls
-  `new Chart(...)` unguarded near the top; if the CDN fails on a fresh load,
-  the rest of the script (devices, scroll sizing, diagnostics) never executes.
+- Chart.js and Inter fonts are bundled locally in `static/` and `web/static/`;
+  the dashboard no longer depends on a font or chart CDN. `dashboard.js` still
+  initializes Chart.js at startup, so the referenced local asset must remain
+  present (covered by the web template asset test).
 - The Troubleshoot panel is a master-detail UI: `#check-steps`/`#repair-steps`
   render a grouped rail and `#diag-stage` renders the selected step.
   Per-step results live in `diagnosticStates`;
