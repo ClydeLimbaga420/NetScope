@@ -46,25 +46,7 @@ body {
         Arial,
         sans-serif;
 
-    background:
-        radial-gradient(
-            1100px 700px at 8% -12%,
-            rgba(98, 167, 255, 0.18),
-            transparent 60%
-        ),
-        radial-gradient(
-            900px 650px at 100% 0%,
-            rgba(139, 124, 255, 0.14),
-            transparent 55%
-        ),
-        radial-gradient(
-            900px 700px at 55% 115%,
-            rgba(62, 224, 170, 0.09),
-            transparent 60%
-        ),
-        var(--bg);
-
-    background-attachment: fixed;
+    background: var(--bg);
 
     -webkit-font-smoothing: antialiased;
 }
@@ -213,10 +195,6 @@ body::before {
 
     font-size: 19px;
     font-weight: 800;
-
-    box-shadow:
-        0 8px 24px rgba(83, 125, 255, 0.4),
-        inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
 
@@ -307,9 +285,7 @@ body::before {
 
     border-color: rgba(98, 167, 255, 0.26);
 
-    box-shadow:
-        inset 3px 0 0 var(--accent),
-        0 8px 20px rgba(30, 80, 160, 0.16);
+    box-shadow: inset 3px 0 0 var(--accent);
 }
 
 
@@ -344,26 +320,6 @@ body::before {
     border-radius: 50%;
 
     background: var(--green);
-
-    box-shadow: 0 0 10px rgba(62, 224, 170, 0.65);
-
-    animation: pulse 2.4s ease-out infinite;
-}
-
-
-@keyframes pulse {
-    0%,
-    100% {
-        box-shadow:
-            0 0 0 0 rgba(62, 224, 170, 0.4),
-            0 0 10px rgba(62, 224, 170, 0.65);
-    }
-
-    50% {
-        box-shadow:
-            0 0 0 6px rgba(62, 224, 170, 0),
-            0 0 10px rgba(62, 224, 170, 0.65);
-    }
 }
 
 
@@ -378,6 +334,14 @@ body::before {
 
     margin: 0 auto;
     padding: 38px 42px 26px;
+}
+
+.page-view {
+    display: none;
+}
+
+.page-view.active {
+    display: block;
 }
 
 
@@ -469,7 +433,7 @@ h1 {
 .cards {
     display: grid;
 
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
 
     gap: 16px;
 
@@ -536,44 +500,9 @@ h1 {
 }
 
 
-.card::before {
-    content: "";
-
-    position: absolute;
-    inset: 0 0 auto;
-
-    height: 1px;
-
-    background: linear-gradient(
-        90deg,
-        transparent,
-        var(--card-accent),
-        transparent
-    );
-
-    opacity: 0.55;
-}
-
-
+.card::before,
 .card::after {
-    content: "";
-
-    position: absolute;
-    top: -90px;
-    right: -70px;
-
-    width: 160px;
-    height: 160px;
-
-    background: radial-gradient(
-        circle,
-        var(--card-accent),
-        transparent 65%
-    );
-
-    opacity: 0.12;
-
-    pointer-events: none;
+    display: none;
 }
 
 
@@ -714,6 +643,12 @@ h1 {
     font-size: 10.5px;
 }
 
+.card-reason {
+    margin-top: 8px;
+    color: #ffb2be;
+    line-height: 1.45;
+}
+
 
 .status-dot {
     display: inline-block;
@@ -734,19 +669,11 @@ h1 {
 
 .status-dot.online {
     background: var(--green);
-
-    box-shadow:
-        0 0 0 4px rgba(62, 224, 170, 0.12),
-        0 0 14px rgba(62, 224, 170, 0.7);
 }
 
 
 .status-dot.offline {
     background: var(--red);
-
-    box-shadow:
-        0 0 0 4px rgba(255, 107, 129, 0.12),
-        0 0 14px rgba(255, 107, 129, 0.5);
 }
 
 
@@ -831,27 +758,8 @@ h1 {
     border-radius: 50%;
 
     background: var(--green);
-
-    box-shadow: 0 0 8px rgba(62, 224, 170, 0.7);
-
-    animation: live 1.8s ease-in-out infinite;
 }
 
-
-@keyframes live {
-    0%,
-    100% {
-        opacity: 1;
-
-        transform: scale(1);
-    }
-
-    50% {
-        opacity: 0.45;
-
-        transform: scale(0.8);
-    }
-}
 
 
 /* CHART */
@@ -898,6 +806,21 @@ h1 {
     text-align: right;
 
     overflow-wrap: anywhere;
+}
+
+.info-reason {
+    margin: 10px 0 0;
+    padding: 9px 10px;
+    border: 1px solid rgba(255, 107, 129, 0.2);
+    border-radius: 9px;
+    background: rgba(255, 107, 129, 0.07);
+    color: #ffb2be;
+    font-size: 10.5px;
+    line-height: 1.5;
+}
+
+.info-reason[hidden] {
+    display: none;
 }
 
 
@@ -1023,10 +946,6 @@ h1 {
     letter-spacing: 0.2px;
 
     cursor: pointer;
-
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.08),
-        0 6px 18px rgba(20, 55, 110, 0.2);
 
     transition:
         background 0.18s ease,
@@ -1735,6 +1654,39 @@ tbody tr:last-child td {
 }
 
 
+.console-reason {
+    margin: 0 0 10px;
+
+    padding: 9px 10px;
+
+    border: 1px solid rgba(255, 198, 109, 0.2);
+    border-radius: 8px;
+
+    background: rgba(255, 198, 109, 0.07);
+
+    color: var(--amber);
+
+    font-family:
+        "Inter",
+        "Segoe UI Variable",
+        "Segoe UI",
+        system-ui,
+        Arial,
+        sans-serif;
+    font-size: 10.5px;
+    line-height: 1.5;
+    white-space: normal;
+}
+
+.console-reason.error {
+    border-color: rgba(255, 107, 129, 0.24);
+
+    background: rgba(255, 107, 129, 0.08);
+
+    color: #ffb2be;
+}
+
+
 .console-text {
     margin: 0;
 
@@ -1837,8 +1789,6 @@ tbody tr:last-child td {
         var(--green)
     );
 
-    box-shadow: 0 0 12px rgba(98, 167, 255, 0.5);
-
     transition: width 0.45s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -1938,9 +1888,7 @@ tbody tr:last-child td {
 
     color: #ffffff;
 
-    box-shadow:
-        inset 3px 0 0 var(--accent),
-        0 8px 20px rgba(30, 80, 160, 0.16);
+    box-shadow: inset 3px 0 0 var(--accent);
 }
 
 
@@ -2112,83 +2060,9 @@ tbody tr:last-child td {
 }
 
 
-.diag-detail::before {
-    content: "";
-
-    position: absolute;
-    inset: 0 0 auto;
-
-    height: 1px;
-
-    background: linear-gradient(
-        90deg,
-        transparent,
-        var(--accent),
-        transparent
-    );
-
-    opacity: 0.55;
-}
-
-
+.diag-detail::before,
 .diag-detail::after {
-    content: "";
-
-    position: absolute;
-    top: -110px;
-    right: -70px;
-
-    width: 220px;
-    height: 220px;
-
-    background: radial-gradient(
-        circle,
-        var(--accent),
-        transparent 65%
-    );
-
-    opacity: 0.1;
-
-    pointer-events: none;
-}
-
-
-.diag-detail.repair::before {
-    background: linear-gradient(
-        90deg,
-        transparent,
-        var(--amber),
-        transparent
-    );
-}
-
-
-.diag-detail.repair::after {
-    background: radial-gradient(
-        circle,
-        var(--amber),
-        transparent 65%
-    );
-}
-
-
-.diag-detail.success::before {
-    background: linear-gradient(
-        90deg,
-        transparent,
-        var(--green),
-        transparent
-    );
-}
-
-
-.diag-detail.error::before {
-    background: linear-gradient(
-        90deg,
-        transparent,
-        var(--red),
-        transparent
-    );
+    display: none;
 }
 
 
@@ -2358,6 +2232,12 @@ tbody tr:last-child td {
 
     font-size: 10.5px;
     line-height: 1.5;
+}
+
+.diag-detail .step-reason.error {
+    border-color: rgba(255, 107, 129, 0.24);
+    background: rgba(255, 107, 129, 0.08);
+    color: #ffb2be;
 }
 
 

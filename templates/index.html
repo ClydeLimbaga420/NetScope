@@ -25,8 +25,6 @@
     <aside class="sidebar">
 
         <div class="brand">
-            <div class="brand-icon">N</div>
-
             <div>
                 <h2>NetScope</h2>
                 <small>NETWORK MONITOR</small>
@@ -35,22 +33,22 @@
 
         <p class="nav-label">MONITORING</p>
 
-        <a href="#overview" class="nav-item active">
-            ◫ Overview
+        <a href="#overview" class="nav-item active" data-view="main" data-scroll="overview-top">
+            &#9707; Overview
         </a>
 
-        <a href="#devices" class="nav-item">
-            ▦ Devices
+        <a href="#devices" class="nav-item" data-view="main" data-scroll="devices">
+            &#9638; Devices
         </a>
 
-        <a href="#traffic" class="nav-item">
-            ⌁ Traffic
+        <a href="#traffic" class="nav-item" data-view="main" data-scroll="traffic">
+            &#8961; Traffic
         </a>
 
         <p class="nav-label spaced">TOOLS</p>
 
-        <a href="#troubleshoot" class="nav-item">
-            ⚙ Troubleshoot
+        <a href="#troubleshoot" class="nav-item" data-view="troubleshoot">
+            &#9881; Troubleshoot
         </a>
 
         <div class="sidebar-bottom">
@@ -62,7 +60,11 @@
 
 
     <!-- MAIN CONTENT -->
-    <main class="main" id="overview">
+    <main class="main">
+
+        <div class="page-view active" id="view-main" data-view="main">
+
+        <div id="overview-top"></div>
 
         <!-- HEADER -->
         <header class="topbar">
@@ -127,6 +129,8 @@
                     Target: 1.1.1.1
                 </p>
 
+                <p class="card-foot card-reason" id="internet-reason" hidden></p>
+
             </article>
 
 
@@ -150,7 +154,7 @@
 
                 <div class="metric-line">
 
-                    <strong id="download-speed">—</strong>
+                    <strong id="download-speed">&mdash;</strong>
 
                     <span class="unit">Mbps</span>
 
@@ -183,7 +187,7 @@
 
                 <div class="metric-line">
 
-                    <strong id="upload-speed">—</strong>
+                    <strong id="upload-speed">&mdash;</strong>
 
                     <span class="unit">Mbps</span>
 
@@ -215,7 +219,7 @@
 
                 <div class="metric-line">
 
-                    <strong id="latency">—</strong>
+                    <strong id="latency">&mdash;</strong>
 
                     <span class="unit">ms</span>
 
@@ -226,6 +230,38 @@
                 </p>
 
             </article>
+
+
+            <article class="card" id="packet-loss-card">
+
+                <div class="card-top">
+
+                    <p class="card-label">PACKET LOSS</p>
+
+                    <span class="card-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="1.8"
+                             stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 12h4l2-5 4 10 2-5h4"></path>
+                        </svg>
+                    </span>
+
+                </div>
+
+                <div class="metric-line">
+
+                    <strong id="packet-loss">&mdash;</strong>
+
+                    <span class="unit">%</span>
+
+                </div>
+
+                <p class="card-foot" id="packet-loss-detail">
+                    Monitoring internet (1.1.1.1)
+                </p>
+
+            </article>
+
 
         </section>
 
@@ -283,25 +319,27 @@
 
                     <div>
                         <span>Hostname</span>
-                        <strong id="hostname">—</strong>
+                        <strong id="hostname">&mdash;</strong>
                     </div>
 
                     <div>
                         <span>Local IP</span>
-                        <strong id="local-ip">—</strong>
+                        <strong id="local-ip">&mdash;</strong>
                     </div>
 
                     <div>
                         <span>Default gateway</span>
-                        <strong id="gateway">—</strong>
+                        <strong id="gateway">&mdash;</strong>
                     </div>
 
                     <div>
                         <span>Active interfaces</span>
-                        <strong id="interface-count">—</strong>
+                        <strong id="interface-count">&mdash;</strong>
                     </div>
 
                 </div>
+
+                <p class="info-reason" id="connection-reason" hidden></p>
 
 
                 <div class="subhead">
@@ -384,6 +422,11 @@
 
         </section>
 
+
+        </div>
+
+
+        <div class="page-view" id="view-troubleshoot" data-view="troubleshoot">
 
         <!-- TROUBLESHOOTING -->
         <section class="panel troubleshoot-panel" id="troubleshoot">
@@ -487,10 +530,11 @@
 
         </section>
 
+        </div>
 
         <footer>
-            NetScope · Local Network Monitoring
-            · <span id="footer-time"></span>
+            NetScope &middot; Local Network Monitoring
+            &middot; <span id="footer-time"></span>
         </footer>
 
     </main>

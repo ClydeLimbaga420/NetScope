@@ -17,7 +17,7 @@ let smoothedUpload = null;
 function formatSpeed(value) {
 
     if (!Number.isFinite(value)) {
-        return "—";
+        return "\u2014";
     }
 
     if (value === 0) {
@@ -320,6 +320,8 @@ async function refreshStatus() {
         const network = data.network;
         const traffic = data.traffic;
         const ping = data.internet_ping;
+        const gatewayPing = data.gateway_ping || {};
+        const problems = Array.isArray(data.problems) ? data.problems : [];
 
 
         // INTERNET STATUS
@@ -331,6 +333,23 @@ async function refreshStatus() {
 
         $("internet-host").textContent =
             `Target: ${ping.host || "1.1.1.1"}`;
+
+        const internetReason = $("internet-reason");
+
+        if (internetReason) {
+            const internetProblem = problems.find(
+                problem => problem.source === "internet"
+            ) || (!ping.online && ping.reason ? { message: ping.reason } : null);
+
+            if (internetProblem && internetProblem.message) {
+                internetReason.textContent = internetProblem.message;
+                internetReason.hidden = false;
+            }
+            else {
+                internetReason.textContent = "";
+                internetReason.hidden = true;
+            }
+        }
 
 
         // BANDWIDTH
@@ -373,23 +392,53 @@ async function refreshStatus() {
 
         $("latency").textContent =
             ping.latency_ms === null
-                ? "—"
+                ? "\u2014"
                 : ping.latency_ms.toFixed(1);
 
 
         // NETWORK INFORMATION
 
         $("hostname").textContent =
-            network.hostname || "—";
+            network.hostname || "\u2014";
 
         $("local-ip").textContent =
-            network.local_ip || "—";
+            network.local_ip || "\u2014";
 
         $("gateway").textContent =
             network.gateway || "Not detected";
 
         $("interface-count").textContent =
             network.interface_count;
+
+        const connectionReason = $("connection-reason");
+
+        if (connectionReason) {
+            const diagnosisIssues =
+                (network.diagnosis && network.diagnosis.issues) || [];
+            const gatewayProblem = problems.find(
+                problem => problem.source === "gateway"
+            );
+            const configProblem = diagnosisIssues.find(
+                issue =>
+                    issue.id === "wrong-gateway-subnet" ||
+                    issue.id === "apipa-address" ||
+                    issue.id === "missing-gateway"
+            );
+
+            const message =
+                (gatewayProblem && gatewayProblem.message) ||
+                (configProblem && configProblem.message) ||
+                "";
+
+            if (message) {
+                connectionReason.textContent = message;
+                connectionReason.hidden = false;
+            }
+            else {
+                connectionReason.textContent = "";
+                connectionReason.hidden = true;
+            }
+        }
 
 
         // NETWORK ADAPTERS
@@ -403,7 +452,7 @@ async function refreshStatus() {
 
                         <strong>
                             ${escapeHtml(adapter.name)}
-                            ${adapter.is_up ? "· Up" : "· Down"}
+                            ${adapter.is_up ? "\u00b7 Up" : "\u00b7 Down"}
                         </strong>
 
                         <span>
@@ -411,7 +460,7 @@ async function refreshStatus() {
 
                             ${
                                 adapter.speed_mbps
-                                    ? " · " + adapter.speed_mbps + " Mbps"
+                                    ? " \u00b7 " + adapter.speed_mbps + " Mbps"
                                     : ""
                             }
                         </span>
@@ -857,11 +906,11 @@ function updateDiagnosticsSummary() {
     let summary = `${passed} of ${checks.length} checks passed`;
 
     if (failed > 0) {
-        summary += ` · ${failed} failed`;
+        summary += ` \u00b7 ${failed} failed`;
     }
 
     if (repairs.length > 0) {
-        summary += ` · ${completedRepairs} of ${repairs.length} repairs applied`;
+        summary += ` \u00b7 ${completedRepairs} of ${repairs.length} repairs applied`;
     }
 
     $("troubleshoot-summary").textContent = summary;
@@ -884,7 +933,7 @@ function updateDiagnosticsSummary() {
 function stepMarker(step, status, index) {
 
     if (status === "success") {
-        return "✓";
+        return "\u2713";
     }
 
     if (status === "error") {
@@ -892,7 +941,7 @@ function stepMarker(step, status, index) {
     }
 
     if (status === "running") {
-        return "…";
+        return "\u2026";
     }
 
     return String(index + 1).padStart(2, "0");
@@ -977,6 +1026,10 @@ function consoleMarkup(step, state) {
         ? `${result.duration_ms} ms`
         : "";
 
+    const reason = result.reason
+        ? `<p class="console-reason ${statusClass}">${escapeHtml(result.reason)}</p>`
+        : "";
+
     return `
 
         <div class="console-entry">
@@ -1000,6 +1053,8 @@ function consoleMarkup(step, state) {
                 </span>
 
             </div>
+
+            ${reason}
 
             <pre class="console-text">${escapeHtml(
                 result.output || "No output."
@@ -1060,6 +1115,13 @@ function renderDetail() {
 
             : "";
 
+    const runReason =
+        state.result && state.result.reason && (step.supported && step.available)
+
+            ? `<p class="step-reason ${status === "error" ? "error" : ""}">${escapeHtml(state.result.reason)}</p>`
+
+            : "";
+
     const hint = status === "running"
 
         ? "Running the predefined command..."
@@ -1113,6 +1175,7 @@ function renderDetail() {
             </div>
 
             ${unavailable}
+            ${runReason}
 
             <div class="diag-detail-actions">
 
@@ -1510,12 +1573,174 @@ $("device-rows").addEventListener(
 
 
 // =====================================
+// PAGE NAVIGATION
+// =====================================
+
+function showView(viewName, options = {}) {
+
+    const { updateHash = true, scrollToId = null } = options;
+
+    document.querySelectorAll('.page-view[data-view]').forEach(page => {
+        page.classList.toggle('active', page.dataset.view === viewName);
+    });
+
+    document.querySelectorAll('.nav-item[data-view]').forEach(item => {
+        item.classList.toggle('active', item.dataset.view === viewName);
+    });
+
+    if (updateHash) {
+        const hash = viewName === 'troubleshoot' ? '#troubleshoot' : '#overview';
+        if (window.location.hash !== hash) {
+            window.history.replaceState(null, '', hash);
+        }
+    }
+
+    if (viewName === 'main') {
+        window.requestAnimationFrame(() => {
+            applyDeviceScrollHeight();
+            if (typeof chart !== 'undefined') {
+                chart.resize();
+                chart.update();
+            }
+        });
+        if (scrollToId) {
+            window.requestAnimationFrame(() => {
+                const target = document.getElementById(scrollToId);
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+                else {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+            });
+        }
+        else {
+            window.scrollTo({ top: 0, behavior: 'auto' });
+        }
+    }
+    else if (viewName === 'troubleshoot') {
+        window.requestAnimationFrame(() => {
+            renderDiagnostics();
+            updateDiagnosticsSummary();
+        });
+        window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+
+}
+
+document.querySelectorAll('.nav-item[data-view]').forEach(item => {
+
+    item.addEventListener('click', event => {
+        event.preventDefault();
+        const view = item.dataset.view;
+        const scrollToId = item.dataset.scroll || null;
+        showView(view, { scrollToId });
+    });
+
+});
+
+
+// =====================================
+// PACKET LOSS MONITORING
+// =====================================
+
+let packetLossInFlight = false;
+
+async function refreshPacketLoss() {
+
+    if (packetLossInFlight) {
+        return;
+    }
+
+    packetLossInFlight = true;
+
+    const value = $("packet-loss");
+    const detail = $("packet-loss-detail");
+
+    if (!value || !detail) {
+        packetLossInFlight = false;
+        return;
+    }
+
+    try {
+
+        const response = await fetch("/api/packet-loss");
+
+        if (!response.ok) {
+            throw new Error("Packet loss request failed");
+        }
+
+        const data = await response.json();
+        const internet = data.internet || {};
+        const gateway = data.gateway || {};
+        const internetLoss = internet.packet_loss_percent;
+        const gatewayLoss = gateway.packet_loss_percent;
+
+        if (Number.isFinite(internetLoss)) {
+            value.textContent = internetLoss.toFixed(internetLoss % 1 === 0 ? 0 : 1);
+        }
+        else {
+            value.textContent = "\u2014";
+        }
+
+        const parts = [
+            Number.isFinite(internetLoss)
+                ? `Internet: ${internetLoss.toFixed(internetLoss % 1 === 0 ? 0 : 1)}% (${internet.packets_received || 0}/${internet.packets_sent || data.count || 0})`
+                : "Internet: unavailable"
+        ];
+
+        if (gateway.host) {
+            if (Number.isFinite(gatewayLoss)) {
+                parts.push(`Gateway: ${gatewayLoss.toFixed(gatewayLoss % 1 === 0 ? 0 : 1)}%`);
+            }
+            else {
+                parts.push("Gateway: unavailable");
+            }
+        }
+        else {
+            parts.push("Gateway: not detected");
+        }
+
+        detail.textContent = parts.join(" \u00b7 ");
+
+    }
+
+    catch (error) {
+
+        detail.textContent = "Could not measure packet loss.";
+        console.error(error);
+
+    }
+
+    finally {
+
+        packetLossInFlight = false;
+
+    }
+
+}
+
+// =====================================
 // INITIALIZATION
 // =====================================
+
+const initialHash = (window.location.hash || "#overview").replace("#", "");
+if (initialHash === "troubleshoot") {
+    showView("troubleshoot");
+}
+else if (initialHash === "devices" || initialHash === "traffic") {
+    showView("main", { scrollToId: initialHash });
+}
+else {
+    showView("main", { scrollToId: "overview-top" });
+}
 
 refreshStatus();
 
 refreshDevices();
+
+refreshPacketLoss();
+
 
 loadDiagnostics();
 
@@ -1523,3 +1748,4 @@ loadDiagnostics();
 // UPDATE EVERY 2 SECONDS
 
 setInterval(refreshStatus, 2000);
+setInterval(refreshPacketLoss, 30000);
