@@ -1,9 +1,10 @@
 import os
 import platform
+import re
 import subprocess
 import time
 
-from modules.network_info import get_default_gateway
+from modules.network_info import assess_network, get_default_gateway
 
 DEFAULT_TIMEOUT_SECONDS = 20
 TRACE_TIMEOUT_SECONDS = 45
@@ -390,14 +391,197 @@ def list_diagnostics():
     }
 
 
-def _result(step_id, success, commands, output, duration_ms):
-    return {
+def _result(step_id, success, commands, output, duration_ms, reason=None):
+    result = {
         "id": step_id,
         "success": success,
         "commands": commands,
         "output": output,
         "duration_ms": duration_ms,
     }
+
+    if reason:
+        result["reason"] = reason
+
+    return result
+
+
+def _diagnose_gateway_failure():
+    gateway = get_default_gateway()
+    diagnosis = assess_network(gateway=gateway)
+    issues = diagnosis.get("issues") or []
+
+    for issue in issues:
+        if issue.get("id") == "network-down" and issue.get("message"):
+            return issue["message"]
+
+    if not gateway:
+        return (
+            "Network is down or disconnected: no default gateway was detected. "
+            "Connect to a network and try again."
+        )
+
+    for issue in issues:
+        if issue.get("id") == "wrong-gateway-subnet":
+            return (
+                issue["message"]
+                + " The gateway ping failed, which also suggests the "
+                "configured gateway is wrong or unreachable."
+            )
+
+    return (
+        f"Default gateway {gateway} did not respond. The router may be "
+        "offline, unreachable, or blocking ping requests. If the gateway "
+        "address looks unfamiliar, it may be configured incorrectly."
+    )
+
+
+def _diagnose_ip_configuration(output, command_success):
+    diagnosis = assess_network()
+    issues = diagnosis.get("issues") or []
+    output_text = output or ""
+
+    for issue in issues:
+        if issue.get("id") == "network-down" and issue.get("message"):
+            return False, issue["message"]
+
+    apipa_match = re.search(r"\b169\.254\.\d{1,3}\.\d{1,3}\b", output_text)
+    if apipa_match or any(issue.get("id") == "apipa-address" for issue in issues):
+        address = apipa_match.group(0) if apipa_match else "169.254.x.x"
+        return (
+            False,
+            f"IP configuration shows an automatic private address ({address}). "
+            "This usually means DHCP did not assign an address. Check the "
+            "router/DHCP server or run the DHCP lease renewal repair."
+        )
+
+    for issue in issues:
+        if issue.get("id") == "wrong-gateway-subnet":
+            return False, issue["message"]
+        if issue.get("id") == "missing-gateway":
+            return (
+                False,
+                "No default gateway is configured. This computer may not be "
+                "able to reach other networks or the internet."
+            )
+
+    if not command_success:
+        return (
+            False,
+            "The IP configuration command failed. Check the command output "
+            "for details."
+        )
+
+    return True, None
+
+
+def _diagnose_dns_failure():
+    diagnosis = assess_network()
+    gateway = get_default_gateway()
+    parts = [
+        "DNS resolution failed. The configured DNS server may be unreachable, "
+        "incorrect, or blocked."
+    ]
+
+    if any((issue.get("id") == "apipa-address") for issue in diagnosis.get("issues") or []):
+        parts.append(
+            "This computer also appears to have a DHCP/APIPA address problem, "
+            "which can prevent DNS from working."
+        )
+    elif gateway and diagnosis.get("gateway_in_subnet") is False:
+        parts.append(
+            "The default gateway also appears to be misconfigured, which can "
+            "prevent access to DNS servers."
+        )
+
+    return " ".join(parts)
+
+
+def _diagnose_internet_failure():
+    diagnosis = assess_network()
+    gateway = get_default_gateway()
+    issues = diagnosis.get("issues") or []
+
+    for issue in issues:
+        if issue.get("id") == "network-down" and issue.get("message"):
+            return issue["message"]
+
+    if not gateway:
+        return (
+            "Network is down or disconnected: the internet is unreachable "
+            "because no default gateway was detected."
+        )
+
+    if diagnosis.get("gateway_in_subnet") is False:
+        return (
+            "The internet is unreachable and the default gateway appears to be "
+            "configured incorrectly (wrong subnet). Check the gateway address "
+            "in your IP configuration."
+        )
+
+    return (
+        "The internet is unreachable from this computer. The problem may be "
+        "with the default gateway, router internet connection, ISP, firewall, "
+        "or upstream routing."
+    )
+
+
+def _diagnose_loopback_failure():
+    return (
+        "The local network stack (loopback) test failed. This points to a "
+        "problem with TCP/IP on this computer. Restarting, renewing the "
+        "network, or resetting Winsock/TCP-IP may help."
+    )
+
+
+def _diagnose_adapter_status(command_success):
+    if not command_success:
+        return (
+            "Could not read network adapter status. Check the command output "
+            "for details."
+        )
+
+    return None
+
+
+def _diagnose_runtime(step_id, output, success):
+    if step_id == "adapter-status":
+        return _diagnose_adapter_status(success)
+
+    if success:
+        return None
+
+    if step_id == "ip-configuration":
+        _, reason = _diagnose_ip_configuration(output, success)
+        return reason
+
+    if step_id == "loopback":
+        return _diagnose_loopback_failure()
+
+    if step_id == "gateway":
+        return _diagnose_gateway_failure()
+
+    if step_id == "internet":
+        return _diagnose_internet_failure()
+
+    if step_id == "dns":
+        return _diagnose_dns_failure()
+
+    if step_id == "route-trace":
+        return (
+            "The route trace did not complete successfully. This can indicate "
+            "where traffic stops between this computer and the internet."
+        )
+
+    if step_id in {"flush-dns", "renew-ip", "reset-winsock", "reset-tcpip"}:
+        if not is_elevated() and step_id in {"reset-winsock", "reset-tcpip"}:
+            return (
+                "This repair did not complete successfully. It requires "
+                "administrator rights; try running NetScope as administrator."
+            )
+        return "The repair did not complete successfully. Check the command output for details."
+
+    return "This step reported a problem. Check the command output for details."
 
 
 def run_diagnostic(step_id):
@@ -413,24 +597,30 @@ def run_diagnostic(step_id):
         raise KeyError(step_id)
 
     if not step["supported"]:
+        reason = step.get("reason") or "This step is not supported."
         return _result(
             step_id,
             False,
             [],
-            step.get("reason") or "This step is not supported.",
+            reason,
             0,
+            reason=reason,
         )
 
     commands = step["command_builder"]()
 
     if not commands:
+        reason = (
+            step.get("reason")
+            or "This step is not available right now."
+        )
         return _result(
             step_id,
             False,
             [],
-            step.get("reason")
-            or "This step is not available right now.",
+            reason,
             0,
+            reason=reason,
         )
 
     started = time.monotonic()
@@ -496,10 +686,27 @@ def run_diagnostic(step_id):
         (time.monotonic() - started) * 1000
     )
 
+    output = "\n".join(chunks).strip()
+
+    if step_id == "ip-configuration":
+        success, config_reason = _diagnose_ip_configuration(output, success)
+        if config_reason:
+            return _result(
+                step_id,
+                success,
+                [item["display"] for item in commands],
+                output,
+                duration_ms,
+                reason=config_reason,
+            )
+
+    reason = _diagnose_runtime(step_id, output, success)
+
     return _result(
         step_id,
         success,
         [item["display"] for item in commands],
-        "\n".join(chunks).strip(),
+        output,
         duration_ms,
+        reason=reason,
     )
