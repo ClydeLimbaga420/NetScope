@@ -22,9 +22,24 @@ from web.paths import web_root
 from web.security import TOKEN_PARAM, WebSecurity, apply_security_headers, require_api_security
 
 
-def _quiet_werkzeug() -> None:
+class _WerkzeugToNetScope(logging.Handler):
+    def __init__(self, logger: Any) -> None:
+        super().__init__(level=logging.INFO)
+        self._logger = logger
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            msg = self.format(record)
+            if msg:
+                self._logger.event("werkzeug", source="web", message=msg, level=record.levelname)
+        except Exception:
+            pass
+
+
+def _configure_werkzeug(logger: Any) -> None:
     log = logging.getLogger("werkzeug")
-    log.setLevel(logging.ERROR)
+    log.handlers = [_WerkzeugToNetScope(logger)]
+    log.setLevel(logging.INFO)
     log.propagate = False
 
 
@@ -93,7 +108,7 @@ def create_app(state: WebState | None = None) -> Flask:
     app.config["JSON_SORT_KEYS"] = False
     app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
     app.extensions["netscope_state"] = state
-    _quiet_werkzeug()
+    _configure_werkzeug(state.logger)
 
     @app.before_request
     def _before() -> Any:
@@ -102,14 +117,18 @@ def create_app(state: WebState | None = None) -> Flask:
             return jsonify({"error": {"code": "host_rejected", "message": "Host not allowed."}}), 403
         path = request.path or ""
         if path.startswith("/api/"):
-            if path in {"/api/heartbeat"}:
-                # heartbeat is POST but validated lightly below
-                pass
             try:
                 require_api_security(st.security, st.port)
             except Exception as exc:  # abort raises
                 from werkzeug.exceptions import HTTPException
                 if isinstance(exc, HTTPException):
+                    st.logger.event(
+                        "security_rejected",
+                        source="web",
+                        path=path,
+                        status=exc.code,
+                        reason=str(exc.description or "rejected"),
+                    )
                     code = "unauthorized" if exc.code == 401 else "forbidden"
                     msg = exc.description or "Request rejected."
                     if exc.code == 415:

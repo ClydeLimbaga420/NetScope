@@ -144,3 +144,139 @@ def test_diagnose_job(client):
     rf = c.get('/api/findings', headers={'Host': '127.0.0.1:5000'})
     assert rf.status_code == 200
     assert len(rf.get_json()['findings']) == 1
+
+
+
+def _boot(c, st):
+    c.get(f'/__boot__?token={st.security.boot_token}', headers={'Host': '127.0.0.1:5000'})
+    token = c.get('/__session__', headers={'Host': '127.0.0.1:5000'}).get_json()['token']
+    return token
+
+
+def _post_headers(st, token, origin="http://127.0.0.1:5000"):
+    return {'Host': '127.0.0.1:5000', 'Origin': origin, 'X-NetScope-Token': token, 'Content-Type': 'application/json'}
+
+
+def test_security_headers_and_origin(client):
+    c, st = client
+    token = _boot(c, st)
+    r = c.get('/api/status', headers={'Host': '127.0.0.1:5000'})
+    assert r.status_code == 200
+    assert r.headers.get('Content-Security-Policy')
+    assert "default-src 'self'" in r.headers.get('Content-Security-Policy', '')
+    assert r.headers.get('X-Content-Type-Options') == 'nosniff'
+    assert r.headers.get('Referrer-Policy') == 'no-referrer'
+    assert 'Access-Control-Allow-Origin' not in r.headers
+    # wrong origin
+    r = c.post('/api/heartbeat', headers=_post_headers(st, token, origin='http://evil.example'), json={})
+    assert r.status_code == 403
+    # missing header token
+    r = c.post('/api/heartbeat', headers={'Host': '127.0.0.1:5000', 'Origin': 'http://127.0.0.1:5000', 'Content-Type': 'application/json'}, json={})
+    assert r.status_code == 403
+
+
+class FakeEntry:
+    def __init__(self, fix_id='IP-01', risk='low', admin=False):
+        self.id = fix_id
+        self.name = 'Fix ' + fix_id
+        self.risk = risk
+        self.admin = admin
+        self.reboot = False
+        self.rollback = []
+        self.rollback_notes = ''
+        self.snapshot = []
+        self.explanation = 'explain'
+        self.detection_only = False
+
+
+class FakePlan:
+    preview_lines = ['cmd1']
+    values = {}
+
+
+class FakeOutcome:
+    status = 'resolved'
+    def to_dict(self):
+        return {'status': 'resolved', 'fix_id': 'IP-01'}
+
+
+class FakeExecutor:
+    def __init__(self):
+        self.prepare_calls = 0
+        self.run_calls = 0
+        self.last_run = None
+    def prepare(self, entry, snapshot=None, overrides=None):
+        self.prepare_calls += 1
+        return FakePlan()
+    def run(self, entry, plan=None, assume_yes=True, dry_run=False, confirm=None, isolation=None, snapshot=None):
+        self.run_calls += 1
+        self.last_run = {'dry_run': dry_run, 'assume_yes': assume_yes}
+        return FakeOutcome()
+    def rollback(self, entry, assume_yes=True, confirm=None):
+        return FakeOutcome()
+
+
+def _setup_fix(client, risk='low'):
+    c, st = client
+    entry = FakeEntry(risk=risk)
+    ex = FakeExecutor()
+    st.runtime.catalog = types.SimpleNamespace(require=lambda fid: entry if fid == 'IP-01' else (_ for _ in ()).throw(KeyError(fid)))
+    st.runtime.executor = lambda: ex
+    st.runtime.engine = DummyEngine()
+    st.last_snapshot = DummySnap()
+    token = _boot(c, st)
+    return c, st, token, ex
+
+
+def test_fix_plan_execute_requires_token(client):
+    c, st, token, ex = _setup_fix(client, risk='low')
+    r = c.post('/api/fix/plan', headers=_post_headers(st, token), json={'fix_id': 'IP-01'})
+    assert r.status_code == 200
+    conf = r.get_json()['confirmation_token']
+    # execute without token
+    r = c.post('/api/fix/execute', headers=_post_headers(st, token), json={})
+    assert r.status_code == 403
+    # tampered token
+    r = c.post('/api/fix/execute', headers=_post_headers(st, token), json={'confirmation_token': conf + 'x'})
+    assert r.status_code == 403
+    # valid execute
+    r = c.post('/api/fix/execute', headers=_post_headers(st, token), json={'confirmation_token': conf})
+    assert r.status_code == 200
+    job_id = r.get_json()['job_id']
+    import time
+    for _ in range(50):
+        j = c.get(f'/api/jobs/{job_id}', headers={'Host': '127.0.0.1:5000'}).get_json()
+        if j['status'] in ('done','error'):
+            break
+        time.sleep(0.05)
+    assert j['status'] == 'done'
+    # reused token rejected
+    r = c.post('/api/fix/execute', headers=_post_headers(st, token), json={'confirmation_token': conf})
+    assert r.status_code == 403
+
+
+def test_fix_high_risk_requires_second_confirmation(client):
+    c, st, token, ex = _setup_fix(client, risk='high')
+    r = c.post('/api/fix/plan', headers=_post_headers(st, token), json={'fix_id': 'IP-01'})
+    conf = r.get_json()['confirmation_token']
+    r = c.post('/api/fix/execute', headers=_post_headers(st, token), json={'confirmation_token': conf})
+    assert r.status_code == 403
+    r = c.post('/api/fix/execute', headers=_post_headers(st, token), json={'confirmation_token': conf, 'second_confirmation': True})
+    assert r.status_code == 200
+
+
+def test_fix_dry_run_flag_passed(client):
+    c, st, token, ex = _setup_fix(client, risk='low')
+    r = c.post('/api/fix/plan', headers=_post_headers(st, token), json={'fix_id': 'IP-01'})
+    conf = r.get_json()['confirmation_token']
+    r = c.post('/api/fix/execute', headers=_post_headers(st, token), json={'confirmation_token': conf, 'dry_run': True})
+    assert r.status_code == 200
+    job_id = r.get_json()['job_id']
+    import time
+    for _ in range(50):
+        j = c.get(f'/api/jobs/{job_id}', headers={'Host': '127.0.0.1:5000'}).get_json()
+        if j['status'] in ('done','error'):
+            break
+        time.sleep(0.05)
+    assert j['status'] == 'done'
+    assert ex.last_run and ex.last_run.get('dry_run') is True

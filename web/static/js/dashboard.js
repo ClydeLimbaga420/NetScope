@@ -443,33 +443,27 @@ async function refreshStatus() {
 
         // NETWORK ADAPTERS
 
-        $("interfaces").innerHTML =
-            network.interfaces.length
-
-                ? network.interfaces.map(adapter => `
-
-                    <div class="adapter">
-
-                        <strong>
-                            ${escapeHtml(adapter.name)}
-                            ${adapter.is_up ? "\u00b7 Up" : "\u00b7 Down"}
-                        </strong>
-
-                        <span>
-                            ${escapeHtml(adapter.ipv4)}
-
-                            ${
-                                adapter.speed_mbps
-                                    ? " \u00b7 " + adapter.speed_mbps + " Mbps"
-                                    : ""
-                            }
-                        </span>
-
-                    </div>
-
-                `).join("")
-
-                : '<span class="muted">No active IPv4 adapters found.</span>';
+        const interfacesEl = $("interfaces");
+        interfacesEl.replaceChildren();
+        if (network.interfaces && network.interfaces.length) {
+            network.interfaces.forEach(adapter => {
+                const item = document.createElement("div");
+                item.className = "adapter";
+                const strong = document.createElement("strong");
+                strong.textContent = String(adapter.name || "") + (adapter.is_up ? " \u00b7 Up" : " \u00b7 Down");
+                const span = document.createElement("span");
+                const speed = adapter.speed_mbps ? " \u00b7 " + adapter.speed_mbps + " Mbps" : "";
+                span.textContent = String(adapter.ipv4 || "") + speed;
+                item.appendChild(strong);
+                item.appendChild(span);
+                interfacesEl.appendChild(item);
+            });
+        } else {
+            const span = document.createElement("span");
+            span.className = "muted";
+            span.textContent = "No active IPv4 adapters found.";
+            interfacesEl.appendChild(span);
+        }
 
 
         // TIMESTAMP
@@ -699,17 +693,14 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
     let missingNames = false;
 
     if (!silent) {
-
-        body.innerHTML = `
-
-            <tr>
-                <td colspan="5" class="empty">
-                    Scanning local network and resolving names...
-                </td>
-            </tr>
-
-        `;
-
+        body.replaceChildren();
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 5;
+        td.className = "empty";
+        td.textContent = "Scanning local network and resolving names...";
+        tr.appendChild(td);
+        body.appendChild(tr);
     }
 
     try {
@@ -726,90 +717,62 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
                 device => !(aliases[device.mac] || device.name)
             );
 
-            body.innerHTML = data.devices.map(device => {
-
-                const name =
-                    aliases[device.mac] ||
-                    device.name;
-
+            body.replaceChildren();
+            data.devices.forEach(device => {
+                const name = aliases[device.mac] || device.name;
                 const label = name || "Unnamed device";
-
-                const nameClass = name
-                    ? "device-name"
-                    : "device-name unnamed";
-
+                const nameClass = name ? "device-name" : "device-name unnamed";
                 const vendorLabel = device.vendor || "Unknown";
-
                 const vendorClass = device.vendor === "Private MAC"
                     ? "device-brand private"
-                    : device.vendor
-                        ? "device-brand"
-                        : "device-brand unknown";
-
+                    : device.vendor ? "device-brand" : "device-brand unknown";
                 const vendorTitle = device.vendor === "Private MAC"
                     ? "Randomized or locally administered MAC address"
                     : "Vendor derived from the MAC address";
 
-                return `
+                const tr = document.createElement("tr");
 
-                    <tr>
+                const tdName = document.createElement("td");
+                const nameSpan = document.createElement("span");
+                nameSpan.className = nameClass;
+                nameSpan.dataset.mac = String(device.mac || "");
+                nameSpan.title = "Double-click to rename";
+                nameSpan.textContent = String(label);
+                tdName.appendChild(nameSpan);
 
-                        <td>
-                            <span
-                                class="${nameClass}"
-                                data-mac="${escapeHtml(device.mac)}"
-                                title="Double-click to rename">
-                                ${escapeHtml(label)}
-                            </span>
-                        </td>
+                const tdBrand = document.createElement("td");
+                const brandSpan = document.createElement("span");
+                brandSpan.className = vendorClass;
+                brandSpan.title = vendorTitle;
+                brandSpan.textContent = String(vendorLabel);
+                tdBrand.appendChild(brandSpan);
 
-                        <td>
-                            <span
-                                class="${vendorClass}"
-                                title="${vendorTitle}">
-                                ${escapeHtml(vendorLabel)}
-                            </span>
-                        </td>
+                const tdIp = document.createElement("td");
+                tdIp.textContent = String(device.ip || "");
+                const tdMac = document.createElement("td");
+                tdMac.textContent = String(device.mac || "");
+                const tdType = document.createElement("td");
+                tdType.textContent = String(device.type || "");
 
-                        <td>
-                            ${escapeHtml(device.ip)}
-                        </td>
-
-                        <td>
-                            ${escapeHtml(device.mac)}
-                        </td>
-
-                        <td>
-                            ${escapeHtml(device.type)}
-                        </td>
-
-                    </tr>
-
-                `;
-
-            }).join("");
+                tr.appendChild(tdName);
+                tr.appendChild(tdBrand);
+                tr.appendChild(tdIp);
+                tr.appendChild(tdMac);
+                tr.appendChild(tdType);
+                body.appendChild(tr);
+            });
 
         }
 
         else {
-
-            body.innerHTML = `
-
-                <tr>
-
-                    <td colspan="5" class="empty">
-
-                        No devices found.
-
-                        Make sure you are connected to a local network,
-                        then refresh devices.
-
-                    </td>
-
-                </tr>
-
-            `;
-
+            body.replaceChildren();
+            const tr = document.createElement("tr");
+            const td = document.createElement("td");
+            td.colSpan = 5;
+            td.className = "empty";
+            td.textContent = "No devices found. Make sure you are connected to a local network, then refresh devices.";
+            tr.appendChild(td);
+            body.appendChild(tr);
         }
 
         updateDeviceCount(data.devices.length);
@@ -823,27 +786,18 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
     }
 
     catch (error) {
-
-        body.innerHTML = `
-
-            <tr>
-
-                <td colspan="5" class="empty">
-
-                    Could not retrieve device list.
-
-                </td>
-
-            </tr>
-
-        `;
+        body.replaceChildren();
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 5;
+        td.className = "empty";
+        td.textContent = "Could not retrieve device list.";
+        tr.appendChild(td);
+        body.appendChild(tr);
 
         updateDeviceCount(null);
-
         applyDeviceScrollHeight();
-
         console.error(error);
-
     }
 
 }
@@ -950,308 +904,267 @@ function stepMarker(step, status, index) {
 
 
 function renderRailGroup(steps, container) {
-
+    container.replaceChildren();
     if (!steps.length) {
-        container.innerHTML = "";
         return;
     }
-
-    container.innerHTML = steps.map(step => {
-
+    steps.forEach(step => {
         const index = diagnosticSteps.indexOf(step);
+        const status = (diagnosticStates[step.id] || {}).status || "idle";
+        const selected = step.id === selectedDiagnosticId ? "selected" : "";
+        const unavailable = !step.supported || !step.available;
 
-        const status =
-            (diagnosticStates[step.id] || {}).status || "idle";
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = ["diag-item", step.kind, status, selected, unavailable ? "unavailable" : ""].filter(Boolean).join(" ");
+        btn.dataset.id = String(step.id || "");
 
-        const selected =
-            step.id === selectedDiagnosticId ? "selected" : "";
+        const idx = document.createElement("span");
+        idx.className = "diag-item-index";
+        idx.textContent = String(stepMarker(step, status, index));
 
-        const unavailable =
-            !step.supported || !step.available;
+        const textWrap = document.createElement("span");
+        textWrap.className = "diag-item-text";
+        const strong = document.createElement("strong");
+        strong.textContent = String(step.title || "");
+        const small = document.createElement("small");
+        small.textContent = String(statusLabel(step, status));
+        textWrap.appendChild(strong);
+        textWrap.appendChild(small);
 
-        return `
-
-            <button
-                class="diag-item ${step.kind} ${status} ${selected} ${
-                    unavailable ? "unavailable" : ""
-                }"
-                type="button"
-                data-id="${escapeHtml(step.id)}">
-
-                <span class="diag-item-index">
-                    ${stepMarker(step, status, index)}
-                </span>
-
-                <span class="diag-item-text">
-                    <strong>${escapeHtml(step.title)}</strong>
-                    <small>${statusLabel(step, status)}</small>
-                </span>
-
-            </button>
-
-        `;
-
-    }).join("");
-
+        btn.appendChild(idx);
+        btn.appendChild(textWrap);
+        container.appendChild(btn);
+    });
 }
 
 
-function consoleMarkup(step, state) {
-
+function renderConsole(container, step, state) {
+    container.replaceChildren();
     if (!state || !state.result) {
-
-        return `
-
-            <span class="console-placeholder">
-                Run this step to see its command output here.
-            </span>
-
-        `;
-
+        const ph = document.createElement("span");
+        ph.className = "console-placeholder";
+        ph.textContent = "Run this step to see its command output here.";
+        container.appendChild(ph);
+        return;
     }
 
     const result = state.result;
-
     const success = Boolean(result.success);
-
     const statusClass = success ? "success" : "error";
-
     const command = (result.commands && result.commands.length)
-
         ? result.commands.join("  &&  ")
+        : (step.command || "");
 
-        : step.command;
+    const entry = document.createElement("div");
+    entry.className = "console-entry";
 
-    const duration = Number.isFinite(result.duration_ms)
-        ? `${result.duration_ms} ms`
-        : "";
+    const head = document.createElement("div");
+    head.className = "console-entry-head";
 
-    const reason = result.reason
-        ? `<p class="console-reason ${statusClass}">${escapeHtml(result.reason)}</p>`
-        : "";
+    const cmd = document.createElement("span");
+    cmd.className = "console-command";
+    cmd.textContent = String(command);
 
-    return `
+    const meta = document.createElement("span");
+    meta.className = "console-meta";
 
-        <div class="console-entry">
+    const st = document.createElement("span");
+    st.className = "console-status " + statusClass;
+    st.textContent = success ? "Success" : "Failed";
+    meta.appendChild(st);
 
-            <div class="console-entry-head">
+    if (Number.isFinite(result.duration_ms)) {
+        const t = document.createElement("span");
+        t.className = "console-time";
+        t.textContent = result.duration_ms + " ms";
+        meta.appendChild(t);
+    }
 
-                <span class="console-command">
-                    ${escapeHtml(command)}
-                </span>
+    head.appendChild(cmd);
+    head.appendChild(meta);
+    entry.appendChild(head);
 
-                <span class="console-meta">
+    if (result.reason) {
+        const r = document.createElement("p");
+        r.className = "console-reason " + statusClass;
+        r.textContent = String(result.reason);
+        entry.appendChild(r);
+    }
 
-                    <span class="console-status ${statusClass}">
-                        ${success ? "Success" : "Failed"}
-                    </span>
+    const pre = document.createElement("pre");
+    pre.className = "console-text";
+    pre.textContent = result.output || "No output.";
+    entry.appendChild(pre);
 
-                    ${duration
-                        ? `<span class="console-time">${duration}</span>`
-                        : ""}
-
-                </span>
-
-            </div>
-
-            ${reason}
-
-            <pre class="console-text">${escapeHtml(
-                result.output || "No output."
-            )}</pre>
-
-        </div>
-
-    `;
-
+    container.appendChild(entry);
 }
 
 
 function renderDetail() {
-
     const stage = $("diag-stage");
+    if (!stage) return;
 
     if (!diagnosticSteps.length) {
-
-        stage.innerHTML = `
-            <p class="muted">No troubleshooting steps are available.</p>
-        `;
-
+        stage.replaceChildren();
+        const p = document.createElement("p");
+        p.className = "muted";
+        p.textContent = "No troubleshooting steps are available.";
+        stage.appendChild(p);
         return;
-
     }
 
-    const step = diagnosticSteps.find(
-        item => item.id === selectedDiagnosticId
-    ) || diagnosticSteps[0];
-
+    const step = diagnosticSteps.find(item => item.id === selectedDiagnosticId) || diagnosticSteps[0];
     if (!selectedDiagnosticId) {
         selectedDiagnosticId = step.id;
     }
 
     const state = diagnosticStates[step.id] || {};
-
     const status = state.status || "idle";
-
-    const disabled =
-        !step.supported ||
-        !step.available ||
-        status === "running";
-
-    const kindLabel =
-        step.kind === "repair" ? "REPAIR" : "CHECK";
-
-    const runLabel =
-        step.kind === "repair" ? "Run repair" : "Run check";
-
-    const admin = step.requires_admin
-        ? '<span class="admin-tag">ADMIN</span>'
-        : "";
-
-    const unavailable =
-        step.reason && (!step.supported || !step.available)
-
-            ? `<p class="step-reason">${escapeHtml(step.reason)}</p>`
-
-            : "";
-
-    const runReason =
-        state.result && state.result.reason && (step.supported && step.available)
-
-            ? `<p class="step-reason ${status === "error" ? "error" : ""}">${escapeHtml(state.result.reason)}</p>`
-
-            : "";
+    const disabled = !step.supported || !step.available || status === "running";
+    const kindLabel = step.kind === "repair" ? "REPAIR" : "CHECK";
+    const runLabel = step.kind === "repair" ? "Run repair" : "Run check";
 
     const hint = status === "running"
-
         ? "Running the predefined command..."
-
         : step.kind === "repair"
-
             ? "This repair changes your network settings."
-
             : "Read-only check. Nothing on your system is changed.";
 
-    stage.innerHTML = `
+    stage.replaceChildren();
 
-        <div class="diag-detail ${step.kind} ${status}">
+    const detail = document.createElement("div");
+    detail.className = ["diag-detail", step.kind, status].filter(Boolean).join(" ");
 
-            <div class="diag-detail-head">
+    const head = document.createElement("div");
+    head.className = "diag-detail-head";
 
-                <div class="diag-detail-title">
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "diag-detail-title";
 
-                    <div class="diag-tags">
+    const tags = document.createElement("div");
+    tags.className = "diag-tags";
+    const kind = document.createElement("span");
+    kind.className = "step-kind " + (step.kind || "check");
+    kind.textContent = kindLabel;
+    tags.appendChild(kind);
+    if (step.requires_admin) {
+        const admin = document.createElement("span");
+        admin.className = "admin-tag";
+        admin.textContent = "ADMIN";
+        tags.appendChild(admin);
+    }
+    titleWrap.appendChild(tags);
 
-                        <span class="step-kind ${step.kind}">
-                            ${kindLabel}
-                        </span>
+    const h3 = document.createElement("h3");
+    h3.textContent = String(step.title || "");
+    titleWrap.appendChild(h3);
 
-                        ${admin}
+    const desc = document.createElement("p");
+    desc.className = "diag-desc";
+    desc.textContent = String(step.description || "");
+    titleWrap.appendChild(desc);
 
-                    </div>
+    head.appendChild(titleWrap);
 
-                    <h3>${escapeHtml(step.title)}</h3>
+    const statusEl = document.createElement("span");
+    statusEl.className = "step-status " + status;
+    statusEl.textContent = statusLabel(step, status);
+    head.appendChild(statusEl);
 
-                    <p class="diag-desc">
-                        ${escapeHtml(step.description)}
-                    </p>
+    detail.appendChild(head);
 
-                </div>
+    const cmdBox = document.createElement("div");
+    cmdBox.className = "diag-command";
+    const cmdLabel = document.createElement("span");
+    cmdLabel.className = "diag-command-label";
+    cmdLabel.textContent = "PREDEFINED COMMAND";
+    const code = document.createElement("code");
+    code.textContent = String(step.command || "");
+    cmdBox.appendChild(cmdLabel);
+    cmdBox.appendChild(code);
+    detail.appendChild(cmdBox);
 
-                <span class="step-status ${status}">
-                    ${statusLabel(step, status)}
-                </span>
+    if (step.reason && (!step.supported || !step.available)) {
+        const p = document.createElement("p");
+        p.className = "step-reason";
+        p.textContent = String(step.reason);
+        detail.appendChild(p);
+    }
+    if (state.result && state.result.reason && step.supported && step.available) {
+        const p = document.createElement("p");
+        p.className = "step-reason" + (status === "error" ? " error" : "");
+        p.textContent = String(state.result.reason);
+        detail.appendChild(p);
+    }
 
-            </div>
+    const actions = document.createElement("div");
+    actions.className = "diag-detail-actions";
+    const hintEl = document.createElement("span");
+    hintEl.className = "diag-detail-hint";
+    hintEl.textContent = hint;
+    const runBtn = document.createElement("button");
+    runBtn.className = "step-run";
+    runBtn.type = "button";
+    runBtn.dataset.id = String(step.id || "");
+    runBtn.disabled = Boolean(disabled);
+    runBtn.textContent = status === "running" ? "Running..." : runLabel;
+    actions.appendChild(hintEl);
+    actions.appendChild(runBtn);
+    detail.appendChild(actions);
 
-            <div class="diag-command">
+    const consolePanel = document.createElement("div");
+    consolePanel.className = "console-panel";
 
-                <span class="diag-command-label">
-                    PREDEFINED COMMAND
-                </span>
+    const consoleHead = document.createElement("div");
+    consoleHead.className = "console-head";
+    const consoleTitle = document.createElement("span");
+    consoleTitle.className = "console-title";
+    consoleTitle.textContent = "COMMAND OUTPUT";
+    const consoleActions = document.createElement("span");
+    consoleActions.className = "console-actions";
+    const consoleTime = document.createElement("span");
+    consoleTime.className = "console-time";
+    consoleTime.textContent = step.kind === "repair" ? "Changes system settings" : "Read-only";
+    const clearBtn = document.createElement("button");
+    clearBtn.className = "ghost-button";
+    clearBtn.id = "clear-console";
+    clearBtn.type = "button";
+    clearBtn.textContent = "Clear";
+    consoleActions.appendChild(consoleTime);
+    consoleActions.appendChild(clearBtn);
+    consoleHead.appendChild(consoleTitle);
+    consoleHead.appendChild(consoleActions);
 
-                <code>${escapeHtml(step.command)}</code>
+    const consoleBox = document.createElement("div");
+    consoleBox.className = "console";
+    consoleBox.id = "console-output";
+    renderConsole(consoleBox, step, state);
 
-            </div>
+    consolePanel.appendChild(consoleHead);
+    consolePanel.appendChild(consoleBox);
+    detail.appendChild(consolePanel);
 
-            ${unavailable}
-            ${runReason}
-
-            <div class="diag-detail-actions">
-
-                <span class="diag-detail-hint">${hint}</span>
-
-                <button
-                    class="step-run"
-                    type="button"
-                    data-id="${escapeHtml(step.id)}"
-                    ${disabled ? "disabled" : ""}>
-                    ${
-                        status === "running"
-                            ? "Running..."
-                            : runLabel
-                    }
-                </button>
-
-            </div>
-
-            <div class="console-panel">
-
-                <div class="console-head">
-
-                    <span class="console-title">COMMAND OUTPUT</span>
-
-                    <span class="console-actions">
-
-                        <span class="console-time">
-                            ${step.kind === "repair"
-                                ? "Changes system settings"
-                                : "Read-only"}
-                        </span>
-
-                        <button
-                            class="ghost-button"
-                            id="clear-console"
-                            type="button">
-                            Clear
-                        </button>
-
-                    </span>
-
-                </div>
-
-                <div class="console" id="console-output">
-                    ${consoleMarkup(step, state)}
-                </div>
-
-            </div>
-
-        </div>
-
-    `;
-
-    const consoleBox = $("console-output");
+    stage.appendChild(detail);
 
     if (consoleBox) {
         consoleBox.scrollTop = consoleBox.scrollHeight;
     }
-
 }
 
 
 function renderDiagnostics() {
 
     if (!diagnosticSteps.length) {
-
-        $("check-steps").innerHTML = "";
-        $("repair-steps").innerHTML = "";
-
-        $("diag-stage").innerHTML = `
-            <p class="muted">No troubleshooting steps are available.</p>
-        `;
-
+        $("check-steps").replaceChildren();
+        $("repair-steps").replaceChildren();
+        const stage = $("diag-stage");
+        stage.replaceChildren();
+        const p = document.createElement("p");
+        p.className = "muted";
+        p.textContent = "No troubleshooting steps are available.";
+        stage.appendChild(p);
         return;
-
     }
 
     renderRailGroup(
@@ -1429,18 +1342,16 @@ async function loadDiagnostics() {
     }
 
     catch (error) {
-
-        $("check-steps").innerHTML = "";
-        $("repair-steps").innerHTML = "";
-
-        $("diag-stage").innerHTML =
-            '<p class="muted">Could not load troubleshooting steps.</p>';
-
-        $("troubleshoot-summary").textContent =
-            "Troubleshooting is unavailable.";
-
+        $("check-steps").replaceChildren();
+        $("repair-steps").replaceChildren();
+        const stage = $("diag-stage");
+        stage.replaceChildren();
+        const p = document.createElement("p");
+        p.className = "muted";
+        p.textContent = "Could not load troubleshooting steps.";
+        stage.appendChild(p);
+        $("troubleshoot-summary").textContent = "Troubleshooting is unavailable.";
         console.error(error);
-
     }
 
 }
