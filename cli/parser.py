@@ -1,6 +1,4 @@
-"""argparse definition for the NetScope CLI."""
-
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 import sys
@@ -110,45 +108,14 @@ def build_parser() -> argparse.ArgumentParser:
             "verification check. Use --rollback to restore a saved pre-fix snapshot."
         ),
     )
-    fix.add_argument(
-        "finding",
-        nargs="?",
-        help="finding/check id or fix id (for example GW-02 or IP-01)",
-    )
-    fix.add_argument(
-        "--rollback",
-        action="store_true",
-        default=argparse.SUPPRESS,
-        help="restore the latest saved snapshot for this fix",
-    )
-    fix.add_argument(
-        "--adapter",
-        metavar="NAME",
-        help="override the adapter parameter for this fix",
-    )
-    fix.add_argument(
-        "--target",
-        metavar="VALUE",
-        help="override the target parameter (host, name or path)",
-    )
-    fix.add_argument(
-        "--value",
-        metavar="VALUE",
-        help="override the value parameter when the fix has exactly one",
-    )
-    fix.add_argument(
-        "--param",
-        action="append",
-        default=argparse.SUPPRESS,
-        metavar="NAME=VALUE",
-        help="override a named catalog parameter (repeatable)",
-    )
+    fix.add_argument("finding", nargs="?", help="finding/check id or fix id (for example GW-02 or IP-01)")
+    fix.add_argument("--rollback", action="store_true", default=argparse.SUPPRESS, help="restore the latest saved snapshot for this fix")
+    fix.add_argument("--adapter", metavar="NAME", help="override the adapter parameter for this fix")
+    fix.add_argument("--target", metavar="VALUE", help="override the target parameter (host, name or path)")
+    fix.add_argument("--value", metavar="VALUE", help="override the value parameter when the fix has exactly one")
+    fix.add_argument("--param", action="append", default=argparse.SUPPRESS, metavar="NAME=VALUE", help="override a named catalog parameter (repeatable)")
 
-    info = sub.add_parser(
-        "info",
-        parents=[common],
-        help="show adapters, addressing, routes, proxy, VPN and Wi-Fi",
-    )
+    info = sub.add_parser("info", parents=[common], help="show adapters, addressing, routes, proxy, VPN and Wi-Fi")
     info.add_argument("--adapter", metavar="NAME", help="only show adapters matching NAME")
 
     ping = sub.add_parser("ping", parents=[common], help="ping a host")
@@ -181,13 +148,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="live network status dashboard (press q to quit)",
         description="Continuously run diagnostics and display a live updating dashboard.",
     )
-    monitor.add_argument(
-        "--interval",
-        type=float,
-        default=3.0,
-        metavar="SECONDS",
-        help="update interval in seconds (default: 3.0)",
-    )
+    monitor.add_argument("--interval", type=float, default=3.0, metavar="SECONDS", help="update interval in seconds (default: 3.0)")
 
     logs = sub.add_parser("logs", parents=[common], help="view, open or export logs")
     logs.add_argument("--tail", type=int, default=50, metavar="N")
@@ -198,7 +159,10 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--output", metavar="FILE", help="write here ('-' for stdout)")
     report.add_argument("--format", choices=("txt", "json"), default="txt", dest="report_format")
 
-    sub.add_parser("gui", parents=[common], help="launch the graphical interface in a new window")
+    gui = sub.add_parser("gui", parents=[common], help="launch the graphical/web interface")
+    gui.add_argument("--no-browser", action="store_true", default=argparse.SUPPRESS, help="start server and print URL only")
+    gui.add_argument("--port", type=int, default=argparse.SUPPRESS, metavar="N", help="bind web UI to this local port")
+
     sub.add_parser("install", parents=[common], help="install NetScope (Phase 5)")
     sub.add_parser("uninstall", parents=[common], help="uninstall NetScope (Phase 5)")
 
@@ -214,9 +178,11 @@ def apply_defaults(args: argparse.Namespace) -> argparse.Namespace:
         "yes",
         "dry_run",
         "yes_i_understand_risk",
+        "no_browser",
     ):
         if not hasattr(args, name):
             setattr(args, name, False)
-    if not hasattr(args, "command"):
-        args.command = None
+    for name in ("command", "port"):
+        if not hasattr(args, name):
+            setattr(args, name, None)
     return args

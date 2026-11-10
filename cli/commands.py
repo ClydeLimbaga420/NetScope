@@ -650,20 +650,63 @@ def cmd_report(args: Any, ctx: CliContext) -> int:
 
 
 def cmd_gui(args: Any, ctx: CliContext) -> int:
-    from gui.launch import launch_detached_gui
+    """Launch the local web UI (replaces tkinter front end)."""
+    no_browser = bool(getattr(args, "no_browser", False))
+    port = getattr(args, "port", None)
+    try:
+        port_val = int(port) if port is not None else None
+    except (TypeError, ValueError):
+        return _failure(ctx, "invalid --port value", exit_codes.USAGE)
 
     try:
-        import tkinter  # noqa: F401
+        from web.run import run_web_ui
     except Exception as exc:
-        return _failure(ctx, f"graphical interface unavailable: {exc}", exit_codes.FAILURES)
-    if launch_detached_gui():
-        ctx.err("NetScope GUI launched in a new window.")
-        return exit_codes.OK
-    return _failure(
-        ctx,
-        "could not start the GUI process; run 'python -m gui' to see the failure",
-        exit_codes.FAILURES,
-    )
+        return _failure(ctx, f"web interface unavailable: {exc}", exit_codes.FAILURES)
+
+    # --no-browser: start server and print URL (foreground).
+    # Otherwise start server and open browser window (blocks this process).
+    # When invoked from an interactive terminal without --no-browser, spawn a
+    # detached server process so the prompt returns immediately.
+    if (not no_browser) and _stdin_is_tty(ctx) and not ctx.json_mode:
+        try:
+            import os
+            import subprocess
+
+            argv = [sys.executable, "-m", "cli", "gui", "--no-browser"]
+            if port_val is not None:
+                argv += ["--port", str(port_val)]
+            env = os.environ.copy()
+            flags = 0
+            if os.name == "nt":
+                flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
+                    subprocess, "CREATE_NEW_PROCESS_GROUP", 0
+                )
+            proc = subprocess.Popen(
+                argv,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                env=env,
+                creationflags=flags,
+            )
+            try:
+                line = proc.stdout.readline().decode("utf-8", errors="replace").strip() if proc.stdout else ""
+            except Exception:
+                line = ""
+            if line:
+                ctx.err(line)
+            ctx.err("NetScope web UI launched.")
+            return exit_codes.OK
+        except Exception:
+            # fall through to in-process start
+            pass
+
+    try:
+        return int(run_web_ui(port=port_val, no_browser=no_browser) or 0)
+    except KeyboardInterrupt:
+        return exit_codes.INTERRUPTED
+    except Exception as exc:
+        return _failure(ctx, f"could not start web UI: {exc}", exit_codes.FAILURES)
 
 
 def cmd_install(args: Any, ctx: CliContext) -> int:

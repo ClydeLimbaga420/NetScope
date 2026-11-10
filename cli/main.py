@@ -1,4 +1,4 @@
-"""CLI entry point. Keeps terminal concerns out of the diagnostic engine."""
+﻿"""CLI entry point. Keeps terminal concerns out of the diagnostic engine."""
 
 from __future__ import annotations
 
@@ -89,32 +89,29 @@ def _stdin_is_tty() -> bool:
 
 
 def _open_gui_from_owned_console() -> int:
-    """Own the console and no command given (double-click): hide it, open the GUI."""
+    """Own the console and no command given (double-click): start the web UI."""
 
-    try:
-        import tkinter  # noqa: F401
-    except Exception as exc:
-        print(f"error: graphical interface unavailable: {exc}", file=sys.stderr)
-        return exit_codes.FAILURES
     detach_console()
-    return exit_codes.OK if launch_detached_gui() else exit_codes.FAILURES
+    try:
+        from web.run import run_web_ui
+
+        run_web_ui()
+        return exit_codes.OK
+    except Exception as exc:
+        # detached console means nowhere to print; best effort
+        return exit_codes.FAILURES
 
 
 def _run_gui_process() -> int:
-    """Internal entry for the GUI process itself (hidden ``__gui__`` token)."""
+    """Internal entry (hidden ``__gui__`` token) - run web UI in-process."""
 
-    from gui.runtime import build_runtime
-
-    runtime = build_runtime()
     try:
-        from gui.app import run_gui
+        from web.run import run_web_ui
 
-        return run_gui(runtime)
+        return run_web_ui()
     except KeyboardInterrupt:
-        runtime.logger.event("interrupted", phase="gui")
         return exit_codes.INTERRUPTED
     except Exception as exc:
-        runtime.logger.error("gui_crashed", exc_info=True, error=str(exc))
         print(f"error: {exc}", file=sys.stderr)
         return exit_codes.FAILURES
 
