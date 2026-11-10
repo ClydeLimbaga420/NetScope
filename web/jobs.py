@@ -18,7 +18,7 @@ from core.runner import cancellation_scope
 class Job:
     id: str
     kind: str
-    status: str = "queued"  # queued|running|done|error|cancelled
+    status: str = "queued"  # queued|running|cancelling|done|error|cancelled
     created_at: float = field(default_factory=time.time)
     started_at: float | None = None
     finished_at: float | None = None
@@ -74,7 +74,7 @@ class JobManager:
     def try_mark_fix_started(self, job_id: str) -> bool:
         with self._lock:
             active = self._jobs.get(self._active_fix_job or "")
-            if active and active.status in {"queued", "running"}:
+            if active and active.status in {"queued", "running", "cancelling"}:
                 return False
             self._active_fix_job = job_id
             return True
@@ -130,10 +130,12 @@ class JobManager:
         with job.lock:
             if job.status in {"done", "error", "cancelled"}:
                 return job.status == "cancelled"
-            if job.status in {"queued", "running"}:
+            if job.status == "queued":
                 job.status = "cancelled"
                 job.finished_at = time.time()
-        job.events.put({"type": "status", "status": "cancelled"})
+            elif job.status in {"running", "cancelling"}:
+                job.status = "cancelling"
+        job.events.put({"type": "status", "status": job.status})
         return True
 
     def stream(self, job: Job) -> Response:

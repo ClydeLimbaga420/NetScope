@@ -166,6 +166,39 @@ def test_job_events_endpoint_streams_sse(client):
     assert '"type": "end"' in payload
 
 
+def test_sse_disconnect_keeps_job_pollable(client):
+    c, st = client
+    _boot(c, st)
+    started = __import__('threading').Event()
+    release = __import__('threading').Event()
+    job = st.jobs.create("test")
+
+    def work(_job):
+        started.set()
+        release.wait(2)
+        return {"recovered": True}
+
+    st.jobs.submit(job, work)
+    assert started.wait(1)
+    response = c.get(
+        f"/api/jobs/{job.id}/events",
+        headers={"Host": "127.0.0.1:5000"},
+        buffered=False,
+    )
+    assert b": ok" in next(response.response)
+    response.close()
+    assert job.status == "running"
+
+    release.set()
+    deadline = __import__('time').monotonic() + 2
+    while job.status == "running" and __import__('time').monotonic() < deadline:
+        __import__('time').sleep(0.01)
+    recovered = c.get(f"/api/jobs/{job.id}", headers={"Host": "127.0.0.1:5000"})
+
+    assert job.status == "done"
+    assert recovered.get_json()["result"] == {"recovered": True}
+
+
 def test_job_cancel_endpoint_marks_job_cancelled(client):
     c, st = client
     token = _boot(c, st)
@@ -180,10 +213,44 @@ def test_job_cancel_endpoint_marks_job_cancelled(client):
         headers=_post_headers(st, token),
         json={},
     )
+    assert job.status == "cancelling"
     release.set()
+    deadline = __import__('time').monotonic() + 2
+    while job.status == "cancelling" and __import__('time').monotonic() < deadline:
+        __import__('time').sleep(0.01)
 
     assert response.status_code == 200
     assert job.status == "cancelled"
+
+
+def test_tool_api_rejects_command_injection_before_runner(client):
+    c, st = client
+    token = _boot(c, st)
+
+    class Runner:
+        calls = []
+
+        def run(self, args, **_kwargs):
+            self.calls.append(args)
+            raise AssertionError("invalid host reached the command runner")
+
+    runner = Runner()
+    st.runtime.runner = runner
+    response = c.post(
+        "/api/tools/ping",
+        headers=_post_headers(st, token),
+        json={"host": "127.0.0.1; whoami"},
+    )
+    job_id = response.get_json()["job_id"]
+    import time
+    deadline = time.monotonic() + 2
+    job = st.jobs.get(job_id)
+    while job.status in {"queued", "running", "cancelling"} and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+    assert response.status_code == 200
+    assert job.status == "error"
+    assert runner.calls == []
 
 
 def test_fixes_endpoint_returns_catalog_metadata(client):

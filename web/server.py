@@ -91,7 +91,7 @@ class WebState:
         # no active jobs/fix
         for job_id in list(getattr(self.jobs, "_jobs", {}).keys()):  # type: ignore[attr-defined]
             job = self.jobs.get(job_id)
-            if job and job.status in {"queued", "running"}:
+            if job and job.status in {"queued", "running", "cancelling"}:
                 return False
         return True
 

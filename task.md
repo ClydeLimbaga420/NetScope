@@ -289,9 +289,12 @@ strictly required for web (document why).
       SSE `text/event-stream` progress/results (`/api/jobs/<id>/events`, keep-alive,
       end marker) and cancel endpoint; diagnose streams per-check results.
       Job cancellation now reaches the active `CommandRunner` subprocess, queued
-      cancellation and terminal-state races are handled, and the browser has an
-      SSE polling fallback. Descendant-process-tree termination and browser
-      disconnect behavior still need verification.
+      cancellation and terminal-state races are handled with a `cancelling`
+      state that holds the active-fix slot until worker cleanup completes; the
+      browser has an SSE polling fallback. Windows commands run in kill-on-close Job Objects;
+      cancellation/timeout/Ctrl+C terminate descendants, covered by a spawned
+      parent-child process test. API-level disconnect recovery is tested;
+      browser EventSource reconnect behavior still needs a browser smoke test.
 - [x] Security (initial): bind 127.0.0.1; per-session + boot token, boot->
       HttpOnly SameSite=Strict cookie exchange + clean redirect, `/__session__`
       for JS POST header token; API requires cookie, POST requires
@@ -324,14 +327,22 @@ strictly required for web (document why).
       runs web UI (detached spawn from interactive terminal so prompt returns);
       no-args from owned console / hidden `__gui__` launches web UI in-process.
       Existing CLI behavior/log formats preserved for non-web commands.
-- [ ] Remaining B: verify single-instance lock/port-file races, robust detached
-      launch/open, Werkzeug log routing in packaged/quiet modes, process-tree
-      cancellation, browser disconnect handling, complete API/CLI shape and
-      logging parity, plus remaining injection and lifecycle coverage. Existing
-      focused tests now cover Host/Origin/session/token/CSP, fix-token expiry and
-      reuse, strict risk confirmation/dry-run booleans, rollback confirmation,
-      SSE result/end delivery, job cancellation, fix serialization, and catalog
-      metadata. Full suite currently passes (148 tests).
+- [x] Single-instance ownership: OS-level per-user lock, atomic JSON port-file
+      publication, health-verified instance reuse, and owner-checked cleanup;
+      lock exclusivity and health response are covered by `tests/test_web_run.py`.
+- [x] TTY detached launch handoff uses a bounded startup read, validates the
+      loopback boot URL, opens the app/browser from the parent, and terminates
+      a child that fails to publish a valid URL. Source/frozen launch argv are
+      selected explicitly; mocked launch and failure paths are tested.
+- [ ] Remaining B: frozen-executable launch smoke test, verify structured
+      Werkzeug request logs in quiet/packaged modes, complete API/CLI shape and logging parity, plus
+      remaining injection and lifecycle coverage. Existing focused tests cover
+      Host/Origin/session/token/CSP, fix-token expiry and reuse, strict risk
+      confirmation/dry-run booleans, rollback confirmation, SSE result/end and
+      disconnect recovery, job cancellation, utility-host injection rejection,
+      fix serialization, and catalog metadata. Full suite last passed with 148
+      tests; focused launch/job/GUI run passed with 34 tests on 2026-11-10.
+      Rerun the full suite after remaining changes.
 - [ ] Phase B completion gate: once the remaining B checks above are all green,
       continue with Phase C: templates, wiring, CSP/offline fixes, and feature
       integration.
@@ -638,3 +649,76 @@ Session 15 (Phase B/C implementation continuation):
 - Validation: full pytest suite passed (148 tests). Phase B completion remains
       open for process-tree/disconnect/lifecycle/API parity; Phase C remains open
       for browser verification, design fidelity, and remaining feature parity.
+
+Session 16 (Phase B single-instance hardening):
+- Added an OS-level per-user lock that prevents concurrent web UI processes
+      from both starting, with a five-second wait for an owner to publish its
+      endpoint before reuse.
+- Port metadata now publishes atomically, is removed only by its recorded PID,
+      and is reused only after a localhost `/health` response confirms NetScope.
+- Added `tests/test_web_run.py` coverage for exclusive ownership, release,
+      cleanup ownership, valid health probes, and rejecting an unrelated service.
+- Validation: `tests/test_web_run.py` passed (4 tests). Remaining Phase B work
+      includes launch handoff, process-tree/disconnect cancellation, and API/logging
+      parity; this does not close the Phase B gate.
+
+Session 17 (Phase B detached-launch handoff):
+- The TTY `netscope gui` branch now starts the web child with a bounded URL
+      handoff, validates that the emitted URL is an HTTP loopback `/__boot__`
+      endpoint, and asks the parent to open it. Browser-open failure leaves a
+      usable local URL in stderr; invalid startup output terminates the child and
+      returns a failure instead of hanging.
+- Added explicit source and frozen executable launch arguments and fixed
+      TTY-only `CliContext`/`sys.executable` issues found by the launch tests.
+- Validation: `tests/test_gui.py` passed (22 tests). Real process/browser smoke
+      tests for source and frozen builds remain pending.
+
+Session 18 (Phase B process-tree cancellation):
+- Added Windows kill-on-close Job Object assignment in `SubprocessRunner` so
+      timeout, Ctrl+C, and job cancellation end the command and its descendants;
+      unsupported or denied job assignment falls back to direct-child termination.
+- Added a Windows-only regression test that spawns a sleeping child, cancels
+      the parent command, and verifies the child process no longer exists.
+- Validation: 13 focused job/runner/subprocess tests passed. Browser disconnect
+      behavior and real source/frozen launch smoke tests remain open.
+
+Session 19 (Phase B cancellation lifecycle race):
+- Running jobs now transition to `cancelling` when cancellation is requested;
+      they become terminal only after worker cleanup. This keeps cancelled fixes
+      from releasing the serialized-fix slot early and prevents idle shutdown while
+      cancellation is still being processed.
+- Added job-manager coverage for fix-slot exclusivity during cancellation and
+      updated the API cancel test to verify the transitional state.
+- Validation: `tests/test_jobs.py tests/test_web_api.py` passed (22 tests).
+
+Session 20 (Phase B SSE disconnect recovery):
+- Added API-level coverage for closing an SSE response while its job is active;
+      disconnect does not cancel the job, and its final result remains available
+      through `/api/jobs/<id>` polling.
+- Validation: the targeted disconnect-recovery test passed. Browser-level
+      reconnect behavior remains for the full web UI smoke test.
+
+Session 21 (Phase B API input validation):
+- Added a web API test that submits a shell-injection-like ping host, waits for
+      its background job to fail validation, and asserts the shared command runner
+      received no arguments.
+- Validation: the targeted API injection test passed. Broader input-validation
+      parity across all utilities and fix parameters remains open.
+
+Session 22 (Phase B source launch smoke test):
+- Added a real subprocess test for `python -m cli gui --no-browser --port N`;
+      it verifies the boot URL, successful loopback `/health` response, and process
+      cleanup using an isolated `%LOCALAPPDATA%` test directory.
+- Validation: the targeted source-launch smoke test passed. Frozen executable
+      startup and actual browser-window handoff remain unverified.
+
+Session 23 (Phase B quiet startup verification):
+- Replaced `Flask.app.run()` with Werkzeug `run_simple()` using the same
+      loopback, threaded, debug-disabled, reloader-disabled settings to avoid
+      Flask's unconditional console banner. The no-browser boot URL is flushed so
+      the detached parent can receive it without relying on that banner.
+- Extended the real source subprocess smoke test to check startup output,
+      loopback health, and cleanup.
+- Validation: focused `tests/test_web_run.py tests/test_jobs.py tests/test_gui.py`
+      passed (34 tests). Structured Werkzeug request-log routing and browser-level
+      reconnect verification remain open.

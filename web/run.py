@@ -7,10 +7,15 @@ import os
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
+import urllib.error
+import urllib.request
 import webbrowser
 from pathlib import Path
+from typing import BinaryIO
+from werkzeug.serving import run_simple
 
 import config
 from web.security import TOKEN_PARAM
@@ -25,6 +30,50 @@ def _find_free_port() -> int:
 
 def _lock_path() -> Path:
     return config.data_dir() / "web-ui.json"
+
+
+def _instance_lock_path() -> Path:
+    return config.data_dir() / "web-ui.lock"
+
+
+def _acquire_instance_lock() -> BinaryIO | None:
+    path = _instance_lock_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = path.open("a+b")
+    handle.seek(0, os.SEEK_END)
+    if handle.tell() == 0:
+        handle.write(b"\0")
+        handle.flush()
+    handle.seek(0)
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        handle.close()
+        return None
+    return handle
+
+
+def _release_instance_lock(handle: BinaryIO) -> None:
+    try:
+        handle.seek(0)
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    except OSError:
+        pass
+    handle.close()
 
 
 def _read_lock() -> dict | None:
@@ -49,17 +98,54 @@ def _write_lock(port: int, boot_token: str, pid: int) -> None:
     path = _lock_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {"port": int(port), "boot_token": boot_token, "pid": int(pid), "ts": time.time()}
-    path.write_text(json.dumps(data), encoding="utf-8")
-
-
-def _remove_lock() -> None:
+    temp_path = None
     try:
-        _lock_path().unlink(missing_ok=True)
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", dir=path.parent, delete=False
+        ) as temp:
+            temp.write(json.dumps(data))
+            temp.flush()
+            os.fsync(temp.fileno())
+            temp_path = Path(temp.name)
+        os.replace(temp_path, path)
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
+
+
+def _remove_lock(pid: int | None = None) -> None:
+    try:
+        path = _lock_path()
+        data = _read_lock()
+        if data and (pid is None or data.get("pid") == int(pid)):
+            path.unlink(missing_ok=True)
     except Exception:
         pass
 
 
-def _open_url(url: str) -> None:
+def _existing_instance_url(lock: dict | None) -> str | None:
+    if not isinstance(lock, dict):
+        return None
+    port = lock.get("port")
+    boot_token = lock.get("boot_token")
+    if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+        return None
+    if not isinstance(boot_token, str) or not boot_token or len(boot_token) > 256:
+        return None
+    if not _port_open(port):
+        return None
+    health_url = f"http://127.0.0.1:{port}/health"
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(health_url, timeout=1) as response:
+            if response.status != 200 or response.read(16).strip() != b"ok":
+                return None
+    except (OSError, urllib.error.URLError):
+        return None
+    return f"http://127.0.0.1:{port}/__boot__?{TOKEN_PARAM}={boot_token}"
+
+
+def _open_url(url: str) -> bool:
     candidates = []
     localapp = os.environ.get("LOCALAPPDATA", "")
     pf = os.environ.get("PROGRAMFILES", r"C:\Program Files")
@@ -77,55 +163,68 @@ def _open_url(url: str) -> None:
     for exe in candidates:
         try:
             subprocess.Popen([exe, f"--app={url}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            return
+            return True
         except Exception:
             continue
     try:
-        webbrowser.open(url)
+        return bool(webbrowser.open(url))
     except Exception:
-        pass
+        return False
 
 
 def run_web_ui(port: int | None = None, no_browser: bool = False) -> int:
-    # single-instance: if a server for this user is already running, open it
-    lock = _read_lock()
-    if lock and _port_open(lock.get("port")):
-        url = f"http://127.0.0.1:{int(lock['port'])}/__boot__?{TOKEN_PARAM}={lock.get('boot_token','')}"
-        if no_browser:
-            print(url)
-        else:
-            _open_url(url)
-        return 0
+    instance_lock = _acquire_instance_lock()
+    if instance_lock is None:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            url = _existing_instance_url(_read_lock())
+            if url:
+                if no_browser:
+                    print(url)
+                else:
+                    _open_url(url)
+                return 0
+            time.sleep(0.1)
+        return 1
 
-    state = WebState(mode="web")
-    app = create_app(state)
-    port = int(port) if port else _find_free_port()
-    state.port = port
-    boot_url = f"http://127.0.0.1:{port}/__boot__?{TOKEN_PARAM}={state.security.boot_token}"
-    _write_lock(port, state.security.boot_token, os.getpid())
-
-    def monitor() -> None:
-        while not state.shutdown_event.is_set():
-            if state.should_shutdown():
-                state.logger.event("server_shutdown", source="web", reason="heartbeat_timeout")
-                state.shutdown_event.set()
-                _remove_lock()
-                os._exit(0)
-            time.sleep(2)
-        _remove_lock()
-
-    threading.Thread(target=monitor, daemon=True).start()
-
-    if not no_browser:
-        threading.Timer(0.6, lambda: _open_url(boot_url)).start()
-    else:
-        print(boot_url)
-
-    state.logger.event("server_start", source="web", port=port)
+    state = None
     try:
-        app.run(host="127.0.0.1", port=port, debug=False, use_reloader=False, threaded=True)
+        state = WebState(mode="web")
+        app = create_app(state)
+        port = int(port) if port else _find_free_port()
+        state.port = port
+        boot_url = f"http://127.0.0.1:{port}/__boot__?{TOKEN_PARAM}={state.security.boot_token}"
+        _write_lock(port, state.security.boot_token, os.getpid())
+
+        def monitor() -> None:
+            while not state.shutdown_event.is_set():
+                if state.should_shutdown():
+                    state.logger.event("server_shutdown", source="web", reason="heartbeat_timeout")
+                    state.shutdown_event.set()
+                    _remove_lock(os.getpid())
+                    os._exit(0)
+                time.sleep(2)
+
+        threading.Thread(target=monitor, daemon=True).start()
+
+        if not no_browser:
+            threading.Timer(0.6, lambda: _open_url(boot_url)).start()
+        else:
+            print(boot_url, flush=True)
+
+        state.logger.event("server_start", source="web", port=port)
+        run_simple(
+            "127.0.0.1",
+            port,
+            app,
+            use_reloader=False,
+            use_debugger=False,
+            threaded=True,
+        )
     except KeyboardInterrupt:
-        state.logger.event("server_shutdown", source="web", reason="keyboard_interrupt")
+        if state is not None:
+            state.logger.event("server_shutdown", source="web", reason="keyboard_interrupt")
     finally:
-        _remove_lock()
+        _remove_lock(os.getpid())
+        _release_instance_lock(instance_lock)
     return 0

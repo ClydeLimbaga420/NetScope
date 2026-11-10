@@ -100,6 +100,91 @@ def _decode(raw: Any) -> str:
     return str(raw)
 
 
+def _attach_kill_on_close_job(process: Any) -> tuple[Any, Any] | None:
+    if os.name != "nt" or not hasattr(process, "_handle"):
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class BasicLimitInformation(ctypes.Structure):
+            _fields_ = [
+                ("PerProcessUserTimeLimit", ctypes.c_longlong),
+                ("PerJobUserTimeLimit", ctypes.c_longlong),
+                ("LimitFlags", wintypes.DWORD),
+                ("MinimumWorkingSetSize", ctypes.c_size_t),
+                ("MaximumWorkingSetSize", ctypes.c_size_t),
+                ("ActiveProcessLimit", wintypes.DWORD),
+                ("Affinity", ctypes.c_size_t),
+                ("PriorityClass", wintypes.DWORD),
+                ("SchedulingClass", wintypes.DWORD),
+            ]
+
+        class IoCounters(ctypes.Structure):
+            _fields_ = [(name, ctypes.c_ulonglong) for name in (
+                "ReadOperationCount",
+                "WriteOperationCount",
+                "OtherOperationCount",
+                "ReadTransferCount",
+                "WriteTransferCount",
+                "OtherTransferCount",
+            )]
+
+        class ExtendedLimitInformation(ctypes.Structure):
+            _fields_ = [
+                ("BasicLimitInformation", BasicLimitInformation),
+                ("IoInfo", IoCounters),
+                ("ProcessMemoryLimit", ctypes.c_size_t),
+                ("JobMemoryLimit", ctypes.c_size_t),
+                ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                ("PeakJobMemoryUsed", ctypes.c_size_t),
+            ]
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CreateJobObjectW.argtypes = [wintypes.LPVOID, wintypes.LPCWSTR]
+        kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+        kernel32.SetInformationJobObject.argtypes = [
+            wintypes.HANDLE,
+            ctypes.c_int,
+            wintypes.LPVOID,
+            wintypes.DWORD,
+        ]
+        kernel32.SetInformationJobObject.restype = wintypes.BOOL
+        kernel32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+        kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel32.CloseHandle.restype = wintypes.BOOL
+
+        handle = kernel32.CreateJobObjectW(None, None)
+        if not handle:
+            return None
+        limits = ExtendedLimitInformation()
+        limits.BasicLimitInformation.LimitFlags = 0x2000
+        configured = kernel32.SetInformationJobObject(
+            handle,
+            9,
+            ctypes.byref(limits),
+            ctypes.sizeof(limits),
+        )
+        assigned = configured and kernel32.AssignProcessToJobObject(
+            handle, wintypes.HANDLE(int(process._handle))
+        )
+        if not assigned:
+            kernel32.CloseHandle(handle)
+            return None
+        return kernel32, handle
+    except Exception:
+        return None
+
+
+def _close_kill_on_close_job(job: tuple[Any, Any] | None) -> None:
+    if job is not None:
+        try:
+            job[0].CloseHandle(job[1])
+        except Exception:
+            pass
+
+
 class SubprocessRunner(CommandRunner):
     """Real runner backed by :mod:`subprocess` with strict safety rules."""
 
@@ -162,6 +247,7 @@ class SubprocessRunner(CommandRunner):
             self._log(argv, result, effective_timeout)
             return result
 
+        process_job = _attach_kill_on_close_job(process)
         try:
             if cancel_event is None:
                 stdout, stderr = process.communicate(
@@ -176,6 +262,7 @@ class SubprocessRunner(CommandRunner):
                 while True:
                     if cancel_event.is_set():
                         process.kill()
+                        _close_kill_on_close_job(process_job)
                         try:
                             process.communicate(timeout=5)
                         except subprocess.TimeoutExpired:
@@ -207,6 +294,7 @@ class SubprocessRunner(CommandRunner):
                 process.kill()
             except OSError:
                 pass
+            _close_kill_on_close_job(process_job)
             try:
                 stdout, stderr = process.communicate(timeout=5)
             except subprocess.TimeoutExpired:
@@ -226,6 +314,7 @@ class SubprocessRunner(CommandRunner):
                 process.kill()
             except OSError:
                 pass
+            _close_kill_on_close_job(process_job)
             try:
                 process.communicate(timeout=5)
             except subprocess.TimeoutExpired:
@@ -235,6 +324,8 @@ class SubprocessRunner(CommandRunner):
             raise
         except CommandCancelled:
             raise
+        finally:
+            _close_kill_on_close_job(process_job)
 
         self._log(argv, result, effective_timeout)
         return result

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import subprocess
 import sys
 import threading
 import time
@@ -381,7 +382,8 @@ def test_cmd_gui_reports_launch(monkeypatch):
     monkeypatch.setattr("web.run.run_web_ui", lambda **kwargs: calls.append(kwargs) or 0)
     args = apply_defaults(build_parser().parse_args(["gui"]))
     ctx = make_cli_ctx()
-    assert cmd_gui(args, ctx) == exit_codes.OK
+    result = cmd_gui(args, ctx)
+    assert result == exit_codes.OK, ctx.stderr.getvalue()
     assert calls == [{"port": None, "no_browser": False}]
 
 
@@ -392,8 +394,49 @@ def test_cmd_gui_failure_is_reported(monkeypatch):
     monkeypatch.setattr("web.run.run_web_ui", fail_to_start)
     args = apply_defaults(build_parser().parse_args(["gui"]))
     ctx = make_cli_ctx()
-    assert cmd_gui(args, ctx) == exit_codes.FAILURES
+    result = cmd_gui(args, ctx)
+    assert result == exit_codes.FAILURES, ctx.stderr.getvalue()
     assert "could not start web UI" in ctx.stderr.getvalue()
+
+
+def test_cmd_gui_detached_launch_opens_valid_boot_url(monkeypatch):
+    url = "http://127.0.0.1:54321/__boot__?token=launch-token"
+    calls = []
+    process = type("Process", (), {
+        "stdout": io.StringIO(url + "\n"),
+        "poll": lambda self: None,
+        "terminate": lambda self: None,
+        "wait": lambda self, **_kwargs: None,
+    })()
+    monkeypatch.setattr("cli.commands._stdin_is_tty", lambda _ctx: True)
+    monkeypatch.setattr(subprocess, "Popen", lambda *_args, **_kwargs: process)
+    monkeypatch.setattr("web.run._open_url", lambda value: calls.append(value) or True)
+    args = apply_defaults(build_parser().parse_args(["gui"]))
+    ctx = make_cli_ctx()
+
+    result = cmd_gui(args, ctx)
+    assert result == exit_codes.OK, ctx.stderr.getvalue()
+    assert calls == [url]
+    assert "launched" in ctx.stderr.getvalue()
+
+
+def test_cmd_gui_detached_launch_rejects_bad_startup_url(monkeypatch):
+    terminated = []
+    process = type("Process", (), {
+        "stdout": io.StringIO("not-a-local-url\n"),
+        "poll": lambda self: None,
+        "terminate": lambda self: terminated.append(True),
+        "wait": lambda self, **_kwargs: None,
+    })()
+    monkeypatch.setattr("cli.commands._stdin_is_tty", lambda _ctx: True)
+    monkeypatch.setattr(subprocess, "Popen", lambda *_args, **_kwargs: process)
+    args = apply_defaults(build_parser().parse_args(["gui"]))
+    ctx = make_cli_ctx()
+
+    result = cmd_gui(args, ctx)
+    assert result == exit_codes.FAILURES, ctx.stderr.getvalue()
+    assert terminated == [True]
+    assert "did not publish a valid local URL" in ctx.stderr.getvalue()
 
 
 def test_main_hidden_gui_token_runs_gui(monkeypatch):
