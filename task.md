@@ -225,7 +225,7 @@ Existing code that must keep working: the Flask dashboard (`app.py`,
 ---
 
 
-## Phase 6 — Web UI replacement (tkinter ? local web UI)
+## Phase 6 ï¿½ Web UI replacement (tkinter ? local web UI)
 
 Goal: replace the tkinter GUI with a local web UI served from inside
 `netscope.exe` (Flask, Jinja2, vanilla HTML/CSS/JS) that uses **main's
@@ -243,7 +243,7 @@ exist in build; wire/trace every UI element to a main element or build
 feature. Engine/catalog/CLI behavior and log formats stay unchanged unless
 strictly required for web (document why).
 
-### Phase A — Verification, merge, audit, plan, parity
+### Phase A ï¿½ Verification, merge, audit, plan, parity
 - [x] Verify branches (`git branch -a`, logs, contents); confirm roles (main =
       design/layout + dashboard features incl. packet-loss/QOL; build = engine/
       CLI/fix/GUI/logging features). Flagged overlap on shared dashboard files.
@@ -275,7 +275,7 @@ strictly required for web (document why).
       CLI-only tools inside TOOLS, legacy Troubleshoot `/api/diagnostics` vs
       engine/fix integration approach, any appearance-affecting conflicts).
 
-### Phase B — Server, API, jobs/SSE, security (+ tests)
+### Phase B ï¿½ Server, API, jobs/SSE, security (+ tests)
 - [ ] `web/` package: `server.py`, `api.py`, `security.py`, `jobs.py`,
       `templates/`, `static/{css,js,img}`; app factory `create_app`, Blueprints
       (pages + `/api`), explicit template/static folders via resource-path
@@ -322,7 +322,7 @@ strictly required for web (document why).
       paths); jobs (ordered SSE, cancel kills children, disconnect safe, matches
       CLI `--json` for mocked scenarios).
 
-### Phase C — Templates, wiring, CSP/offline fixes, feature integration
+### Phase C ï¿½ Templates, wiring, CSP/offline fixes, feature integration
 - [ ] Convert main's `index.html` to Jinja2 templates (shared base: header/nav/
       status chips/toast/footer) with identical markup/class structure/appearance;
       server-rendered shells, JS fills live data.
@@ -354,7 +354,7 @@ strictly required for web (document why).
       computed styles of key elements match) and changelog/unchanged-main-CSS
       assertions where feasible.
 
-### Phase D — Launch/lifecycle, packaging, build tests
+### Phase D ï¿½ Launch/lifecycle, packaging, build tests
 - [ ] `netscope gui` / no-args from Win+R|Start|double-click start server+open UI;
       no-args in terminal still opens interactive CLI shell. `netscope gui
       --no-browser` and `--port N` (default random free). Open app-style window
@@ -376,7 +376,7 @@ strictly required for web (document why).
       CSS, `/api/status` from inside exe); report exe size (tkinter before vs
       Flask web UI after).
 
-### Phase E — Remove tkinter, docs, CI, final reports
+### Phase E ï¿½ Remove tkinter, docs, CI, final reports
 - [ ] Remove tkinter from project and exe only after parity checklist passes
       (all rows done/tested); delete tkinter code/imports.
 - [ ] Update README (dev run, server security, API reference, adding
@@ -603,7 +603,7 @@ Session 7 (Phase 4, tkinter GUI):
 
 
 
-Session 8 (Web UI replacement — Phase A start, on `feature/web-ui`):
+Session 8 (Web UI replacement ï¿½ Phase A start, on `feature/web-ui`):
 - Branch verification: `main` @ 9d670d9 (design/layout + packet-loss/QOL
   dashboard), `build` @ 9e8be23 (engine/CLI/fixes/GUI/logging). Diverged
   `main +2 / build +11` (base 7b05eed); shared overlap in dashboard files and
@@ -611,18 +611,18 @@ Session 8 (Web UI replacement — Phase A start, on `feature/web-ui`):
 - Step 0 complete: safety tag `build-pre-merge` @ 9e8be23; `git merge --no-ff
   main` into `build` ? merge commit **7ae6f8b** (`Merge main into build (keep
   main design/features intact, add build features)`). `main` unchanged.
-  Conflicts: `AGENTS.md` only (content) — resolved by merging build
+  Conflicts: `AGENTS.md` only (content) ï¿½ resolved by merging build
   architecture docs with compatible run/legacy notes (markers removed).
   `app.py/modules/ping_monitor/network_info/diagnostics`, `templates/index.html`,
   `static/css/style.css`, `static/js/dashboard.js` auto-merged from `main`
-  (kept intact). `config.py` remained build’s but preserves dashboard keys
+  (kept intact). `config.py` remained buildï¿½s but preserves dashboard keys
   (`APP_NAME/HOST/PORT/REFRESH_INTERVAL_MS/PING_TIMEOUT_SECONDS`). Created and
   moved to `feature/web-ui` @ 7ae6f8b (all web work here).
 - Post-merge validation: `pytest -q` ? **128 passed**; `netscope --version` ?
   `NetScope 0.3.0`; mocked `tests/test_cli.py -k "diagnose and json"` ? 1
   passed. Real `netscope diagnose --json`/text investigated: emits complete
   valid JSON and **exit 1 (WARN)** consistent with text output (NlaSvc/manual,
-  sharing services/firewall on this host) — not a regression; no engine/CLI/log
+  sharing services/firewall on this host) ï¿½ not a regression; no engine/CLI/log
   change made.
 - Phase A audit (initial): documented engine public API
   (`DiagnosticEngine.collect_snapshot/diagnose`, models/report/exit codes,
@@ -633,8 +633,9 @@ Session 8 (Web UI replacement — Phase A start, on `feature/web-ui`):
   preview/confirm/risk-H/detect-only/unresolved/export/logs, launch/runtime),
   and main design (shell/views, cards/traffic/devices/troubleshoot, JS
   polling/CDN/`innerHTML` hotspots) for web parity planning.
-- `task.md` updated with Phase 6 (Web UI replacement) checklist A–E and this
+- `task.md` updated with Phase 6 (Web UI replacement) checklist Aï¿½E and this
   session note. Remaining: detailed design/security audit, build-feature
   inventory mapped to TOOLS, parity tables, confirmed plan, then Phase B.
 - Branch safety (current): `main` has no new commits; `build` has only Step 0
   merge commit (7ae6f8b) beyond pre-merge tag; work on `feature/web-ui`.
+
