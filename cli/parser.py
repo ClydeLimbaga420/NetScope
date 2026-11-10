@@ -198,7 +198,7 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--output", metavar="FILE", help="write here ('-' for stdout)")
     report.add_argument("--format", choices=("txt", "json"), default="txt", dest="report_format")
 
-    sub.add_parser("gui", parents=[common], help="launch the graphical interface (Phase 4)")
+    sub.add_parser("gui", parents=[common], help="launch the graphical interface in a new window")
     sub.add_parser("install", parents=[common], help="install NetScope (Phase 5)")
     sub.add_parser("uninstall", parents=[common], help="uninstall NetScope (Phase 5)")
 

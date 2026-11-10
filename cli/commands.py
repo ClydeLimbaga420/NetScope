@@ -650,8 +650,20 @@ def cmd_report(args: Any, ctx: CliContext) -> int:
 
 
 def cmd_gui(args: Any, ctx: CliContext) -> int:
-    ctx.err("The graphical interface ships in Phase 4; run 'netscope diagnose' for now.")
-    return exit_codes.FIX_FAILED
+    from gui.launch import launch_detached_gui
+
+    try:
+        import tkinter  # noqa: F401
+    except Exception as exc:
+        return _failure(ctx, f"graphical interface unavailable: {exc}", exit_codes.FAILURES)
+    if launch_detached_gui():
+        ctx.err("NetScope GUI launched in a new window.")
+        return exit_codes.OK
+    return _failure(
+        ctx,
+        "could not start the GUI process; run 'python -m gui' to see the failure",
+        exit_codes.FAILURES,
+    )
 
 
 def cmd_install(args: Any, ctx: CliContext) -> int:

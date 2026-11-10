@@ -5,7 +5,7 @@ dashboard into a universal Windows network troubleshooting tool with one shared
 engine and two front ends (CLI + GUI). Work phase by phase; update this file and
 `task.md` Notes at the end of every phase.
 
-**Current status: Phase 3 complete.** Phases 4-5 are not built yet.
+**Current status: Phase 4 complete.** Phase 5 is not built yet.
 
 ## Run / environment
 - The Flask dashboard still works: `python app.py` → http://127.0.0.1:5000
@@ -16,9 +16,15 @@ engine and two front ends (CLI + GUI). Work phase by phase; update this file and
 - This checkout originally had **no `.venv`**. A venv now exists (Python 3.14.7).
   Recreate with `py -m venv .venv`, then
   `.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt`.
-- Run tests: `.\.venv\Scripts\python.exe -m pytest` (pytest 9.x, 108 tests green).
+- Run tests: `.\.venv\Scripts\python.exe -m pytest` (pytest 9.x, 128 tests green).
 - Run the CLI: `.\.venv\Scripts\python.exe netscope.py --help`
   (or `python -m cli`). `netscope.py diagnose --json` is the machine interface.
+- Run the GUI: `netscope gui` spawns it detached (prompt returns); the GUI
+  process itself is `.venv\Scripts\python.exe netscope.py __gui__` (hidden
+  token, handled before argparse). `python -m gui` runs it in the current
+  process for development (console stays attached).
+- Double-clicking a terminal (no args) opens the interactive shell; double-
+  clicking a launcher that owns its console detaches and opens the GUI.
 - PowerShell is required for diagnostics (Windows PowerShell 5.1).
 - Run `app.py` as a script: imports are flat/absolute (`from config ...`,
   `from modules...`, `from core...`), not a package.
@@ -129,7 +135,53 @@ engine and two front ends (CLI + GUI). Work phase by phase; update this file and
 - `tests/test_fixes.py` — 22 tests: catalog completeness/schema, DETECT-ONLY,
   verify flags, check fix_ids, executor resolve/dry-run/decline/admin/high-risk/
   rollback/detect-only, if_unresolved ranking/gating/wording/report, CLI
-  dry-run/resolved/detect-only/unknown-id. Total 106 tests pass.
+  dry-run/resolved/detect-only/unknown-id. Total 106 tests passed at Phase 3.
+
+## GUI (Phase 4)
+- `gui/` is a front end only: it calls the same `DiagnosticEngine`,
+  `FixExecutor` and catalog as the CLI and reuses `cli.render` helpers. **Never
+  put detection, fix or validation logic in `gui/`** — extend `core/` or
+  `fixes/` instead.
+- `gui/runtime.py` — `GuiRuntime` (engine/catalog/runner/ps/logger/
+  admin_check/session_id/backup_dir, `executor()` factory), `build_runtime()`
+  (fresh `gui`-mode logging + real catalog; empty catalog if it fails to load)
+  and `runtime_from_context()` (reuse a `CliContext`).
+- `gui/app.py` — `NetScopeGui`: status line, findings `Treeview` with colour
+  tags, per-finding detail (message/cause/evidence + "Proceed to Fix"),
+  preview dialog with exact commands and Admin/Risk/Reboot labels, "Still not
+  working? Likely causes" collapsible panel (from `unresolved_section`),
+  layer checkbuttons, Run diagnosis, Export report (txt/json to
+  `%LOCALAPPDATA%\NetScope\reports\`), View Logs. Workers run on daemon
+  threads and post dicts to a `queue.Queue`; `root.after(100)` polling applies
+  them on the Tk thread. `shutdown()` cancels the poll timer.
+- `gui/dialogs.py` — `DialogBridge`: worker calls `submit()` and block on an
+  `Event`; `poll()` on the Tk thread answers them. `submit()` from the Tk
+  thread itself answers inline (`answer_directly`) to avoid self-deadlock.
+- `gui/launch.py` — `GUI_INTERNAL = "__gui__"`, `owns_console()`
+  (`GetConsoleProcessList == 1`), `detach_console()` (`FreeConsole`),
+  `launch_detached_gui()` (`DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP`,
+  devnull stdio, cwd = project root), `gui_relaunch_argv()` (source:
+  `[netscope.py, "__gui__"]`; frozen: `["__gui__"]`).
+- `cli/main.py` intercepts `__gui__` before argparse and runs the GUI in
+  process (`_run_gui_process`). `netscope gui` (`cmd_gui`) pre-checks
+  `tkinter`, spawns the detached GUI and returns 0. No args + own console →
+  detach + GUI; no args in a shared terminal → shell; no args without a TTY →
+  help/exit 64.
+- Fix flow: `prepare()` preview → bridge confirmation → `run(assume_yes=True)`;
+  high-risk steps still trigger the executor's second confirmation (rendered as
+  a warning dialog). DETECT-ONLY findings never run the executor. `needs_admin`
+  offers `relaunch_elevated(gui_relaunch_argv())`.
+- Launcher tradeoff (document in Phase 5 README): the exe stays
+  console-subsystem, so double-clicking it briefly flashes a console; the GUI
+  child itself is detached and shows no console. A double-clicked `.py` via
+  `py.exe` shares a console, so `owns_console()` is False and it opens the
+  shell — the frozen exe behaves as specified.
+- `tests/test_gui.py` — 20 tests: launch helpers, dialog bridge
+  (round-trip/no-handler/UI-thread direct answer), runtime builders, headless-
+  safe construction (`pytest.skip` on `TclError`), rendering/detail/buttons,
+  layer selection, background diagnosis, failure surfacing, real fix flow via
+  `FixExecutor` + `FakeRunner`, declined fix, DETECT-ONLY causes panel, report
+  export, `cmd_gui`, `__gui__` token, own-console launch.
 
 Usage:
 ```python
@@ -152,6 +204,13 @@ executor = FixExecutor(runner, ps, logger, engine, catalog)
 plan = executor.prepare(entry, snapshot=snapshot)
 outcome = executor.run(entry, plan=plan, assume_yes=True)
 print(outcome.exit_code, outcome.status, outcome.to_dict())
+```
+
+```python
+from gui.app import run_gui
+from gui.runtime import build_runtime
+
+raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
 ```
 
 ## Logging
@@ -247,7 +306,8 @@ print(outcome.exit_code, outcome.status, outcome.to_dict())
   default (DETECT-ONLY or second confirmation only).
 
 ## Next phases
-- Phase 4: tkinter GUI, dual-mode console/GUI launch, GUI smoke tests.
-  Replace the `gui` stub.
 - Phase 5: PyInstaller exe, installer/uninstaller (PATH/App Paths/Start Menu),
-  GitHub Actions, README/manual test checklist. Replace `install`/`uninstall`.
+  GitHub Actions, README/manual test checklist. Replace `install`/`uninstall`
+  stubs. Document: LAN-09 stays DETECT-ONLY (deliberate deviation from
+  `prompt.txt`'s optional registry fix) and the console-flash launcher
+  tradeoff.

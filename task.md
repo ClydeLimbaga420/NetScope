@@ -170,27 +170,27 @@ Existing code that must keep working: the Flask dashboard (`app.py`,
 ## Phase 4 — GUI (tkinter)
 
 ### 4.1 GUI shell
-- [ ] Main window: status, findings list, plain-language explanations
-- [ ] Each fix has "Proceed to Fix" + confirmation dialog with exact commands
-- [ ] Admin/risk/reboot labels; high-risk double confirmation
-- [ ] "Still not working? Likely causes" expandable panel
-- [ ] "View Logs", report export, diagnose button, layer selection
-- [ ] Same engine calls as CLI; no business logic in GUI
+- [x] Main window: status, findings list, plain-language explanations
+- [x] Each fix has "Proceed to Fix" + confirmation dialog with exact commands
+- [x] Admin/risk/reboot labels; high-risk double confirmation
+- [x] "Still not working? Likely causes" expandable panel
+- [x] "View Logs", report export, diagnose button, layer selection
+- [x] Same engine calls as CLI; no business logic in GUI
 
 ### 4.2 Dual-mode launch
-- [ ] Console-subsystem exe behaviour
-- [ ] `GetConsoleProcessList` detection: terminal → shell; own console →
+- [x] Console-subsystem exe behaviour
+- [x] `GetConsoleProcessList` detection: terminal → shell; own console →
       detach/hide and open GUI
-- [ ] `netscope gui` detaches so prompt returns
-- [ ] Avoid console flash; document launcher tradeoff (if needed)
+- [x] `netscope gui` detaches so prompt returns
+- [x] Avoid console flash; document launcher tradeoff (if needed)
 
 ### 4.3 GUI tests
-- [ ] Construct GUI headless-safe; fix buttons call engine functions
-- [ ] Skip gracefully on headless CI
+- [x] Construct GUI headless-safe; fix buttons call engine functions
+- [x] Skip gracefully on headless CI
 
 ### 4.4 Phase 4 close-out
-- [ ] Update `AGENTS.md`
-- [ ] Update Notes below
+- [x] Update `AGENTS.md`
+- [x] Update Notes below
 
 ---
 
@@ -363,4 +363,68 @@ Session 6 (merge main into build, pre-Phase-4):
   check_count 7 / repair_count 4) and `POST /api/diagnostics/<id>/run`
   all work.
 - Phase 4 (tkinter GUI) starts next from this merged state.
+
+Session 7 (Phase 4, tkinter GUI):
+- Added `gui/` package; the GUI renders engine output only and calls the same
+  `DiagnosticEngine`/`FixExecutor`/catalog as the CLI:
+  - `gui/runtime.py` — `GuiRuntime` (engine/catalog/runner/ps/logger/
+    admin_check/session_id/backup_dir) with `executor()` factory,
+    `build_runtime()` (fresh `gui`-mode logging + real catalog) and
+    `runtime_from_context()` (reuse a `CliContext`). Falls back to an empty
+    catalog (`CatalogError` logged) so diagnosis still works.
+  - `gui/app.py` — `NetScopeGui`: status line, findings `Treeview` with
+    colour tags, per-finding detail (message/cause/evidence + "Proceed to Fix"
+    buttons), modal preview dialog (exact commands + Admin/Risk/Reboot
+    labels), "Still not working? Likely causes" collapsible panel, layer
+    checkbuttons (all-on fallback), Run diagnosis, Export report (txt/json to
+    `%LOCALAPPDATA%\NetScope\reports\`), View Logs. Workers (diagnose/fix/
+    rollback/report) run on daemon threads and post to a `queue.Queue`;
+    `root.after(100)` polling marshals dialogs via `DialogBridge`.
+  - `gui/dialogs.py` — `DialogBridge.submit()` from workers blocks on an
+    `Event`, answered by `poll()` on the Tk thread; calls from the UI thread
+    are answered inline (`answer_directly`) to avoid self-deadlock.
+  - `gui/launch.py` — `GUI_INTERNAL = "__gui__"`, `owns_console()`
+    (`GetConsoleProcessList == 1`), `detach_console()` (`FreeConsole`),
+    `launch_detached_gui()` (Popen `DETACHED_PROCESS |
+    CREATE_NEW_PROCESS_GROUP`, devnull stdio, cwd=project root),
+    `gui_relaunch_argv()` (source: `[netscope.py, __gui__]`; frozen:
+    `[__gui__]`).
+  - `gui/__main__.py` — `python -m gui` (dev entry, console stays attached).
+- Dual-mode launch: `cli/main.py` intercepts the hidden `__gui__` token before
+  argparse and runs the GUI in-process (`_run_gui_process`, logs
+  `gui_crashed`). No-args + `owns_console()` (double-click/Win+R) →
+  `detach_console()` + detached GUI spawn (task spec: detach/hide and open
+  GUI); no-args from a shared terminal → interactive shell; no-args without a
+  TTY → help + exit 64. `netscope gui` (`cmd_gui`) pre-checks `tkinter`, spawns
+  the detached GUI, prints "NetScope GUI launched in a new window." and
+  returns 0 so the prompt returns immediately.
+- Fix flow: `executor.prepare()` preview → bridge "fix_confirm" dialog →
+  `executor.run(assume_yes=True, risk_ack=False)`; high-risk steps still raise
+  the executor's second confirmation ("This step is HIGH RISK...") rendered as
+  a warning dialog. Rollback confirms via the same bridge. DETECT-ONLY
+  findings skip the executor and show `unresolved_section()` in the causes
+  panel. `needs_admin` outcomes show `admin_guidance()` and offer
+  `relaunch_elevated(gui_relaunch_argv())` (GUI closes, elevated GUI opens).
+  Outcomes reuse `render_fix_outcome`; reports reuse `render_report_text` and
+  `build_unresolved_sections(report, catalog)`.
+- Launcher tradeoff (document in Phase 5 README): the exe stays
+  console-subsystem, so a double-click briefly flashes a console window; the
+  GUI child itself is spawned `DETACHED_PROCESS`, so it never shows a console.
+  `py.exe` wrapper launches (double-clicked `.py`) share the console, so
+  `owns_console()` is False there and they open the shell — the frozen exe
+  behaves correctly.
+- Added `tests/test_gui.py` (20 tests): launch helpers, dialog-bridge
+  round-trip/no-handler/UI-thread guards, `build_runtime`/
+  `runtime_from_context`, headless-safe window construction (`pytest.skip` on
+  `TclError`), findings list + detail + fix-button rendering, layer selection,
+  background diagnosis via queue, diagnose failure surfaced (no popup),
+  fix flow resolved via real `FixExecutor` + `FakeRunner`, declined fix
+  cancelled without running, DETECT-ONLY causes panel, report export,
+  `cmd_gui` launch/failure, hidden `__gui__` token, no-args own-console launch.
+- Verified end-to-end on Windows: 128 tests pass; self-closing GUI smoke
+  (real runtime, 1000x660 window, rows/detail/buttons/causes panel, clean
+  shutdown — pending `after` callbacks cancelled); `netscope gui` parent exits
+  0 immediately while the detached child logs `app_start mode=gui` →
+  `gui_start` (venv redirector shows as two chained `python.exe` processes —
+  normal venv behaviour, one GUI). `netscope --help` shows the new gui text.
 

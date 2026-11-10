@@ -12,10 +12,13 @@ from cli.parser import apply_defaults, build_parser
 from cli.shell import run_shell
 from core.logging_config import flush_logging
 from core.models import new_session_id
+from gui.launch import GUI_INTERNAL, detach_console, launch_detached_gui, owns_console
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args_in = list(sys.argv[1:] if argv is None else argv)
+    if args_in and args_in[0] == GUI_INTERNAL:
+        return _run_gui_process()
     parser = build_parser()
     try:
         args = parser.parse_args(args_in)
@@ -23,10 +26,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         return int(exc.code) if isinstance(exc.code, int) else 0
     apply_defaults(args)
 
-    interactive = getattr(args, "command", None) is None and _stdin_is_tty()
-    if getattr(args, "command", None) is None and not interactive:
-        parser.print_help(sys.stderr)
-        return exit_codes.USAGE
+    if getattr(args, "command", None) is None:
+        if owns_console():
+            return _open_gui_from_owned_console()
+        if not _stdin_is_tty():
+            parser.print_help(sys.stderr)
+            return exit_codes.USAGE
+        interactive = True
+    else:
+        interactive = False
 
     mode = "shell" if interactive else "cli"
     session_id = new_session_id()
@@ -78,6 +86,37 @@ def _stdin_is_tty() -> bool:
         return bool(sys.stdin.isatty())
     except Exception:
         return False
+
+
+def _open_gui_from_owned_console() -> int:
+    """Own the console and no command given (double-click): hide it, open the GUI."""
+
+    try:
+        import tkinter  # noqa: F401
+    except Exception as exc:
+        print(f"error: graphical interface unavailable: {exc}", file=sys.stderr)
+        return exit_codes.FAILURES
+    detach_console()
+    return exit_codes.OK if launch_detached_gui() else exit_codes.FAILURES
+
+
+def _run_gui_process() -> int:
+    """Internal entry for the GUI process itself (hidden ``__gui__`` token)."""
+
+    from gui.runtime import build_runtime
+
+    runtime = build_runtime()
+    try:
+        from gui.app import run_gui
+
+        return run_gui(runtime)
+    except KeyboardInterrupt:
+        runtime.logger.event("interrupted", phase="gui")
+        return exit_codes.INTERRUPTED
+    except Exception as exc:
+        runtime.logger.error("gui_crashed", exc_info=True, error=str(exc))
+        print(f"error: {exc}", file=sys.stderr)
+        return exit_codes.FAILURES
 
 
 if __name__ == "__main__":
