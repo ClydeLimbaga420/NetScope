@@ -12,11 +12,12 @@ def _device(**overrides):
     return device
 
 
-def _context(interfaces=None, own_ips=None, own_macs=None):
+def _context(interfaces=None, own_ips=None, own_macs=None, adapters=None):
     return {
         "own_ips": set(own_ips or []),
         "own_macs": set(own_macs or []),
         "interfaces": dict(interfaces or {}),
+        "adapters": list(adapters or []),
     }
 
 
@@ -131,6 +132,87 @@ Network Destination        Netmask          Gateway       Interface  Metric
 
 def test_parse_route_gateway_returns_none_without_default_route():
     assert scanner._parse_route_gateway("no routes here") is None
+
+
+def test_add_local_devices_exposes_hardware_mac():
+    context = _context(
+        interfaces={"192.168.1.10": {"name": "Wi-Fi", "wireless": True}},
+        own_ips=["192.168.1.10"],
+        own_macs=["3c:22:fb:aa:bb:cc"],
+        adapters=[
+            {
+                "name": "Wi-Fi",
+                "ip": "192.168.1.10",
+                "mac": "3c:22:fb:aa:bb:cc",
+                "hardware_mac": "3c:22:fb:aa:bb:cc",
+                "wireless": True,
+            }
+        ],
+    )
+
+    devices = [_device(ip="192.168.1.20", mac="b8:27:eb:aa:bb:cc")]
+    scanner._add_local_devices(devices, context)
+    scanner._add_vendors(devices)
+    scanner._add_connections(devices, context)
+    scanner._add_mac_notes(devices)
+
+    local = next(device for device in devices if device["ip"] == "192.168.1.10")
+
+    assert local["connection"] == "This PC"
+    assert local["hardware_mac"] == "3c:22:fb:aa:bb:cc"
+    assert local["mac"] == "3c:22:fb:aa:bb:cc"
+    assert local["mac_randomized"] is False
+    assert local["mac_note"] == "Hardware MAC of this PC"
+
+
+def test_format_mac_normalizes_windows_forms():
+    assert scanner._format_mac("3052CB020E0D") == "30:52:cb:02:0e:0d"
+    assert scanner._format_mac("DA-1E-6F-D1-02-33") == "da:1e:6f:d1:02:33"
+    assert scanner._format_mac("not-a-mac") is None
+
+
+def test_local_adapter_without_permanent_mac_is_flagged():
+    context = _context(
+        interfaces={"192.168.1.10": {"name": "Wi-Fi", "wireless": True}},
+        own_ips=["192.168.1.10"],
+        own_macs=["da:1e:6f:d1:02:33"],
+        adapters=[
+            {
+                "name": "Wi-Fi",
+                "ip": "192.168.1.10",
+                "mac": "da:1e:6f:d1:02:33",
+                "hardware_mac": None,
+                "wireless": True,
+            }
+        ],
+    )
+
+    devices = []
+    scanner._add_local_devices(devices, context)
+    scanner._add_mac_notes(devices)
+
+    assert devices[0]["hardware_mac"] is None
+    assert devices[0]["mac_randomized"] is True
+    assert "hidden" in devices[0]["mac_note"]
+
+
+def test_mac_notes_mark_randomized_macs_as_hidden():
+    device = _device(mac="02:11:22:33:44:55")
+
+    scanner._add_mac_notes([device])
+
+    assert device["mac_randomized"] is True
+    assert device["hardware_mac"] is None
+    assert "hidden" in device["mac_note"]
+
+
+def test_mac_notes_for_normal_mac():
+    device = _device(mac="3c:22:fb:aa:bb:cc")
+
+    scanner._add_mac_notes([device])
+
+    assert device["mac_randomized"] is False
+    assert device["mac_note"] == "MAC reported on the local network"
 
 
 def test_add_connections_sets_label_and_detail(monkeypatch):

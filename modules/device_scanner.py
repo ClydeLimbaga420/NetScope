@@ -1,4 +1,5 @@
 import ipaddress
+import json
 import platform
 import re
 import socket
@@ -27,6 +28,18 @@ SCAN_PORT = 33434
 SCAN_SETTLE_SECONDS = 0.5
 SCAN_LOCK = threading.Lock()
 LAST_SCAN = 0.0
+
+PERMANENT_MAC_CACHE_SECONDS = 300
+PERMANENT_MAC_SCRIPT = (
+    "Get-NetAdapter | Select-Object "
+    "Name,InterfaceDescription,MacAddress,PermanentAddress "
+    "| ConvertTo-Json -Compress"
+)
+PERMANENT_MAC_CACHE = {
+    "timestamp": -PERMANENT_MAC_CACHE_SECONDS,
+    "addresses": {}
+}
+PERMANENT_MAC_LOCK = threading.Lock()
 
 WIFI_INTERFACE_HINTS = ("wi-fi", "wifi", "wireless", "wlan", "802.11")
 
@@ -59,6 +72,26 @@ WIRELESS_VENDOR_HINTS = (
 
 INTERFACE_LINE = re.compile(
     r"([0-9]{1,3}(?:\.[0-9]{1,3}){3})\s+---\s+0x[0-9a-fA-F]+"
+)
+
+VIRTUAL_INTERFACE_HINTS = (
+    "bluetooth",
+    "hyper-v",
+    "isatap",
+    "loopback",
+    "npcap",
+    "tailscale",
+    "tap-",
+    "teredo",
+    "tunnel",
+    "vethernet",
+    "virtualbox",
+    "vmware",
+    "vpn",
+    "wireguard",
+    "wintun",
+    "wsl",
+    "zerotier",
 )
 
 
@@ -438,20 +471,134 @@ def _is_wireless_vendor(vendor):
     return any(hint in haystack for hint in WIRELESS_VENDOR_HINTS)
 
 
+def _format_mac(value):
+    digits = re.sub(r"[^0-9a-fA-F]", "", value or "").lower()
+
+    if len(digits) != 12:
+        return None
+
+    return ":".join(
+        digits[index:index + 2]
+        for index in range(0, 12, 2)
+    )
+
+
+def _query_permanent_mac_addresses():
+    if platform.system().lower() != "windows":
+        return {}
+
+    try:
+        result = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                PERMANENT_MAC_SCRIPT
+            ],
+            capture_output=True,
+            text=True,
+            timeout=8,
+            creationflags=_creation_flags()
+        )
+    except (OSError, subprocess.SubprocessError):
+        return {}
+
+    try:
+        rows = json.loads(result.stdout or "[]")
+    except (TypeError, ValueError):
+        return {}
+
+    if isinstance(rows, dict):
+        rows = [rows]
+
+    addresses = {}
+
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+
+        name = row.get("Name")
+        permanent = _format_mac(row.get("PermanentAddress"))
+        current = _format_mac(row.get("MacAddress"))
+
+        if name:
+            addresses[name] = {
+                "permanent": permanent,
+                "current": current,
+                "description": row.get("InterfaceDescription")
+            }
+
+    return addresses
+
+
+def _permanent_mac_addresses():
+    with PERMANENT_MAC_LOCK:
+        now = time.monotonic()
+
+        if (
+            now - PERMANENT_MAC_CACHE["timestamp"]
+            < PERMANENT_MAC_CACHE_SECONDS
+        ):
+            return dict(PERMANENT_MAC_CACHE["addresses"])
+
+        addresses = _query_permanent_mac_addresses()
+        PERMANENT_MAC_CACHE["timestamp"] = now
+        PERMANENT_MAC_CACHE["addresses"] = addresses
+
+        return dict(addresses)
+
+
+def _is_link_address(address):
+    family_name = getattr(address.family, "name", "")
+
+    return family_name == "AF_LINK" or str(address.family) == "-1"
+
+
+def _is_usable_local_ip(ip):
+    try:
+        address = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+
+    return (
+        address.version == 4
+        and not address.is_loopback
+        and not address.is_link_local
+        and not address.is_multicast
+        and not address.is_unspecified
+        and address.is_private
+    )
+
+
+def _is_virtual_interface(name):
+    haystack = (name or "").lower()
+
+    return any(hint in haystack for hint in VIRTUAL_INTERFACE_HINTS)
+
+
 def _local_context():
     context = {
         "own_ips": set(),
         "own_macs": set(),
-        "interfaces": {}
+        "interfaces": {},
+        "adapters": []
     }
 
     try:
         addresses = psutil.net_if_addrs()
+        stats = psutil.net_if_stats()
     except Exception:
         return context
 
     for name, interface_addresses in addresses.items():
         wireless = _is_wireless_interface(name)
+        interface_stat = stats.get(name)
+        is_up = bool(interface_stat.isup) if interface_stat else False
+        ipv4 = None
+        hardware_mac = None
 
         for address in interface_addresses:
             if address.family == socket.AF_INET and address.address:
@@ -461,16 +608,57 @@ def _local_context():
                     "wireless": wireless
                 }
 
-            family_name = getattr(address.family, "name", "")
+                if ipv4 is None and _is_usable_local_ip(address.address):
+                    ipv4 = address.address
 
-            if (
-                family_name == "AF_LINK"
-                or str(address.family) == "-1"
-            ):
+            if _is_link_address(address):
                 mac = _normalize_mac(address.address)
 
                 if mac and mac != "??:??:??:??:??:??":
                     context["own_macs"].add(mac)
+
+                    if hardware_mac is None:
+                        hardware_mac = mac
+
+        if (
+            is_up
+            and ipv4
+            and hardware_mac
+            and not _is_virtual_interface(name)
+        ):
+            context["adapters"].append({
+                "name": name,
+                "ip": ipv4,
+                "mac": hardware_mac,
+                "wireless": wireless
+            })
+
+    permanent_addresses = _permanent_mac_addresses()
+    kept_adapters = []
+
+    for adapter in context["adapters"]:
+        info = permanent_addresses.get(adapter["name"], {})
+        description = info.get("description") or ""
+
+        if (
+            _is_virtual_interface(adapter["name"])
+            or _is_virtual_interface(description)
+        ):
+            continue
+
+        permanent = info.get("permanent")
+
+        if permanent and _is_locally_administered_mac(permanent):
+            permanent = None
+
+        adapter["hardware_mac"] = permanent
+
+        if permanent:
+            context["own_macs"].add(permanent)
+
+        kept_adapters.append(adapter)
+
+    context["adapters"] = kept_adapters
 
     return context
 
@@ -545,14 +733,72 @@ def _classify_connection(device, context, gateway):
     return "Unknown", "Connection type could not be determined"
 
 
-def _add_connections(devices):
-    context = _local_context()
+def _add_connections(devices, context=None):
+    context = context or _local_context()
     gateway = _default_gateway()
 
     for device in devices:
         label, detail = _classify_connection(device, context, gateway)
         device["connection"] = label
         device["connection_detail"] = detail
+
+
+def _add_local_devices(devices, context):
+    by_ip = {device["ip"]: device for device in devices}
+
+    for adapter in context["adapters"]:
+        hardware_mac = adapter.get("hardware_mac")
+        presented_mac = hardware_mac or adapter["mac"]
+        existing = by_ip.get(adapter["ip"])
+
+        if existing is not None:
+            existing["hardware_mac"] = hardware_mac
+            continue
+
+        if any(
+            _normalize_mac(device["mac"]) == presented_mac
+            for device in devices
+        ):
+            continue
+
+        device = {
+            "name": adapter["name"],
+            "ip": adapter["ip"],
+            "mac": presented_mac,
+            "type": "local",
+            "vendor": None,
+            "interface_ip": adapter["ip"],
+            "hardware_mac": hardware_mac
+        }
+
+        devices.append(device)
+        by_ip[device["ip"]] = device
+
+
+def _add_mac_notes(devices):
+    for device in devices:
+        mac = _normalize_mac(device.get("mac"))
+        hardware_mac = _normalize_mac(device.get("hardware_mac"))
+
+        if hardware_mac and _is_locally_administered_mac(hardware_mac):
+            hardware_mac = None
+
+        displayed_mac = hardware_mac or mac
+        randomized = bool(displayed_mac) and _is_locally_administered_mac(
+            displayed_mac
+        )
+
+        device["mac_randomized"] = randomized
+        device["hardware_mac"] = hardware_mac or None
+
+        if hardware_mac:
+            device["mac_note"] = "Hardware MAC of this PC"
+        elif randomized:
+            device["mac_note"] = (
+                "Hardware MAC hidden: the device uses a randomized MAC"
+            )
+        else:
+            device["mac_note"] = "MAC reported on the local network"
 
 
 def _parse_windows(output, devices, seen):
@@ -643,9 +889,15 @@ def get_arp_devices():
     else:
         _parse_unix(output, devices, seen)
 
+    context = _local_context()
+
+    _add_local_devices(devices, context)
+
     _add_vendors(devices)
 
-    _add_connections(devices)
+    _add_connections(devices, context)
+
+    _add_mac_notes(devices)
 
     _resolve_names(devices)
 

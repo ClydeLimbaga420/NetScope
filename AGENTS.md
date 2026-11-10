@@ -295,6 +295,12 @@ raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
   derived from ARP interface mapping (Wi-Fi adapter names), the default
   gateway (with `route print -4` fallback), randomized MACs, and
   mobile/IoT vendor OUIs — Windows does not expose the AP's client list.
+  Each entry also carries `mac_randomized`, `hardware_mac` and `mac_note`.
+  Remote devices with randomized (locally administered) MACs are flagged
+  because their real hardware MAC is hidden by design; the PC's own active
+  adapters are added as `type: "local"` rows with their real hardware MAC
+  (queried from `Get-NetAdapter` `PermanentAddress`, with virtual adapters
+  and locally administered/unknown permanent addresses excluded).
   Device overrides are in browser localStorage; double-click a name
   to rename it. The table shows up to 8 rows (`DEVICE_VISIBLE_ROWS` in
   `dashboard.js`; `applyDeviceScrollHeight()` measures the sticky `thead`

@@ -750,7 +750,23 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
                 const tdIp = document.createElement("td");
                 tdIp.textContent = String(device.ip || "");
                 const tdMac = document.createElement("td");
-                tdMac.textContent = String(device.mac || "");
+                const macSpan = document.createElement("span");
+                macSpan.className = "device-mac";
+                macSpan.title = String(device.mac_note || "");
+                macSpan.textContent = String(
+                    device.hardware_mac || device.mac || ""
+                );
+                tdMac.appendChild(macSpan);
+                if (device.mac_randomized) {
+                    const macBadge = document.createElement("span");
+                    macBadge.className = "device-mac-badge";
+                    macBadge.title = String(
+                        device.mac_note ||
+                        "Hardware MAC hidden by this device"
+                    );
+                    macBadge.textContent = "randomized";
+                    tdMac.appendChild(macBadge);
+                }
                 const tdConnection = document.createElement("td");
                 const connectionSpan = document.createElement("span");
                 const connectionLabel = String(device.connection || "Unknown");

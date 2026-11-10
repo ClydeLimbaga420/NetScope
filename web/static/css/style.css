@@ -1152,6 +1152,30 @@ tbody tr:last-child td {
 }
 
 
+.device-mac {
+    cursor: help;
+}
+
+
+.device-mac-badge {
+    display: inline-block;
+
+    margin-left: 6px;
+    padding: 1px 5px;
+
+    border: 1px solid rgba(224, 192, 122, 0.45);
+    border-radius: 999px;
+
+    color: #e0c07a;
+
+    font-size: 9px;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+
+    cursor: help;
+}
+
+
 .empty {
     color: var(--muted);
 

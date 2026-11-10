@@ -785,7 +785,26 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
                         </td>
 
                         <td>
-                            ${escapeHtml(device.mac)}
+                            <span
+                                class="device-mac"
+                                title="${escapeHtml(device.mac_note || "")}">
+                                ${escapeHtml(
+                                    device.hardware_mac ||
+                                    device.mac
+                                )}
+                            </span>
+                            ${
+                                device.mac_randomized
+                                    ? `<span
+                                            class="device-mac-badge"
+                                            title="${escapeHtml(
+                                                device.mac_note ||
+                                                "Hardware MAC hidden by this device"
+                                            )}">
+                                            randomized
+                                        </span>`
+                                    : ""
+                            }
                         </td>
 
                         <td>
