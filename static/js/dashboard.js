@@ -1641,6 +1641,86 @@ document.querySelectorAll('.nav-item[data-view]').forEach(item => {
 
 
 // =====================================
+// PACKET LOSS MONITORING
+// =====================================
+
+let packetLossInFlight = false;
+
+async function refreshPacketLoss() {
+
+    if (packetLossInFlight) {
+        return;
+    }
+
+    packetLossInFlight = true;
+
+    const value = $("packet-loss");
+    const detail = $("packet-loss-detail");
+
+    if (!value || !detail) {
+        packetLossInFlight = false;
+        return;
+    }
+
+    try {
+
+        const response = await fetch("/api/packet-loss");
+
+        if (!response.ok) {
+            throw new Error("Packet loss request failed");
+        }
+
+        const data = await response.json();
+        const internet = data.internet || {};
+        const gateway = data.gateway || {};
+        const internetLoss = internet.packet_loss_percent;
+        const gatewayLoss = gateway.packet_loss_percent;
+
+        if (Number.isFinite(internetLoss)) {
+            value.textContent = internetLoss.toFixed(internetLoss % 1 === 0 ? 0 : 1);
+        }
+        else {
+            value.textContent = "\u2014";
+        }
+
+        const parts = [
+            Number.isFinite(internetLoss)
+                ? `Internet: ${internetLoss.toFixed(internetLoss % 1 === 0 ? 0 : 1)}% (${internet.packets_received || 0}/${internet.packets_sent || data.count || 0})`
+                : "Internet: unavailable"
+        ];
+
+        if (gateway.host) {
+            if (Number.isFinite(gatewayLoss)) {
+                parts.push(`Gateway: ${gatewayLoss.toFixed(gatewayLoss % 1 === 0 ? 0 : 1)}%`);
+            }
+            else {
+                parts.push("Gateway: unavailable");
+            }
+        }
+        else {
+            parts.push("Gateway: not detected");
+        }
+
+        detail.textContent = parts.join(" \u00b7 ");
+
+    }
+
+    catch (error) {
+
+        detail.textContent = "Could not measure packet loss.";
+        console.error(error);
+
+    }
+
+    finally {
+
+        packetLossInFlight = false;
+
+    }
+
+}
+
+// =====================================
 // INITIALIZATION
 // =====================================
 
@@ -1659,9 +1739,13 @@ refreshStatus();
 
 refreshDevices();
 
+refreshPacketLoss();
+
+
 loadDiagnostics();
 
 
 // UPDATE EVERY 2 SECONDS
 
 setInterval(refreshStatus, 2000);
+setInterval(refreshPacketLoss, 30000);

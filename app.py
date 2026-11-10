@@ -3,10 +3,12 @@ import socket
 import psutil
 from flask import Flask, jsonify, render_template
 
+from concurrent.futures import ThreadPoolExecutor
+
 from config import APP_NAME, HOST, PORT
 from modules.network_info import get_network_info
 from modules.bandwidth import BandwidthMonitor
-from modules.ping_monitor import ping_host
+from modules.ping_monitor import ping_host, ping_host_stats
 from modules.device_scanner import get_arp_devices
 from modules.diagnostics import list_diagnostics, run_diagnostic
 
@@ -155,6 +157,41 @@ def api_status():
 def api_devices():
     return jsonify({
         "devices": get_arp_devices()
+    })
+
+
+@app.route("/api/packet-loss")
+def api_packet_loss():
+    network = get_network_info()
+    gateway = network.get("gateway")
+    count = 10
+
+    def internet():
+        return ping_host_stats("1.1.1.1", count=count)
+
+    def gateway_ping():
+        if not gateway:
+            return {
+                "host": None,
+                "latency_ms": None,
+                "online": False,
+                "packet_loss_percent": None,
+                "packets_sent": 0,
+                "packets_received": 0,
+                "reason": "No default gateway was detected.",
+            }
+        return ping_host_stats(gateway, count=count)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        internet_future = executor.submit(internet)
+        gateway_future = executor.submit(gateway_ping)
+        internet_result = internet_future.result()
+        gateway_result = gateway_future.result()
+
+    return jsonify({
+        "count": count,
+        "internet": internet_result,
+        "gateway": gateway_result,
     })
 
 
