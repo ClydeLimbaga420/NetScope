@@ -284,7 +284,12 @@ raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
   conn-grid Connectivity card, `.btn`/`.btn-secondary`/ghost buttons carry an
   SVG + `<span class="btn-label">` so busy state text swaps via
   `setButtonLabel`/`.btn-label`, `.top-status[data-live]` live badge,
-  footer shows `config.APP_VERSION` + `#footer-time`). `style.css` is the full
+  footer shows `config.APP_VERSION` + `#footer-time`). Stat cards: the
+  Connectivity card is a full-width hero row (`grid-column: 1 / -1`) with the
+  four single-metric cards in an even 4-up row below (the old 6-track
+  single-row grid squeezed them to ~141px and wrapped their labels; verified
+  via headless-Edge DOM measurement, cards now 219px at the same width; pairs
+  up below 1180px as before). `style.css` is the full
   shared design system; `web-overrides.css` holds engine-view components
   (layer controls, evidence, `.engine-output` cards + `.engine-copy`, fix-fact
   chips, dialogs, tool panel, admin control, Repair Library with

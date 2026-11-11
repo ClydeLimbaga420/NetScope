@@ -905,7 +905,7 @@ body.nav-open .nav-toggle .icon-close {
 .cards {
     display: grid;
 
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
 
     gap: 14px;
 
@@ -951,9 +951,10 @@ body.nav-open .nav-toggle .icon-close {
         box-shadow 0.25s ease;
 }
 
-/* the connectivity card carries two metrics: give it room */
+/* the connectivity card carries two metrics: full-width hero row,
+   with the four single-metric cards in an even 4-up row below it */
 .card.connectivity {
-    grid-column: span 2;
+    grid-column: 1 / -1;
 }
 
 .card:nth-child(2) {
@@ -2816,13 +2817,13 @@ footer .footer-meta {
 
 @media (max-width: 1180px) {
 
-    /* connectivity card keeps its own row half; others pair up */
+    /* pair the metric cards up; connectivity keeps its own full row */
     .cards {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .card.connectivity {
-        grid-column: span 2;
+        grid-column: 1 / -1;
     }
 }
 

@@ -1029,3 +1029,27 @@ Session 41 (Phase C UI overhaul, design pass):
   full suite 214 passed; legacy `/` renders 200 with all JS hooks and no
   `brand-icon`; web stylesheet byte-identical copy in legacy static.
 - Still pending for Phase C: browser E2E + design-fidelity verification.
+
+Session 41b (stat cards squash fix):
+- User report: the Monitoring stat cards were "squashed". Verified by
+  measurement, not guesswork: booted the real web server, dumped the rendered
+  DOM at several window sizes with headless Edge, stripped the scripts,
+  re-pointed the CSS links at the local file, injected a measuring script and
+  re-dumped the DOM (`--dump-dom` + `--virtual-time-budget`).
+- Diagnosis: `.cards` used a 6-track single-row grid (connectivity span 2 +
+  four 1-span metric cards), so each metric card was 1/6 of the content width
+  (~141px at the user's window; the "DOWNLOAD SPEED"/"INTERNET LATENCY"
+  labels alone were 113-120px, wider than the card's inner box, so labels
+  wrapped and the cards looked crushed).
+- Fix: connectivity card is now a full-width hero row
+  (`grid-column: 1 / -1`) and the four metric cards sit in an even 4-up row
+  (grid-template-columns: repeat(4, minmax(0, 1fr))). Below 1180px the
+  existing breakpoint still pairs them 2-up. Measured after: metric cards
+  219px at the same window width, labels on one line.
+- Synced the identical stylesheet to `static/css/style.css` (legacy
+  dashboard). Full suite 214 passed.
+- Headless-Edge notes: `--dump-dom`/`--screenshot` only work with the OLD
+  `--headless` flag (`--headless=new` prints nothing / writes no file);
+  `--dump-dom` needs an isolated `--user-data-dir` when a real Edge is
+  running. window-size can be offset by the OS display scale, so treat
+  headless measurements as relative, not absolute.
