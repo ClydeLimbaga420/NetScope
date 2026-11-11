@@ -271,13 +271,43 @@ raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
   detail links to it with **View full procedure**. A sidebar **Run as
   administrator** button calls `/api/elevate`; cancellation (UAC declined) logs
   `elevate_cancelled`, returns 409 and keeps the server running.
-- Tests: latest full suite is 213 passing (2026-11-11). Session 30's live repro
+- Tests: latest full suite is 214 passing (2026-11-11). Session 30's live repro
   verified the real CLI child, boot/session/CSP, local assets, 33 SSE check
   events, findings/fixes/catalog, fix plan+dry-run, log streaming, shutdown,
   single-instance reuse and bind-failure logging (25/25); the gateway repair
   adds `/api/gateway/configure` and combined Internet/Gateway status. Phase C
   still needs browser E2E and design-fidelity verification; Phase D owns
   frozen-build launch/log checks.
+- UI overhaul (Session 41, Phase C design pass): `web/templates/base.html` +
+  `web/templates/index.html` restructured (skip-link, mobile topbar +
+  `#nav-toggle`/`aside.sidebar`/`#sidebar-backdrop` drawer, SVG nav icons,
+  conn-grid Connectivity card, `.btn`/`.btn-secondary`/ghost buttons carry an
+  SVG + `<span class="btn-label">` so busy state text swaps via
+  `setButtonLabel`/`.btn-label`, `.top-status[data-live]` live badge,
+  footer shows `config.APP_VERSION` + `#footer-time`). `style.css` is the full
+  shared design system; `web-overrides.css` holds engine-view components
+  (layer controls, evidence, `.engine-output` cards + `.engine-copy`, fix-fact
+  chips, dialogs, tool panel, admin control, Repair Library with
+  `.repair-search` filtering + `.repair-search-count`). `engine-ui.js` gained
+  `svgIcon`/`emptyState`/`fixFact`/`renderFixFacts`/`setButtonLabel` helpers,
+  empty states, and label-aware busy buttons. `dashboard.js` (web) renders
+  adapter pills (`adapter-dot`/`adapter-body`/`adapter-state`), sets
+  `data-live` (success/catch/401), uses `\u2715` error markers, null-guards
+  `#repair-steps` (web template has none — repairs live in the Repair Library)
+  and disables the Refresh devices button via `setRefreshDevicesBusy`. Brand:
+  the "N" tile logo is gone everywhere (no `.brand-icon`); NetScope carries as
+  a gradient wordmark (`@supports` background-clip text) and the favicon is a
+  non-letterform signal glyph. The legacy dashboard was synced to the same
+  design: `templates/index.html` rewritten (drawer markup, conn-grid,
+  troubleshoot rail incl. `#repair-steps`, `#elevation-badge`, footer), its
+  `static/css/style.css` is a copy of the web stylesheet, and
+  `static/js/dashboard.js` got the same adapter pills/data-live/`\u2715`/
+  `setRefreshDevicesBusy` treatment plus a guarded Chart init
+  (`let chart = null; try ... catch`), `.btn-label`-aware `configureGateway`
+  and a drawer IIFE mirroring `web-init.js`. Test constraints drove markup:
+  the web templates must keep the literal tags `<aside class="sidebar">`,
+  `<main class="main">`, `<footer>` (no extra attributes on those tags — the
+  skip link targets the inner `#main-content` wrapper div instead).
 
 ## Logging
 - JSON-lines file at `%LOCALAPPDATA%\NetScope\logs\netscope.log`, rotating

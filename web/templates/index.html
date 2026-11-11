@@ -10,7 +10,7 @@
         <header class="topbar">
 
             <div>
-                <p class="eyebrow">NETWORK / OVERVIEW</p>
+                <p class="eyebrow">Overview</p>
 
                 <h1>Network Overview</h1>
 
@@ -19,9 +19,9 @@
                 </p>
             </div>
 
-            <div class="top-status">
-                <span class="pulse"></span>
-                LIVE
+            <div class="top-status" id="top-status">
+                <span class="pulse" aria-hidden="true"></span>
+                <span class="live-word" aria-hidden="true">LIVE</span>
 
                 <span id="last-updated">
                     Waiting for data...
@@ -52,39 +52,35 @@
 
                 </div>
 
-                <div class="metric-line">
+                <div class="conn-grid">
 
-                    <span
-                        class="status-dot"
-                        id="internet-dot">
-                    </span>
+                    <div class="conn-item">
 
-                    <strong id="internet-status">
-                        Checking
-                    </strong>
+                        <div class="metric-line">
+                            <span class="status-dot" id="internet-dot"></span>
+                            <strong id="internet-status">Checking</strong>
+                        </div>
+
+                        <p class="card-foot" id="internet-host">
+                            Internet &middot; 1.1.1.1
+                        </p>
+
+                    </div>
+
+                    <div class="conn-item">
+
+                        <div class="metric-line">
+                            <span class="status-dot" id="gateway-dot"></span>
+                            <strong id="gateway-status">Checking</strong>
+                        </div>
+
+                        <p class="card-foot" id="gateway-host">
+                            Gateway &middot; &mdash;
+                        </p>
+
+                    </div>
 
                 </div>
-
-                <p class="card-foot" id="internet-host">
-                    Internet &middot; 1.1.1.1
-                </p>
-
-                <div class="metric-line">
-
-                    <span
-                        class="status-dot"
-                        id="gateway-dot">
-                    </span>
-
-                    <strong id="gateway-status">
-                        Checking
-                    </strong>
-
-                </div>
-
-                <p class="card-foot" id="gateway-host">
-                    Gateway &middot; &mdash;
-                </p>
 
                 <p class="card-foot card-reason" id="internet-reason" hidden></p>
 
@@ -331,14 +327,19 @@
 
                     <span class="device-count" id="device-count"></span>
 
-                    <button id="refresh-devices">
-                        Refresh devices
+                    <button id="refresh-devices" class="btn-secondary" type="button">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="1.8" stroke-linecap="round"
+                             stroke-linejoin="round" aria-hidden="true">
+                            <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+                            <path d="M21 3v6h-6"></path>
+                        </svg>
+                        <span class="btn-label">Refresh devices</span>
                     </button>
 
                 </div>
 
             </div>
-
 
             <div class="table-wrap" id="device-table-wrap">
 
@@ -371,20 +372,20 @@
 
             </div>
 
-            <p class="note">
-                Devices are discovered by probing the local subnet
-                and reading the ARP cache. Brands come from MAC
-                vendor data. The connection column labels this PC,
-                the router, and devices seen through a Wi-Fi adapter;
-                phones and other devices with randomized MACs are
-                marked wireless. Randomized MACs are flagged because
-                the device's real hardware MAC is hidden on the
-                network; this PC shows its own adapter MAC.
-                Double-click a device name to save
-                a friendly label in this browser. The table shows
-                eight devices at a time; scroll inside it to see
-                the rest.
-            </p>
+            <details class="note">
+                <summary>How device discovery works</summary>
+                <p class="note">
+                    Devices are found by probing the local subnet and reading
+                    the ARP cache; brands come from MAC vendor data. The
+                    connection column labels this PC, the router, and devices
+                    seen through a Wi-Fi adapter &mdash; phones and other
+                    devices with randomized MACs are marked wireless because
+                    their real hardware MAC is hidden by design. This PC shows
+                    its own adapter MAC. Double-click a device name to save a
+                    friendly label in this browser. The table shows eight
+                    devices at a time; scroll inside it to see the rest.
+                </p>
+            </details>
 
         </section>
 
@@ -400,7 +401,7 @@
             <div class="panel-head troubleshoot-head">
 
                 <div>
-                    <p class="eyebrow">TOOLS / TROUBLESHOOTING</p>
+                    <p class="eyebrow">Tools &middot; Troubleshoot</p>
 
                     <h2>Network Troubleshooting</h2>
 
@@ -418,8 +419,13 @@
                         hidden>
                     </span>
 
-                    <button id="run-engine-diagnosis" type="button">
-                        Run diagnosis
+                    <button id="run-engine-diagnosis" class="btn" type="button">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="1.8" stroke-linecap="round"
+                             stroke-linejoin="round" aria-hidden="true">
+                            <path d="M5 3l14 9-14 9V3z"></path>
+                        </svg>
+                        <span class="btn-label">Run diagnosis</span>
                     </button>
 
                     <button
@@ -427,7 +433,14 @@
                         class="ghost-button"
                         type="button"
                         title="Detect this network's router and add it as the default gateway immediately">
-                        Configure gateway
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="1.8" stroke-linecap="round"
+                             stroke-linejoin="round" aria-hidden="true">
+                            <rect x="3" y="14" width="18" height="7" rx="2"></rect>
+                            <path d="M7 17.5h.01M11 17.5h.01M15 17.5h.01M19 17.5h.01"></path>
+                            <path d="M12 14V9m0 0a3 3 0 1 1 3-3"></path>
+                        </svg>
+                        <span class="btn-label">Configure gateway</span>
                     </button>
 
                 </div>
@@ -485,12 +498,16 @@
 
             </div>
 
-            <p class="note">
-                Checks are read-only. Repairs are listed in the Repair
-                Library; they change Windows network settings and ask for
-                confirmation. Winsock and TCP/IP resets need administrator
-                rights and a restart. Only predefined commands are run.
-            </p>
+            <details class="note">
+                <summary>Safety notes</summary>
+                <p class="note">
+                    Checks are read-only. Repairs live in the Repair Library;
+                    they change Windows network settings and always ask for
+                    confirmation first. Winsock and TCP/IP resets need
+                    administrator rights and a restart. Only predefined
+                    commands are ever run.
+                </p>
+            </details>
 
         </section>
 
@@ -505,7 +522,7 @@
             <div class="panel-head troubleshoot-head">
 
                 <div>
-                    <p class="eyebrow">TOOLS / REPAIR LIBRARY</p>
+                    <p class="eyebrow">Tools &middot; Repairs</p>
 
                     <h2>Repair Library</h2>
 
@@ -528,7 +545,12 @@
                         class="ghost-button"
                         type="button"
                         hidden>
-                        Run as administrator
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="1.8" stroke-linecap="round"
+                             stroke-linejoin="round" aria-hidden="true">
+                            <path d="M12 3l8 3v5c0 4.6-3.2 8.4-8 10-4.8-1.6-8-5.4-8-10V6l8-3z"></path>
+                        </svg>
+                        <span class="btn-label">Run as administrator</span>
                     </button>
 
                 </div>

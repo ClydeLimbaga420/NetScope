@@ -4,15 +4,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
+    <meta name="description"
+          content="NetScope - local network monitoring, diagnostics and guided repairs.">
 
     <title>NetScope | Network Monitor</title>
+
+    <link rel="icon"
+          href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%233d8bff'/%3E%3Cstop offset='.55' stop-color='%237a6bff'/%3E%3Cstop offset='1' stop-color='%2339d6a0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Cpath d='M8.2 13.2a10.6 10.6 0 0 1 15.6 0' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' fill='none' opacity='.6'/%3E%3Cpath d='M11.8 16.8a6 6 0 0 1 8.4 0' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' fill='none' opacity='.85'/%3E%3Ccircle cx='16' cy='21.4' r='2.6' fill='%23fff'/%3E%3C/svg%3E">
 
     <link rel="stylesheet"
           href="{{ url_for('static', filename='css/fonts.css') }}">
     <link rel="stylesheet"
           href="{{ url_for('static', filename='css/style.css') }}">
-        <link rel="stylesheet"
-            href="{{ url_for('static', filename='css/web-overrides.css') }}">
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/web-overrides.css') }}">
 
     <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
     <script src="{{ url_for('static', filename='js/web-init.js') }}"></script>
@@ -20,23 +26,57 @@
 
 <body>
 
+    <a class="skip-link" href="#main-content">Skip to content</a>
+
+    <!-- MOBILE APP BAR (small screens only) -->
+    <header class="mobile-topbar">
+        <button id="nav-toggle" class="nav-toggle" type="button"
+                aria-label="Toggle navigation" aria-expanded="false">
+            <svg class="icon-open" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 6h16"></path>
+                <path d="M4 12h16"></path>
+                <path d="M4 18h16"></path>
+            </svg>
+            <svg class="icon-close" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M6 6l12 12"></path>
+                <path d="M18 6L6 18"></path>
+            </svg>
+        </button>
+
+        <span class="mobile-brand">
+            NetScope
+        </span>
+
+        <span class="pulse" aria-hidden="true"></span>
+    </header>
+
+    <div class="sidebar-backdrop" id="sidebar-backdrop" hidden></div>
+
     <!-- SIDEBAR -->
     <aside class="sidebar">
 
         <div class="brand">
-            <div>
-                <h2>NetScope</h2>
-                <small>NETWORK MONITOR</small>
-            </div>
+            <h2>NetScope</h2>
+            <small>Network Monitor</small>
         </div>
 
         <div class="admin-control">
             <button id="run-as-admin" class="admin-button" type="button" hidden
                     title="Restart NetScope with administrator rights">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="1.8" stroke-linecap="round"
+                     stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 3l8 3v5c0 4.6-3.2 8.4-8 10-4.8-1.6-8-5.4-8-10V6l8-3z"></path>
+                    <path d="m9 12 2 2 4-4"></path>
+                </svg>
                 Run as administrator
             </button>
             <span id="admin-mode-badge" class="elevation-badge elevated" hidden>
-                ADMINISTRATOR
+                Administrator
             </span>
             <p id="admin-hint" class="admin-hint" hidden>
                 Admin-only repairs need elevation. Standard checks keep working.
@@ -44,32 +84,66 @@
             <p id="admin-notice" class="admin-notice" hidden></p>
         </div>
 
-        <p class="nav-label">MONITORING</p>
+        <p class="nav-label">Monitoring</p>
 
-        <a href="#overview" class="nav-item active" data-view="main" data-scroll="overview-top">
-            &#9707; Overview
+        <a href="#overview" class="nav-item active" data-view="main" data-scroll="overview-top"
+           aria-current="page">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+                <rect x="3" y="3" width="7" height="9" rx="1.5"></rect>
+                <rect x="14" y="3" width="7" height="5" rx="1.5"></rect>
+                <rect x="14" y="12" width="7" height="9" rx="1.5"></rect>
+                <rect x="3" y="16" width="7" height="5" rx="1.5"></rect>
+            </svg>
+            Overview
         </a>
 
         <a href="#devices" class="nav-item" data-view="main" data-scroll="devices">
-            &#9638; Devices
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+                <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+                <path d="M7 15h4"></path>
+                <path d="M14.5 15H17"></path>
+                <circle cx="7" cy="10.5" r="0.6" fill="currentColor" stroke="none"></circle>
+            </svg>
+            Devices
         </a>
 
         <a href="#traffic" class="nav-item" data-view="main" data-scroll="traffic">
-            &#8961; Traffic
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+                <path d="M3 17v-5a9 9 0 0 1 18 0v5"></path>
+                <path d="M3 17h4v4H5a2 2 0 0 1-2-2v-2z"></path>
+                <path d="M21 17h-4v4h2a2 2 0 0 0 2-2v-2z"></path>
+            </svg>
+            Traffic
         </a>
 
-        <p class="nav-label spaced">TOOLS</p>
+        <p class="nav-label spaced">Tools</p>
 
         <a href="#troubleshoot" class="nav-item" data-view="troubleshoot">
-            &#9881; Troubleshoot
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+                <path d="M14.7 6.3a4.5 4.5 0 0 0-6 6L3 18l3 3 5.7-5.7a4.5 4.5 0 0 0 6-6L14 13l-3-3 3.7-3.7z"></path>
+            </svg>
+            Troubleshoot
         </a>
 
         <a href="#repairs" class="nav-item" data-view="repairs">
-            &#9874; Repair library
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
+            </svg>
+            Repair library
         </a>
 
         <div class="sidebar-bottom">
-            <span class="pulse"></span>
+            <span class="pulse on" aria-hidden="true"></span>
             Local monitoring active
         </div>
 
@@ -77,11 +151,18 @@
 
     <!-- MAIN CONTENT -->
     <main class="main">
-        {% block content %}{% endblock %}
+        <div id="main-content">
+            {% block content %}{% endblock %}
+        </div>
 
         <footer>
-            NetScope &middot; Local Network Monitoring
-            &middot; <span id="footer-time"></span>
+            <span class="footer-brand">
+                NetScope{% if version %} {{ version }}{% endif %}
+                &middot; Local network monitoring
+            </span>
+            <span class="footer-meta">
+                <span id="footer-time"></span>
+            </span>
         </footer>
     </main>
 

@@ -70,7 +70,8 @@ function areaGradient(context, color) {
 // TRAFFIC CHART
 // =====================================
 
-const chart = new Chart(
+let chart = null;
+try { chart = new Chart(
     $("traffic-chart"),
     {
         type: "line",
@@ -282,11 +283,11 @@ const chart = new Chart(
                 }
 
             }
-
         }
 
     }
-);
+
+); } catch (e) { console.error('chart init failed', e); chart = null; }
 
 
 // =====================================
@@ -477,33 +478,55 @@ async function refreshStatus() {
 
         // NETWORK ADAPTERS
 
-        $("interfaces").innerHTML =
-            network.interfaces.length
+        const interfacesEl = $("interfaces");
+        interfacesEl.innerHTML = "";
 
-                ? network.interfaces.map(adapter => `
+        if (network.interfaces && network.interfaces.length) {
 
-                    <div class="adapter">
+            network.interfaces.forEach(adapter => {
 
-                        <strong>
-                            ${escapeHtml(adapter.name)}
-                            ${adapter.is_up ? "\u00b7 Up" : "\u00b7 Down"}
-                        </strong>
+                const item = document.createElement("div");
+                item.className = "adapter";
 
-                        <span>
-                            ${escapeHtml(adapter.ipv4)}
+                const dot = document.createElement("span");
+                dot.className = "adapter-dot " + (adapter.is_up ? "up" : "down");
 
-                            ${
-                                adapter.speed_mbps
-                                    ? " \u00b7 " + adapter.speed_mbps + " Mbps"
-                                    : ""
-                            }
-                        </span>
+                const body = document.createElement("div");
+                body.className = "adapter-body";
 
-                    </div>
+                const strong = document.createElement("strong");
+                strong.textContent = String(adapter.name || "Adapter");
 
-                `).join("")
+                const span = document.createElement("span");
+                const speed = adapter.speed_mbps
+                    ? " \u00b7 " + adapter.speed_mbps + " Mbps"
+                    : "";
+                span.textContent = String(adapter.ipv4 || "No IPv4 address") + speed;
 
-                : '<span class="muted">No active IPv4 adapters found.</span>';
+                body.appendChild(strong);
+                body.appendChild(span);
+
+                const state = document.createElement("span");
+                state.className = "adapter-state " + (adapter.is_up ? "up" : "down");
+                state.textContent = adapter.is_up ? "Up" : "Down";
+
+                item.appendChild(dot);
+                item.appendChild(body);
+                item.appendChild(state);
+
+                interfacesEl.appendChild(item);
+
+            });
+
+        }
+        else {
+
+            const span = document.createElement("span");
+            span.className = "muted";
+            span.textContent = "No active IPv4 adapters found.";
+            interfacesEl.appendChild(span);
+
+        }
 
 
         // TIMESTAMP
@@ -511,6 +534,14 @@ async function refreshStatus() {
         const now = new Date().toLocaleTimeString();
 
         $("last-updated").textContent = now;
+
+        const topStatus = $("top-status");
+
+        if (topStatus) {
+
+            topStatus.dataset.live = "true";
+
+        }
 
         $("footer-time").textContent =
             `Last refresh ${now}`;
@@ -537,7 +568,7 @@ async function refreshStatus() {
 
         }
 
-        chart.update();
+        if (chart) chart.update();
 
     }
 
@@ -550,6 +581,14 @@ async function refreshStatus() {
         $("gateway-status").textContent = "API error";
 
         setStatus("gateway-dot", false);
+
+        const topStatus = $("top-status");
+
+        if (topStatus) {
+
+            topStatus.dataset.live = "false";
+
+        }
 
         console.error(error);
 
@@ -730,11 +769,32 @@ function scheduleDeviceNameRetry() {
 }
 
 
+function setRefreshDevicesBusy(busy) {
+
+    const refreshButton = $("refresh-devices");
+
+    if (!refreshButton) {
+        return;
+    }
+
+    refreshButton.disabled = busy;
+
+    const label = refreshButton.querySelector(".btn-label");
+
+    if (label) {
+        label.textContent = busy ? "Scanning..." : "Refresh devices";
+    }
+
+}
+
+
 async function refreshDevices({ retry = true, silent = false } = {}) {
 
     const body = $("device-rows");
 
     let missingNames = false;
+
+    setRefreshDevicesBusy(true);
 
     if (!silent) {
 
@@ -890,6 +950,8 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
 
         applyDeviceScrollHeight();
 
+        setRefreshDevicesBusy(false);
+
         if (retry && missingNames) {
             scheduleDeviceNameRetry();
         }
@@ -915,6 +977,8 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
         updateDeviceCount(null);
 
         applyDeviceScrollHeight();
+
+        setRefreshDevicesBusy(false);
 
         console.error(error);
 
@@ -1011,7 +1075,7 @@ function stepMarker(step, status, index) {
     }
 
     if (status === "error") {
-        return "!";
+        return "\u2715";
     }
 
     if (status === "running") {
@@ -1532,10 +1596,18 @@ async function configureGateway() {
         return;
     }
 
-    const label = button.textContent;
+    const label = button.querySelector(".btn-label");
+
+    const labelText = label ? label.textContent : button.textContent;
 
     button.disabled = true;
-    button.textContent = "Configuring...";
+
+    if (label) {
+        label.textContent = "Configuring...";
+    }
+    else {
+        button.textContent = "Configuring...";
+    }
 
     try {
 
@@ -1569,7 +1641,13 @@ async function configureGateway() {
     finally {
 
         button.disabled = false;
-        button.textContent = label;
+
+        if (label) {
+            label.textContent = labelText;
+        }
+        else {
+            button.textContent = labelText;
+        }
 
     }
 
@@ -1807,7 +1885,7 @@ function showView(viewName, options = {}) {
     if (viewName === 'main') {
         window.requestAnimationFrame(() => {
             applyDeviceScrollHeight();
-            if (typeof chart !== 'undefined') {
+            if (chart) {
                 chart.resize();
                 chart.update();
             }
@@ -1958,3 +2036,76 @@ loadDiagnostics();
 
 setInterval(refreshStatus, 2000);
 setInterval(refreshPacketLoss, 30000);
+
+
+// =====================================
+// MOBILE NAVIGATION DRAWER
+// =====================================
+
+(function bindDrawer() {
+
+    const toggle = $("nav-toggle");
+    const sidebar = document.querySelector("aside.sidebar");
+    const backdrop = $("sidebar-backdrop");
+
+    if (!toggle || !sidebar || toggle.dataset.bound) {
+        return;
+    }
+
+    function setOpen(open) {
+
+        sidebar.classList.toggle("open", open);
+        document.body.classList.toggle("nav-open", open);
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
+
+        if (backdrop) {
+            if (open) {
+                backdrop.removeAttribute("hidden");
+            }
+            else {
+                backdrop.setAttribute("hidden", "");
+            }
+        }
+
+    }
+
+    toggle.addEventListener(
+        "click",
+        () => setOpen(!sidebar.classList.contains("open"))
+    );
+
+    if (backdrop) {
+        backdrop.addEventListener("click", () => setOpen(false));
+    }
+
+    document.addEventListener(
+        "keydown",
+        event => {
+            if (event.key === "Escape") {
+                setOpen(false);
+            }
+        }
+    );
+
+    document.querySelectorAll(".nav-item").forEach(item => {
+        item.addEventListener("click", () => setOpen(false));
+    });
+
+    const mq = window.matchMedia("(min-width: 651px)");
+
+    const onChange = e => {
+        if (e.matches) {
+            setOpen(false);
+        }
+    };
+
+    if (mq.addEventListener) {
+        mq.addEventListener("change", onChange);
+    }
+    else if (mq.addListener) {
+        mq.addListener(onChange);
+    }
+
+    toggle.dataset.bound = "1";
+
+})();

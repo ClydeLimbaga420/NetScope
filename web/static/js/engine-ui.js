@@ -1,13 +1,64 @@
 (function () {
   const $ = (id) => document.getElementById(id);
-  const state = { checks: [], fixes: [], selectedId: null, report: null, jobId: null, busy: false, admin: null, libraryId: null, detail: null, adminNotice: "", checksLoaded: false };
+  const state = { checks: [], fixes: [], selectedId: null, report: null, jobId: null, busy: false, admin: null, libraryId: null, detail: null, adminNotice: "", checksLoaded: false, repairQuery: "" };
   const layers = ["adapter", "services", "ip", "gateway", "lan", "dns", "internet", "stack"];
+  const SVG_NS = "http://www.w3.org/2000/svg";
 
   function element(tag, className, text) {
     const node = document.createElement(tag);
     if (className) node.className = className;
     if (text !== undefined) node.textContent = String(text);
     return node;
+  }
+
+  function svgIcon(paths, size) {
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "1.8");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    svg.setAttribute("aria-hidden", "true");
+    (Array.isArray(paths) ? paths : [paths]).forEach((d) => {
+      const path = document.createElementNS(SVG_NS, "path");
+      path.setAttribute("d", d);
+      svg.append(path);
+    });
+    if (size) {
+      svg.style.width = `${size}px`;
+      svg.style.height = `${size}px`;
+    }
+    return svg;
+  }
+
+  function emptyState(title, hint, paths) {
+    const box = element("div", "empty-state");
+    box.append(svgIcon(paths || ["M12 8v5", "M12 16.5v.01", "M10.3 3.9 2.8 17a1.6 1.6 0 0 0 1.4 2.4h15.6a1.6 1.6 0 0 0 1.4-2.4L13.7 3.9a1.6 1.6 0 0 0-2.8 0z"]));
+    box.append(element("h4", "", title));
+    box.append(element("p", "", hint));
+    return box;
+  }
+
+  function fixFact(label, value, modifier) {
+    const chip = element("li", ["fix-fact", modifier || ""].filter(Boolean).join(" "));
+    chip.append(element("b", "", label), document.createTextNode(value));
+    return chip;
+  }
+
+  function renderFixFacts(target, admin, risk, reboot) {
+    const level = String(risk || "unknown").toLowerCase();
+    const facts = element("ul", "engine-fix-facts");
+    facts.append(fixFact("Admin", admin ? "Required" : "Not required", admin ? "is-warn" : ""));
+    facts.append(fixFact("Risk", String(risk || "unknown"), level === "high" ? "is-danger" : level === "medium" ? "is-warn" : ""));
+    facts.append(fixFact("Restart", reboot ? "May be required" : "Not expected", reboot ? "is-warn" : ""));
+    target.append(facts);
+  }
+
+  function setButtonLabel(button, text) {
+    const label = button.querySelector(".btn-label");
+    if (label) label.textContent = text;
+    else button.textContent = text;
   }
 
   async function waitForSession() {
@@ -38,7 +89,7 @@
     const run = $("run-engine-diagnosis");
     if (run) {
       run.disabled = busy;
-      run.textContent = busy ? (label || "Running...") : "Run diagnosis";
+      setButtonLabel(run, busy ? (label || "Running...") : "Run diagnosis");
     }
     const cancel = $("engine-cancel-job");
     if (cancel) cancel.disabled = !busy || !state.jobId;
@@ -113,16 +164,23 @@
   function renderRail(container, items, kind) {
     container.replaceChildren();
     if (!items.length) {
-      container.appendChild(element("p", "muted", kind === "repair" ? "Repairs appear when a finding has a catalog fix." : "Run a diagnosis to see checks."));
+      container.append(emptyState(
+        kind === "repair" ? "No repairs in this run" : "No checks yet",
+        kind === "repair"
+          ? "Repairs appear when a diagnosis finds something a catalog fix can address."
+          : "Choose layers and run a diagnosis to inspect every check."
+      ));
       return;
     }
     items.forEach((item, index) => {
       const running = item.status === "running";
+      const status = statusClass(item.status);
       const row = element("div", ["diag-row", running ? "running" : ""].filter(Boolean).join(" "));
-      const button = element("button", `diag-item ${kind} ${statusClass(item.status)}${item.id === state.selectedId ? " selected" : ""}`);
+      const button = element("button", `diag-item ${kind} ${status}${item.id === state.selectedId ? " selected" : ""}`);
       button.type = "button";
       button.dataset.engineItem = item.id;
-      const number = element("span", "diag-item-index", statusClass(item.status) === "success" ? "✓" : statusClass(item.status) === "error" ? "!" : String(index + 1).padStart(2, "0"));
+      const marker = status === "success" ? "\u2713" : status === "error" ? "\u2715" : status === "running" ? "\u2026" : String(index + 1).padStart(2, "0");
+      const number = element("span", "diag-item-index", marker);
       const text = element("span", "diag-item-text");
       text.append(element("strong", "", resultTitle(item)));
       text.append(element("small", "diag-item-desc", item.description || item.status || (kind === "repair" ? item.risk : item.layer)));
@@ -185,7 +243,7 @@
     const entry = state.detail;
     target.replaceChildren();
     if (!entry) {
-      target.append(element("p", "muted", "Select a repair to see what it does."));
+      target.append(emptyState("Select a repair", "Pick a repair from the list to see exactly what it changes, how it is verified, and how to roll it back.", ["M21 12a9 9 0 1 1-9-9", "M12 8v4l2.5 2.5"]));
       return;
     }
 
@@ -204,7 +262,7 @@
     if (entry.detection_only) {
       target.append(element("p", "step-reason", "This finding is detection-only. NetScope reports it but does not change the system automatically."));
     }
-    target.append(element("p", "engine-fix-facts", `Admin: ${entry.admin ? "required" : "not required"} | Risk: ${entry.risk} | Restart: ${entry.reboot ? "may be required" : "not expected"}`));
+    renderFixFacts(target, entry.admin, entry.risk, entry.reboot);
 
     if (!entry.detection_only) {
       const steps = element("div", "repair-section");
@@ -254,29 +312,66 @@
     }
   }
 
+  function repairRow(fix) {
+    const row = element("button", `repair-row${fix.id === state.libraryId ? " selected" : ""}`);
+    row.type = "button";
+    row.dataset.repairId = fix.id;
+    const head = element("div", "repair-row-head");
+    head.append(element("span", "repair-row-id", fix.id), element("strong", "", fix.name));
+    row.append(head);
+    row.append(element("p", "repair-row-symptom", fix.symptom || ""));
+    const tags = element("div", "repair-row-tags");
+    tags.append(element("span", "repair-row-tag", String(fix.risk || "unknown").toUpperCase()));
+    if (fix.admin) tags.append(element("span", "repair-row-tag admin", "ADMIN"));
+    if (fix.detection_only) tags.append(element("span", "repair-row-tag", "DETECT ONLY"));
+    row.append(tags);
+    return row;
+  }
+
+  function filteredFixes() {
+    const query = (state.repairQuery || "").trim().toLowerCase();
+    if (!query) return state.fixes;
+    return state.fixes.filter((fix) => [fix.id, fix.name, fix.symptom]
+      .filter(Boolean)
+      .some((text) => String(text).toLowerCase().includes(query)));
+  }
+
+  function updateRepairRows(list) {
+    list.querySelectorAll(".repair-row, .empty-state").forEach((node) => node.remove());
+    const count = list.querySelector(".repair-search-count");
+    const fixes = filteredFixes();
+    if (count) {
+      count.textContent = fixes.length === state.fixes.length
+        ? `${fixes.length} repairs`
+        : `${fixes.length} of ${state.fixes.length} repairs`;
+    }
+    if (!fixes.length) {
+      list.append(emptyState("No matching repairs", `Nothing matches "${state.repairQuery.trim()}". Try a different name, symptom or ID.`));
+      return;
+    }
+    fixes.forEach((fix) => list.append(repairRow(fix)));
+  }
+
   function renderRepairLibrary() {
     const list = $("repair-library-list");
     if (!list) return;
     list.replaceChildren();
     if (!state.fixes.length) {
-      list.append(element("p", "muted", "Repair catalog is not loaded."));
+      list.append(emptyState("Repair catalog unavailable", "The catalog could not be loaded. Diagnostics keep working; repairs need the catalog."));
       return;
     }
-    state.fixes.forEach((fix) => {
-      const row = element("button", `repair-row${fix.id === state.libraryId ? " selected" : ""}`);
-      row.type = "button";
-      row.dataset.repairId = fix.id;
-      const head = element("div", "repair-row-head");
-      head.append(element("span", "repair-row-id", fix.id), element("strong", "", fix.name));
-      row.append(head);
-      row.append(element("p", "repair-row-symptom", fix.symptom || ""));
-      const tags = element("div", "repair-row-tags");
-      tags.append(element("span", "repair-row-tag", String(fix.risk || "unknown").toUpperCase()));
-      if (fix.admin) tags.append(element("span", "repair-row-tag admin", "ADMIN"));
-      if (fix.detection_only) tags.append(element("span", "repair-row-tag", "DETECT ONLY"));
-      row.append(tags);
-      list.append(row);
+    const search = document.createElement("input");
+    search.type = "search";
+    search.className = "repair-search";
+    search.placeholder = "Search repairs (name, symptom or ID)";
+    search.setAttribute("aria-label", "Search repairs");
+    search.value = state.repairQuery;
+    search.addEventListener("input", () => {
+      state.repairQuery = search.value;
+      updateRepairRows(list);
     });
+    list.append(search, element("p", "repair-search-count", ""));
+    updateRepairRows(list);
   }
 
   function selectRepair(fixId) {
@@ -310,7 +405,7 @@
     const fix = state.fixes.find((item) => item.id === state.selectedId);
     const item = check || fix;
     if (!item) {
-      stage.append(element("p", "muted", "Choose layers and run a diagnosis to inspect findings."));
+      stage.append(emptyState("No step selected", "Run a diagnosis, then pick a check or repair from the rail to inspect its findings and evidence."));
       renderToolPanel(stage);
       return;
     }
@@ -330,10 +425,11 @@
     if (check && item.cause && !item.pending) detail.append(element("p", "step-reason", item.cause));
     if (fix) {
       detail.append(element("p", "step-reason", item.explanation));
-      detail.append(element("p", "diag-desc", `Risk: ${fix.risk || "unknown"} | Administrator: ${fix.admin ? "required" : "not required"} | Restart: ${fix.reboot ? "may be required" : "not expected"}`));
+      renderFixFacts(detail, fix.admin, fix.risk, fix.reboot);
       const procedure = element("button", "ghost-button", "View full procedure");
       procedure.type = "button";
       procedure.dataset.procedureId = fix.id;
+      procedure.prepend(svgIcon("m9 6 6 6-6 6"));
       detail.append(procedure);
     }
     if (check && !item.pending) {
@@ -535,8 +631,7 @@
     panel.method = "dialog";
     panel.append(element("p", "eyebrow", "FIX PREVIEW"), element("h2", "", plan.name));
     panel.append(element("p", "diag-desc", plan.explanation || "Review the changes before execution."));
-    const facts = element("p", "engine-fix-facts", `Admin: ${plan.admin ? "required" : "no"} | Risk: ${plan.risk} | Restart: ${plan.reboot ? "may be required" : "no"}`);
-    panel.append(facts);
+    renderFixFacts(panel, plan.admin, plan.risk, plan.reboot);
     const commands = element("pre", "engine-evidence", (plan.preview || []).join("\n") || "No commands are required.");
     panel.append(commands);
     if (plan.rollback_notes) panel.append(element("p", "muted", `Rollback: ${plan.rollback_notes}`));
@@ -575,6 +670,7 @@
     });
     dialog.addEventListener("close", () => dialog.remove(), { once: true });
     dialog.showModal();
+    if (typed) typed.focus();
   }
 
   async function executeFix(plan, dryRun, secondConfirmation) {
@@ -678,10 +774,17 @@
       button.type = "button";
       button.addEventListener("click", async () => {
         const answer = value === "not-sure" ? null : value === "yes";
+        button.disabled = true;
+        setButtonLabel(button, "Working...");
         try {
           const response = await api("/api/unresolved/answer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fix_id: fixId, another_device_works: answer }) });
-          box.replaceChildren(element("pre", "engine-evidence", JSON.stringify(response.sections || [], null, 2)));
+          const card = element("div", "engine-output");
+          card.append(element("div", "engine-output-head", "LIKELY CAUSES"));
+          card.append(element("pre", "engine-evidence", JSON.stringify(response.sections || [], null, 2)));
+          box.replaceChildren(element("p", "diag-command-label", "IF THIS DID NOT HELP"), card);
         } catch (error) {
+          button.disabled = false;
+          setButtonLabel(button, label);
           box.append(element("p", "step-reason error", error.message));
         }
       });
@@ -693,7 +796,23 @@
   function showOutput(title, value) {
     const stage = $("diag-stage");
     if (!stage) return;
-    stage.replaceChildren(element("h3", "", title), element("pre", "engine-evidence", JSON.stringify(value, null, 2)));
+    stage.replaceChildren();
+    const text = JSON.stringify(value, null, 2);
+    const card = element("div", "engine-output");
+    const head = element("div", "engine-output-head");
+    head.append(element("span", "", title));
+    const copy = element("button", "ghost-button engine-copy", "Copy");
+    copy.type = "button";
+    copy.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        copy.textContent = "Copied";
+        window.setTimeout(() => { copy.textContent = "Copy"; }, 1800);
+      } catch (_error) { /* clipboard unavailable */ }
+    });
+    head.append(copy);
+    card.append(head, element("pre", "engine-evidence", text));
+    stage.append(card);
     renderToolPanel(stage);
   }
 
@@ -708,7 +827,7 @@
       return;
     }
     button.disabled = true;
-    button.textContent = "Running...";
+    setButtonLabel(button, "Running...");
     setBusy(true, "Running utility...", false);
     try {
       const started = await api(`/api/tools/${encodeURIComponent(name)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params) });
@@ -720,6 +839,8 @@
       showOutput("UTILITY ERROR", { error: error.message });
     } finally {
       state.jobId = null;
+      button.disabled = false;
+      setButtonLabel(button, "Run tool");
       setBusy(false, null, false);
     }
   }
@@ -748,27 +869,31 @@
       input.hidden = ["arp", "routes"].includes(select.value);
       ports.hidden = select.value !== "ports";
     });
-    const run = element("button", "ghost-button", "Run tool");
+    const run = element("button", "ghost-button");
     run.type = "button";
+    run.append(svgIcon("M5 3l14 9-14 9V3z", 12), element("span", "btn-label", "Run tool"));
     run.addEventListener("click", () => runTool(select.value, input, ports.value.trim(), run));
     controls.append(select, input, ports, run);
     panel.append(controls);
 
     const actions = element("div", "engine-tool-actions");
-    const info = element("button", "ghost-button", "Network info");
+    const info = element("button", "ghost-button");
     info.type = "button";
+    info.append(svgIcon("M12 10v6m0-9.5v.01", 12), element("span", "btn-label", "Network info"));
     info.addEventListener("click", async () => {
       try { showOutput("NETWORK INFO", await api("/api/info")); }
       catch (error) { showOutput("NETWORK INFO ERROR", { error: error.message }); }
     });
-    const logs = element("button", "ghost-button", "View logs");
+    const logs = element("button", "ghost-button");
     logs.type = "button";
+    logs.append(svgIcon("M4 5h16M4 12h16M4 19h10", 12), element("span", "btn-label", "View logs"));
     logs.addEventListener("click", async () => {
       try { showOutput("RECENT LOGS", await api("/api/logs?tail=100")); }
       catch (error) { showOutput("LOG ERROR", { error: error.message }); }
     });
-    const report = element("button", "ghost-button", "Export report");
+    const report = element("button", "ghost-button");
     report.type = "button";
+    report.append(svgIcon("M12 4v12m0 0 5-5m-5 5-5-5M5 20h14", 12), element("span", "btn-label", "Export report"));
     report.addEventListener("click", async () => {
       try {
         const data = await api("/api/report?format=json");
@@ -780,8 +905,9 @@
         URL.revokeObjectURL(link.href);
       } catch (error) { showOutput("REPORT ERROR", { error: error.message }); }
     });
-    const history = element("button", "ghost-button", "Fix history");
+    const history = element("button", "ghost-button");
     history.type = "button";
+    history.append(svgIcon("M3 12a9 9 0 1 0 2.6-6.3L3 8", 12), element("span", "btn-label", "Fix history"));
     history.addEventListener("click", async () => {
       try {
         const data = await api("/api/fix/history");
@@ -816,9 +942,10 @@
       label.append(input, document.createTextNode(layer));
       controls.append(label);
     });
-    const cancel = element("button", "ghost-button", "Cancel run");
+    const cancel = element("button", "ghost-button");
     cancel.id = "engine-cancel-job";
     cancel.type = "button";
+    cancel.append(svgIcon("M6 6l12 12M18 6L6 18", 12), element("span", "btn-label", "Cancel run"));
     cancel.disabled = true;
     cancel.addEventListener("click", cancelJob);
     actions.insertBefore(controls, run);

@@ -979,3 +979,53 @@ Session 40 (web UI freeze fix + engine rail per-step Run):
   test_checks_endpoint_lists_planned_check_descriptions); live 32s headless
   Edge page test showed /api/status polling continuing the whole window
   (previously it stopped after ~2 polls) and no new web_error entries.
+
+Session 41 (Phase C UI overhaul, design pass):
+- Rewrote the web shell + views for a unified design system:
+  `web/templates/base.html` (skip-link, mobile topbar with `#nav-toggle`
+  drawer + `#sidebar-backdrop`, SVG nav icons, admin-control slot, footer with
+  `config.APP_VERSION` and `#footer-time`) and `web/templates/index.html`
+  (conn-grid Connectivity card, `.btn`/`.btn-secondary`/ghost buttons that
+  carry an SVG + `<span class="btn-label">` so busy text swaps without wiping
+  the icon, `.top-status` live badge via `data-live`, devices panel with
+  `.table-wrap` + `#device-count` pill, troubleshoot/repairs data-views,
+  `details.note` blocks). `web/pages.py` passes `version=config.APP_VERSION`.
+- `web/static/css/style.css` is now the full shared design system (buttons,
+  cards, conn-grid, adapter pills, empty states, drawer, breakpoints,
+  reduced-motion). `web/static/css/web-overrides.css` holds the engine-view
+  components: layer controls, evidence, `.engine-output` card + `.engine-copy`,
+  fix-fact chips, confirmation dialog with backdrop blur, tool panel, admin
+  control, Repair Library with `.repair-search` filtering +
+  `.repair-search-count`.
+- `engine-ui.js`: new `svgIcon`/`emptyState`/`fixFact`/`renderFixFacts`/
+  `setButtonLabel` helpers; empty states for rail/detail/repair library;
+  repair search box with filtering by id/name/symptom; fix-fact chips in
+  repair procedure/detail/dialog; restyled isolation question and tool output
+  cards; icon-bearing tool panel + cancel buttons; label-aware busy text.
+- `dashboard.js` (web): adapter pills (`adapter-dot`/`adapter-body`/
+  `adapter-state`), `data-live` set in success/catch/401 paths, error marker
+  now `\u2715`, null-guards for `#repair-steps` (web template has none —
+  repairs live only in the Repair Library) and `setRefreshDevicesBusy()`
+  disables the Refresh devices button while scanning.
+- Brand change (user request): removed the "N" tile logo everywhere; NetScope
+  carries as a gradient wordmark (`@supports` background-clip text) in the
+  sidebar, mobile topbar and footer; favicon is a non-letterform signal/radar
+  glyph on a gradient tile.
+- Legacy dashboard synced to the same design: `templates/index.html` rewritten
+  with the same shell/markup (drawer, conn-grid, troubleshoot rail incl.
+  `#repair-steps`, `#elevation-badge`, `#auto-configure-gateway` with icon +
+  label span, footer), `static/css/style.css` is a copy of the web stylesheet,
+  and `static/js/dashboard.js` got the adapter-pill/data-live/`\u2715`/
+  `setRefreshDevicesBusy` treatment plus a guarded Chart init
+  (`let chart = null; try ... catch`), a `.btn-label`-aware
+  `configureGateway()` (template button now contains an SVG) and a drawer
+  IIFE mirroring web-init.js (legacy app has no web-init.js).
+- Test-constraint fix: `tests/test_web_api.py` asserts the literal tags
+  `<aside class="sidebar">`, `<main class="main">`, `<footer>`, so those tags
+  carry no extra attributes; the skip link targets the inner `#main-content`
+  wrapper div, and drawer JS finds the sidebar via
+  `document.querySelector('aside.sidebar')` instead of `getElementById`.
+- Verified: node --check on engine-ui/dashboard/web-init (web + legacy);
+  full suite 214 passed; legacy `/` renders 200 with all JS hooks and no
+  `brand-icon`; web stylesheet byte-identical copy in legacy static.
+- Still pending for Phase C: browser E2E + design-fidelity verification.

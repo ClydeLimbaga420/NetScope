@@ -48,3 +48,42 @@
   document.addEventListener('resume', function(){ heartbeat(); });
 })();
 
+(function () {
+  // Mobile navigation drawer: toggles the sidebar overlay on small screens.
+  // Guarded so it is a no-op when the shell markup is absent.
+  function bindDrawer() {
+    var toggle = document.getElementById('nav-toggle');
+    var sidebar = document.querySelector('aside.sidebar');
+    var backdrop = document.getElementById('sidebar-backdrop');
+    if (!toggle || !sidebar || toggle.dataset.bound) return;
+
+    function setOpen(open) {
+      sidebar.classList.toggle('open', open);
+      document.body.classList.toggle('nav-open', open);
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (backdrop) {
+        if (open) backdrop.removeAttribute('hidden');
+        else backdrop.setAttribute('hidden', '');
+      }
+    }
+
+    toggle.addEventListener('click', function () {
+      setOpen(!sidebar.classList.contains('open'));
+    });
+    if (backdrop) backdrop.addEventListener('click', function () { setOpen(false); });
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape') setOpen(false);
+    });
+    Array.prototype.forEach.call(sidebar.querySelectorAll('.nav-item'), function (item) {
+      item.addEventListener('click', function () { setOpen(false); });
+    });
+    var mq = window.matchMedia('(min-width: 651px)');
+    var onChange = function (e) { if (e.matches) setOpen(false); };
+    if (mq.addEventListener) mq.addEventListener('change', onChange);
+    else if (mq.addListener) mq.addListener(onChange);
+    toggle.dataset.bound = '1';
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindDrawer, { once: true });
+  else bindDrawer();
+})();
+

@@ -315,6 +315,8 @@ async function refreshStatus() {
         if (response.status === 401) {
             $("internet-status").textContent = "Session expired";
             $("gateway-status").textContent = "Session expired";
+            const topStatus = $("top-status");
+            if (topStatus) topStatus.dataset.live = "false";
             console.error("NetScope session expired; reopen via 'netscope gui'.");
             return;
         }
@@ -491,13 +493,23 @@ async function refreshStatus() {
             network.interfaces.forEach(adapter => {
                 const item = document.createElement("div");
                 item.className = "adapter";
+                const dot = document.createElement("span");
+                dot.className = "adapter-dot " + (adapter.is_up ? "up" : "down");
+                const body = document.createElement("div");
+                body.className = "adapter-body";
                 const strong = document.createElement("strong");
-                strong.textContent = String(adapter.name || "") + (adapter.is_up ? " \u00b7 Up" : " \u00b7 Down");
+                strong.textContent = String(adapter.name || "Adapter");
                 const span = document.createElement("span");
                 const speed = adapter.speed_mbps ? " \u00b7 " + adapter.speed_mbps + " Mbps" : "";
-                span.textContent = String(adapter.ipv4 || "") + speed;
-                item.appendChild(strong);
-                item.appendChild(span);
+                span.textContent = String(adapter.ipv4 || "No IPv4 address") + speed;
+                body.appendChild(strong);
+                body.appendChild(span);
+                const state = document.createElement("span");
+                state.className = "adapter-state " + (adapter.is_up ? "up" : "down");
+                state.textContent = adapter.is_up ? "Up" : "Down";
+                item.appendChild(dot);
+                item.appendChild(body);
+                item.appendChild(state);
                 interfacesEl.appendChild(item);
             });
         } else {
@@ -513,6 +525,14 @@ async function refreshStatus() {
         const now = new Date().toLocaleTimeString();
 
         $("last-updated").textContent = now;
+
+        const topStatus = $("top-status");
+
+        if (topStatus) {
+
+            topStatus.dataset.live = "true";
+
+        }
 
         $("footer-time").textContent =
             `Last refresh ${now}`;
@@ -552,6 +572,14 @@ async function refreshStatus() {
         $("gateway-status").textContent = "API error";
 
         setStatus("gateway-dot", false);
+
+        const topStatus = $("top-status");
+
+        if (topStatus) {
+
+            topStatus.dataset.live = "false";
+
+        }
 
         console.error(error);
 
@@ -732,11 +760,32 @@ function scheduleDeviceNameRetry() {
 }
 
 
+function setRefreshDevicesBusy(busy) {
+
+    const refreshButton = $("refresh-devices");
+
+    if (!refreshButton) {
+        return;
+    }
+
+    refreshButton.disabled = busy;
+
+    const label = refreshButton.querySelector(".btn-label");
+
+    if (label) {
+        label.textContent = busy ? "Scanning..." : "Refresh devices";
+    }
+
+}
+
+
 async function refreshDevices({ retry = true, silent = false } = {}) {
 
     const body = $("device-rows");
 
     let missingNames = false;
+
+    setRefreshDevicesBusy(true);
 
     if (!silent) {
         body.replaceChildren();
@@ -763,6 +812,7 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
             tr.appendChild(td);
             body.appendChild(tr);
             updateDeviceCount(null);
+            setRefreshDevicesBusy(false);
             return;
         }
 
@@ -865,6 +915,8 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
 
         applyDeviceScrollHeight();
 
+        setRefreshDevicesBusy(false);
+
         if (retry && missingNames) {
             scheduleDeviceNameRetry();
         }
@@ -883,6 +935,7 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
 
         updateDeviceCount(null);
         applyDeviceScrollHeight();
+        setRefreshDevicesBusy(false);
         console.error(error);
     }
 
@@ -977,7 +1030,7 @@ function stepMarker(step, status, index) {
     }
 
     if (status === "error") {
-        return "!";
+        return "\u2715";
     }
 
     if (status === "running") {
@@ -990,6 +1043,9 @@ function stepMarker(step, status, index) {
 
 
 function renderRailGroup(steps, container) {
+    if (!container) {
+        return;
+    }
     container.replaceChildren();
     if (!steps.length) {
         return;
@@ -1258,9 +1314,11 @@ function renderDetail() {
 
 function renderDiagnostics() {
 
+    const repairStepsEl = $("repair-steps");
+
     if (!diagnosticSteps.length) {
         $("check-steps").replaceChildren();
-        $("repair-steps").replaceChildren();
+        if (repairStepsEl) repairStepsEl.replaceChildren();
         const stage = $("diag-stage");
         stage.replaceChildren();
         const p = document.createElement("p");
@@ -1277,7 +1335,7 @@ function renderDiagnostics() {
 
     renderRailGroup(
         diagnosticSteps.filter(step => step.kind === "repair"),
-        $("repair-steps")
+        repairStepsEl
     );
 
     renderDetail();
@@ -1412,7 +1470,8 @@ async function loadDiagnostics() {
 
     catch (error) {
         $("check-steps").replaceChildren();
-        $("repair-steps").replaceChildren();
+        const repairStepsEl = $("repair-steps");
+        if (repairStepsEl) repairStepsEl.replaceChildren();
         const stage = $("diag-stage");
         stage.replaceChildren();
         const p = document.createElement("p");
