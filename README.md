@@ -25,6 +25,8 @@ while the localhost web UI replaces it.
 - Admin, risk, and reboot labels; typed confirmation for high-risk steps
 - Verification by re-checking and rollback from saved snapshots
 - Unresolved-cause ranking when a fix does not help ("probable"/"possible")
+- Repair library with plain-language steps and collapsible exact commands
+- One-click **Run as administrator** (UAC) for admin-only repairs
 - Structured JSON-lines logging with secrets redacted
 
 ### Interfaces
@@ -32,7 +34,7 @@ while the localhost web UI replaces it.
   `ports`, `mtu`, `monitor`, `logs`, `report`, and `gui`
 - Interactive `netscope>` shell with history, completion, and a numbered menu
 - Desktop GUI with findings detail, fix preview, and unresolved-causes panel
-- Localhost web UI with per-check streaming and local assets
+- Localhost web UI with per-check streaming, a repair library, and local assets
 - Legacy LAN dashboard for other devices on the same network
 - Separate engine-backed Run diagnosis and legacy Run all checks (1–7) actions
 
@@ -191,6 +193,33 @@ The SQLite schema in database/db.py is not currently used by the application.
 - Device type inference
 - Export device list
 - Packaged executable, installer, and GitHub Actions CI
+
+## Running
+
+### One-time dev setup (creates the `netscope` command)
+
+```bash
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pip install -e .
+```
+
+After that, just type `netscope` from any shell:
+
+```bash
+netscope --help
+netscope diagnose
+netscope gui
+netscope info
+```
+
+### From source (without editable install)
+
+```bash
+python app.py                    # legacy Flask dashboard on http://127.0.0.1:5000
+.\.venv\Scripts\python.exe netscope.py --help
+.\.venv\Scripts\python.exe netscope.py gui
+```
 
 ## License
 

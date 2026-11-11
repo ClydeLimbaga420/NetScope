@@ -234,8 +234,9 @@ raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
   `server_bind_failed`, and returns 1 cleanly (verified against the real
   stack, 2026-11-11). A monitor thread handles explicit shutdown (sleeps briefly
   to flush the HTTP response, logs `server_shutdown`, removes the port lock,
-  `os._exit(0)`), while heartbeat timeout shutdown is gated on
-  `jobs.has_active_jobs()`.
+  `os._exit(0)`),   while heartbeat timeout shutdown is gated on
+  `jobs.has_active_jobs()`; the heartbeat threshold is 120s to survive
+  Chrome's background-tab timer throttling.
 - `web/security.py` enforces localhost Host checks, boot/session tokens,
   same-origin state-changing requests, CSP, and security headers.
 - `web/server.py` builds the runtime explicitly with `SubprocessRunner`,
@@ -263,7 +264,14 @@ raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
   covers `#auto-configure-gateway`, which calls `/api/gateway/configure`. A
   `MutationObserver` re-asserts the engine view if the legacy registry renders
   late into `#check-steps`/`#repair-steps`/`#diag-stage`.
-- Tests: latest full suite is 210 passing (2026-11-11). Session 30's live repro
+- The Repair Library (`data-view="repairs"`, nav below Troubleshoot) lists every
+  catalog entry as a row (id/name/symptom/risk/admin) and renders its procedure
+  from `/api/fixes/<id>`: plain-language steps, collapsible exact commands,
+  verification, rollback, and if-unresolved guidance. The Troubleshoot repair
+  detail links to it with **View full procedure**. A sidebar **Run as
+  administrator** button calls `/api/elevate`; cancellation (UAC declined) logs
+  `elevate_cancelled`, returns 409 and keeps the server running.
+- Tests: latest full suite is 213 passing (2026-11-11). Session 30's live repro
   verified the real CLI child, boot/session/CSP, local assets, 33 SSE check
   events, findings/fixes/catalog, fix plan+dry-run, log streaming, shutdown,
   single-instance reuse and bind-failure logging (25/25); the gateway repair
@@ -383,3 +391,32 @@ raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
   stubs. Document: LAN-09 stays DETECT-ONLY (deliberate deviation from
   `prompt.txt`'s optional registry fix) and the console-flash launcher
   tradeoff.
+## Dev install / running
+- `pip install -e .` (after requirements) exposes the `netscope` command from any
+  shell; a `netscope.bat` wrapper is also provided in `.venv\Scripts`. Run
+  `netscope --help`, `netscope diagnose`, `netscope gui`.
+- Troubleshoot now lists all 32 planned checks before a run (via
+  `/api/checks` + `core/checks/descriptors.py`); repairs live only in the
+  Repair Library. The diagnostic rail scrolls independently of the detail pane.
+## Packaging fix (dev install root cause)
+- Bug: `netscope` command failed with `ModuleNotFoundError: No module named 'config'`
+  because flat imports (`import config`, `from modules...`) assume the project
+  root is importable, but `pyproject.toml` only declared packages `cli`, `core`,
+  `fixes`, `gui`, `powershell`, `web`. `config.py` (a top-level module) and
+  the `modules` package were not declared, so the editable finder never exposed
+  them.
+- Fix: `pyproject.toml` now sets `py-modules = ["config"]` and adds `modules*`
+  to `[tool.setuptools.packages.find] include`. No PYTHONPATH tricks or wrapper
+  scripts. Deleted the masking `.venv\Scripts\netscope.bat`.
+- Verify with venv activated/on PATH: `netscope --help`, `netscope diagnose`,
+  `netscope gui` work from any directory.
+## Stale-UI fix (Session 37)
+- `refreshDevices` referenced an undefined `devices` variable, so the device
+  table never updated (stuck on "Loading..."). refreshStatus could throw on
+  missing fields (latency_ms strict-null check). Both fixed with null-safe
+  guards and explicit 401 handling. All /api/* endpoints verified to return
+  real data with a valid session cookie.
+## Initial-load / nav fix (Session 38)
+- `$("repair-steps").addEventListener(...)` threw (element removed from
+  template), aborting dashboard.js before refreshStatus/refreshDevices/nav
+  listeners ran. Guarded all top-level addEventListener calls with null checks.

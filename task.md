@@ -392,7 +392,7 @@ strictly required for web (document why).
 - [ ] Changelog of every edit to main's design files (file/lines/reason) and
       list of every new design file.
 - [x] Tests: dashboard template render and referenced static assets; full suite
-      passes (197 tests as of Session 30, 2026-11-11).
+      passes (213 tests as of Session 34, 2026-11-11).
 - [ ] Tests: dynamic template autoescape, browser end-to-end flows, design
       fidelity (screenshot/computed styles), design-file changelog, and
       unchanged-main-CSS assertions where feasible.
@@ -850,3 +850,93 @@ Session 32 (combined connectivity card):
   matching JS updates and a CSS `.card.connectivity` layout. Template tests now
   assert both status dots.
 - Full suite remains 200 passed (2026-11-11).
+
+Session 33 (merge origin/main into main):
+- Merged `origin/main` (`88d3150` "Added Gateway Ping") into local main
+  (`543b08a` "fixed engine patches, api handling and few bugs"), keeping both
+  feature sets: the Session 30 live-stack/web fixes and the gateway discovery,
+  `IP-09` repair, and combined Connectivity card.
+- Conflicts were in `AGENTS.md`, `task.md`, and `web/static/js/engine-ui.js`.
+  The engine UI now adopts `#auto-configure-gateway` with the same
+  `cloneNode(true)` + `replaceWith` approach used for the other Troubleshoot
+  controls (dropping legacy handlers) while still calling
+  `/api/gateway/configure`; `configureGateway()` is retained.
+- Full merged suite: 210 passed (2026-11-11).
+
+Session 34 (web UI: elevation and repair library):
+- Added a sidebar **Run as administrator** button (hidden when elevated) that
+  calls `/api/elevate`; `/api/elevate` now returns 409
+  `elevate_cancelled` and keeps the server alive when UAC is declined, instead
+  of shutting down with no replacement instance. An ADMINISTRATOR badge and a
+  short hint replace the button when elevated.
+- Added a Repair Library page (`data-view="repairs"`, nav below Troubleshoot)
+  with a row per catalog entry (id, name, symptom, risk, admin, detect-only)
+  and a procedure pane. Each procedure shows plain-language step names and
+  descriptions, exact commands in collapsible sections, verification checks,
+  rollback notes/commands, and if-unresolved guidance.
+- Added `/api/fixes/<id>` returning the catalog entry `to_dict()` plus current
+  admin state. The Troubleshoot repair detail links to the library with **View
+  full procedure**. Standard checks and non-admin repairs remain available to
+  standard users; admin repairs are labelled and instruct users to elevate.
+- Added tests for the detail endpoint, template ids, elevation cancellation and
+  successful restart request. Full suite: 213 passed (2026-11-11); JS passes
+  `node --check`.
+Session 35 (dev install + Troubleshoot UI improvements):
+- Added pyproject.toml with [project.scripts] netscope entry point so an
+  editable install (pip install -e .) exposes the `netscope` command after one
+  setup step. Created .venv\Scripts\netscope.bat wrapper (PYTHONPATH set to
+  project root) so `netscope` works from any shell without activating venv;
+  venv Scripts directory is on PATH after activation.
+- Fixed pyproject.toml TOML error (optional-dependencies -> project.optional-dependencies).
+- Added core/checks/descriptors.py with 32 CheckDescriptor entries so the web
+  UI can list all planned checks before a diagnosis runs.
+- Added GET /api/checks returning the descriptor list.
+- web/static/js/engine-ui.js: loadChecks() on init; pending rows shown with
+  layer badge; receiveCheck() drops pending placeholders for the layer when
+  real results arrive; render() computes progress excluding pending checks
+  and shows "N checks ready to run" before a run; renderDetail() shows
+  "This check has not run yet..." for pending selections; scrollable
+  diagnostic rail CSS (sticky, independent overflow) added to
+  web/static/css/web-overrides.css.
+- Removed the separate REPAIRS group from the Troubleshoot rail; repairs remain
+  only in the Repair Library view.
+- Updated README.md with one-time dev setup and `netscope` usage; docs/run.md
+  added with run instructions.
+- Full suite: 213 passed; node --check clean; /api/checks returns 32 checks.
+Session 36 (packaging fix - dev install root cause):
+- Root cause: flat imports (`import config`, `from modules...`) assume the project
+  root is importable, but pyproject.toml only declared packages cli, core, fixes,
+  gui, powershell, web. `config.py` (top-level module) and the `modules` package
+  were not declared, so the editable finder never exposed them -> ModuleNotFoundError.
+- Fix: pyproject.toml now sets `py-modules = ["config"]` and adds `modules*` to
+  `[tool.setuptools.packages.find] include`. Deleted the masking
+  `.venv\Scripts\netscope.bat` wrapper.
+- Verified: pip install -e . succeeds; `netscope --help`, `netscope diagnose`,
+  `netscope gui` work from the project dir and from %TEMP%; full suite 213 passed.
+Session 37 (stale web UI fix):
+- Root cause: refreshDevices referenced an undefined `devices` variable (ReferenceError)
+  because the `const devices = ...` declaration was missing, so the device table
+  never updated and stayed on "Loading...". refreshStatus could also throw on
+  missing fields (latency_ms === null check used strict equality, so undefined
+  slipped through to .toFixed and threw, leaving "Checking"/"API error").
+- Fix: added the missing `devices` declaration, made refreshStatus/refreshDevices
+  null-safe (data || {}, Array.isArray guards, latency_ms == null), and added
+  explicit 401 handling that shows "Session expired" instead of stale placeholders.
+- Verified: /api/status, /api/devices, /api/info, /api/checks, /api/diagnostics,
+  /api/packet-loss, /api/fixes all return 200 with real data when a valid
+  session cookie is present; without a cookie they correctly return 401.
+  node --check passes on both JS files; full suite 213 passed.
+Session 38 (initial load + nav fix):
+- Root cause of "stale on open" and "Repair Library won't open": dashboard.js
+  called `$("repair-steps").addEventListener(...)` at top level, but
+  `#repair-steps` was removed from the template, so `$()` returned null and
+  `.addEventListener` threw a TypeError that aborted the entire script before
+  `refreshStatus()`/`refreshDevices()`/nav listeners ran.
+- Fix: guarded all top-level addEventListener calls (check-steps, repair-steps,
+  diag-stage, refresh-devices) with null checks so a missing element no longer
+  aborts initialization.
+- Verified: node --check passes; full suite 213 passed. Initial load should now
+  populate overview/devices and make Troubleshoot/Repair Library nav work.
+Session 38b (polyfill + verification):
+- Added a small append/replaceChildren polyfill to web-init.js for older browsers.
+- Re-verified node --check on all web JS and full suite 213 passed.

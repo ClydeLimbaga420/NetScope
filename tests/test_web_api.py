@@ -294,7 +294,7 @@ def test_tool_api_rejects_command_injection_before_runner(client, tool_name, bod
 
 def test_idle_shutdown_waits_for_cancelling_job(client):
     _client, st = client
-    st.last_heartbeat = __import__('time').monotonic() - 21
+    st.last_heartbeat = __import__('time').monotonic() - 121
 
     assert st.should_shutdown()
     job = st.jobs.create("fix")
@@ -329,6 +329,28 @@ def test_fixes_endpoint_returns_catalog_metadata(client):
     }
     assert by_id["ADP-01"]["detection_only"] is False
 
+
+def test_fix_detail_endpoint_returns_procedure(client):
+    c, st = client
+    catalog = load_catalog()
+    st.runtime.catalog = catalog
+    _boot(c, st)
+
+    response = c.get("/api/fixes/IP-09", headers={"Host": "127.0.0.1:5000"})
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert isinstance(payload["admin"], bool)
+    fix = payload["fix"]
+    assert fix["id"] == "IP-09"
+    assert fix["ladder"], "procedure steps should be present"
+    assert fix["ladder"][0]["description"]
+    assert fix["ladder"][0]["commands"]
+    assert fix["rollback_notes"]
+    assert "this_device" in fix["if_unresolved"]
+
+    missing = c.get("/api/fixes/ZZ-99", headers={"Host": "127.0.0.1:5000"})
+    assert missing.status_code == 404
 
 
 def _boot(c, st):
@@ -396,6 +418,11 @@ def test_dashboard_template_uses_shared_shell_and_local_assets(client):
     assert 'id="gateway-dot"' in html
     assert 'id="internet-status"' in html
     assert 'id="gateway-status"' in html
+    assert 'id="run-as-admin"' in html
+    assert 'id="repair-library"' in html
+    assert 'id="repair-library-list"' in html
+    assert 'id="repair-library-detail"' in html
+    assert 'data-view="repairs"' in html
     assert "fonts.googleapis.com" not in html
     assert "cdn.jsdelivr.net" not in html
 
@@ -527,6 +554,31 @@ def test_gateway_configure_runs_auto_fix_job(client, monkeypatch):
     assert job.result["status"] == "resolved"
     assert job.result["adapter"] == "Ethernet"
     assert job.result["gateway"] == "192.168.1.1"
+
+
+def test_elevate_cancelled_keeps_server_running(client, monkeypatch):
+    c, st = client
+    token = _boot(c, st)
+    monkeypatch.setattr("web.api.relaunch_elevated", lambda _argv: False)
+
+    response = c.post("/api/elevate", headers=_post_headers(st, token), json={})
+
+    assert response.status_code == 409
+    assert response.get_json()["error"]["code"] == "elevate_cancelled"
+    assert not st.shutdown_event.is_set()
+
+
+def test_elevate_requests_restart(client, monkeypatch):
+    c, st = client
+    token = _boot(c, st)
+    calls = []
+    monkeypatch.setattr("web.api.relaunch_elevated", lambda argv: calls.append(argv) or True)
+
+    response = c.post("/api/elevate", headers=_post_headers(st, token), json={})
+
+    assert response.status_code == 200
+    assert calls and calls[0][0].endswith("netscope.py")
+    assert st.shutdown_event.is_set()
 
 
 def test_fix_high_risk_requires_second_confirmation(client):

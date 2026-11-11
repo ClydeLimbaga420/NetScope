@@ -1,6 +1,6 @@
 (function () {
   const $ = (id) => document.getElementById(id);
-  const state = { checks: [], fixes: [], selectedId: null, report: null, jobId: null, busy: false };
+  const state = { checks: [], fixes: [], selectedId: null, report: null, jobId: null, busy: false, admin: null, libraryId: null, detail: null, adminNotice: "", checksLoaded: false };
   const layers = ["adapter", "services", "ip", "gateway", "lan", "dns", "internet", "stack"];
 
   function element(tag, className, text) {
@@ -46,7 +46,55 @@
     if (cancel) cancel.disabled = !busy || !state.jobId;
     const gateway = $("auto-configure-gateway");
     if (gateway) gateway.disabled = busy;
+    const adminButton = $("run-as-admin");
+    if (adminButton) adminButton.disabled = busy;
     if (redraw !== false) render();
+  }
+
+  function renderAdminState() {
+    const elevated = state.admin === true;
+    const runAsAdmin = $("run-as-admin");
+    const badge = $("admin-mode-badge");
+    const hint = $("admin-hint");
+    const notice = $("admin-notice");
+    const libraryBadge = $("repair-elevation-badge");
+    const libraryButton = $("repair-run-as-admin");
+    if (runAsAdmin) runAsAdmin.hidden = state.admin !== false;
+    if (badge) badge.hidden = !elevated;
+    if (hint) hint.hidden = state.admin !== false;
+    if (libraryBadge) {
+      libraryBadge.hidden = !elevated;
+      libraryBadge.textContent = elevated ? "ADMINISTRATOR" : "";
+    }
+    if (libraryButton) libraryButton.hidden = state.admin !== false;
+    if (notice) {
+      notice.hidden = !state.adminNotice;
+      notice.textContent = state.adminNotice;
+    }
+  }
+
+  async function loadAdminStatus() {
+    try {
+      const status = await api("/api/status");
+      state.admin = Boolean(status.admin);
+    } catch (_error) {
+      state.admin = null;
+    }
+    renderAdminState();
+  }
+
+  async function requestElevation() {
+    if (state.busy) return;
+    if (!window.confirm("Restart NetScope as administrator? Windows will show a UAC prompt and this page will disconnect.")) return;
+    state.adminNotice = "Requesting administrator rights...";
+    renderAdminState();
+    try {
+      await api("/api/elevate", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      state.adminNotice = "Restarting as administrator... This page will disconnect.";
+    } catch (error) {
+      state.adminNotice = error.message;
+    }
+    renderAdminState();
   }
 
   function statusClass(status) {
@@ -100,6 +148,150 @@
     target.append(group);
   }
 
+  function renderCommand(command) {
+    const box = element("div", "repair-command");
+    const kind = command.kind === "powershell" ? "PowerShell" : "Command";
+    box.append(element("p", "diag-command-label", `${kind}${command.label ? ` · ${command.label}` : ""}`));
+    if (command.script) box.append(element("pre", "engine-evidence", command.script));
+    else if (command.args && command.args.length) box.append(element("pre", "engine-evidence", command.args.join(" ")));
+    if (command.native && command.native.length) box.append(element("pre", "engine-evidence", `Fallback: ${command.native.join(" ")}`));
+    if (command.params && command.params.length) box.append(element("p", "muted", `Parameters: ${command.params.join(", ")}`));
+    return box;
+  }
+
+  function listSection(target, label, items) {
+    if (!items || !items.length) return;
+    const section = element("div", "repair-section");
+    section.append(element("p", "diag-command-label", label));
+    const list = element("ul", "repair-list-points");
+    items.forEach((item) => list.append(element("li", "", item)));
+    section.append(list);
+    target.append(section);
+  }
+
+  function renderRepairProcedure() {
+    const target = $("repair-library-detail");
+    if (!target) return;
+    const entry = state.detail;
+    target.replaceChildren();
+    if (!entry) {
+      target.append(element("p", "muted", "Select a repair to see what it does."));
+      return;
+    }
+
+    const header = element("div", "diag-detail-head");
+    const title = element("div", "diag-detail-title");
+    const tags = element("div", "diag-tags");
+    tags.append(element("span", "step-kind repair", String(entry.risk || "fix").toUpperCase()));
+    if (entry.admin) tags.append(element("span", "admin-tag", "ADMIN"));
+    if (entry.detection_only) tags.append(element("span", "admin-tag", "DETECT ONLY"));
+    title.append(tags, element("h3", "", `${entry.id}: ${entry.name}`));
+    title.append(element("p", "diag-desc", entry.symptom || "Catalog repair"));
+    header.append(title);
+    target.append(header);
+
+    if (entry.explanation) target.append(element("p", "step-reason", entry.explanation));
+    if (entry.detection_only) {
+      target.append(element("p", "step-reason", "This finding is detection-only. NetScope reports it but does not change the system automatically."));
+    }
+    target.append(element("p", "engine-fix-facts", `Admin: ${entry.admin ? "required" : "not required"} | Risk: ${entry.risk} | Restart: ${entry.reboot ? "may be required" : "not expected"}`));
+
+    if (!entry.detection_only) {
+      const steps = element("div", "repair-section");
+      steps.append(element("p", "diag-command-label", "WHAT IT DOES"));
+      (entry.ladder || []).forEach((step, index) => {
+        const box = element("div", "repair-step");
+        const head = element("div", "repair-step-head");
+        head.append(element("span", "repair-step-number", String(index + 1).padStart(2, "0")), element("strong", "", step.name));
+        if (step.optional) head.append(element("span", "repair-step-tag", "OPTIONAL"));
+        if (step.risk && String(step.risk).toLowerCase() === "high") head.append(element("span", "repair-step-tag risk", "HIGH RISK"));
+        if (step.requires_second_confirmation) head.append(element("span", "repair-step-tag", "CONFIRM"));
+        box.append(head);
+        if (step.description) box.append(element("p", "repair-step-desc", step.description));
+        const commands = element("details", "repair-commands");
+        commands.append(element("summary", "", `Exact commands (${(step.commands || []).length})`));
+        (step.commands || []).forEach((command) => commands.append(renderCommand(command)));
+        box.append(commands);
+        steps.append(box);
+      });
+      target.append(steps);
+    }
+
+    listSection(target, "HOW TO VERIFY", (entry.verify || []).map((id) => `Re-run check ${id}`));
+    listSection(target, "ROLLBACK", [entry.rollback_notes].filter(Boolean));
+    if (entry.rollback && entry.rollback.length) {
+      const rollback = element("details", "repair-commands");
+      rollback.append(element("summary", "", `Rollback commands (${entry.rollback.length})`));
+      entry.rollback.forEach((command) => rollback.append(renderCommand(command)));
+      target.append(rollback);
+    }
+    const unresolved = entry.if_unresolved || {};
+    listSection(target, "IF THIS DOES NOT HELP", unresolved.this_device || []);
+    listSection(target, "IF THE PROBLEM IS BEYOND THIS DEVICE", unresolved.beyond_device || []);
+    listSection(target, "NEXT CHECKS", unresolved.next_checks || []);
+    listSection(target, "EVIDENCE TO COLLECT", unresolved.evidence_to_collect || []);
+
+    if (!entry.detection_only) {
+      const actions = element("div", "engine-fix-actions");
+      const button = element("button", "step-run engine-fix-button", `Plan ${entry.id}: ${entry.name}`);
+      button.type = "button";
+      button.dataset.fixId = entry.id;
+      actions.append(button);
+      if (entry.admin && state.admin !== true) {
+        actions.append(element("p", "muted", "This repair needs administrator rights. Use Run as administrator first."));
+      }
+      target.append(actions);
+    }
+  }
+
+  function renderRepairLibrary() {
+    const list = $("repair-library-list");
+    if (!list) return;
+    list.replaceChildren();
+    if (!state.fixes.length) {
+      list.append(element("p", "muted", "Repair catalog is not loaded."));
+      return;
+    }
+    state.fixes.forEach((fix) => {
+      const row = element("button", `repair-row${fix.id === state.libraryId ? " selected" : ""}`);
+      row.type = "button";
+      row.dataset.repairId = fix.id;
+      const head = element("div", "repair-row-head");
+      head.append(element("span", "repair-row-id", fix.id), element("strong", "", fix.name));
+      row.append(head);
+      row.append(element("p", "repair-row-symptom", fix.symptom || ""));
+      const tags = element("div", "repair-row-tags");
+      tags.append(element("span", "repair-row-tag", String(fix.risk || "unknown").toUpperCase()));
+      if (fix.admin) tags.append(element("span", "repair-row-tag admin", "ADMIN"));
+      if (fix.detection_only) tags.append(element("span", "repair-row-tag", "DETECT ONLY"));
+      row.append(tags);
+      list.append(row);
+    });
+  }
+
+  function selectRepair(fixId) {
+    state.libraryId = fixId;
+    renderRepairLibrary();
+    const target = $("repair-library-detail");
+    if (target) target.replaceChildren(element("p", "muted", "Loading procedure..."));
+    api(`/api/fixes/${encodeURIComponent(fixId)}`).then((payload) => {
+      state.detail = payload.fix;
+      if (payload.admin !== undefined) {
+        state.admin = Boolean(payload.admin);
+        renderAdminState();
+      }
+      renderRepairProcedure();
+    }).catch((error) => {
+      if (target) target.replaceChildren(element("p", "step-reason error", error.message));
+    });
+  }
+
+  function openRepairLibrary(fixId) {
+    const nav = document.querySelector('.nav-item[data-view="repairs"]');
+    if (nav) nav.click();
+    selectRepair(fixId);
+  }
+
   function renderDetail() {
     const stage = $("diag-stage");
     if (!stage) return;
@@ -120,16 +312,21 @@
     tags.append(element("span", `step-kind ${check ? "check" : "repair"}`, check ? String(item.layer || "check").toUpperCase() : String(item.risk || "fix").toUpperCase()));
     if (item.admin) tags.append(element("span", "admin-tag", "ADMIN"));
     title.append(tags, element("h3", "", resultTitle(item)));
-    title.append(element("p", "diag-desc", check ? (item.message || "No additional detail.") : (item.symptom || item.explanation || "Catalog fix")));
+    const descText = check && item.pending ? "This check has not run yet. Select layers and run a diagnosis." : (check ? (item.message || "No additional detail.") : (item.symptom || item.explanation || "Catalog fix"));
+    title.append(element("p", "diag-desc", descText));
     header.append(title, element("span", `step-status ${statusClass(item.status)}`, item.status || "ready"));
     detail.append(header);
 
-    if (check && item.cause) detail.append(element("p", "step-reason", item.cause));
+    if (check && item.cause && !item.pending) detail.append(element("p", "step-reason", item.cause));
     if (fix) {
       detail.append(element("p", "step-reason", item.explanation));
       detail.append(element("p", "diag-desc", `Risk: ${fix.risk || "unknown"} | Administrator: ${fix.admin ? "required" : "not required"} | Restart: ${fix.reboot ? "may be required" : "not expected"}`));
+      const procedure = element("button", "ghost-button", "View full procedure");
+      procedure.type = "button";
+      procedure.dataset.procedureId = fix.id;
+      detail.append(procedure);
     }
-    if (check) {
+    if (check && !item.pending) {
       renderEvidence(detail, item.evidence);
       renderFixActions(detail, item.fix_ids || []);
     }
@@ -139,17 +336,20 @@
 
   function render() {
     const checks = $("check-steps");
-    const repairs = $("repair-steps");
-    if (!checks || !repairs) return;
+    if (!checks) return;
     renderRail(checks, state.checks, "check");
-    renderRail(repairs, state.fixes, "repair");
     renderDetail();
-    const total = state.checks.length;
-    const complete = state.checks.filter((item) => item.status !== "running").length;
+    const planned = state.checks.filter(i => i.status === "pending").length;
+    const total = state.checks.length - planned;
+    const complete = state.checks.filter(i => !["running","pending"].includes(i.status)).length;
     const summary = $("troubleshoot-summary");
     const percent = $("troubleshoot-percent");
     const fill = $("diag-progress-fill");
-    if (summary) summary.textContent = state.busy ? `Running diagnostics (${complete} of ${total})` : `${total} checks in the latest diagnosis`;
+    if (summary) {
+      if (state.busy) summary.textContent = `Running diagnostics (${complete} of ${total})`;
+      else if (planned && !total) summary.textContent = `${planned} checks ready to run`;
+      else summary.textContent = `${complete} checks in the latest diagnosis`;
+    }
     const value = total ? Math.round((complete / total) * 100) : 0;
     if (percent) percent.textContent = `${value}%`;
     if (fill) fill.style.width = `${value}%`;
@@ -160,6 +360,11 @@
     const index = state.checks.findIndex((item) => item.id === incoming.id);
     if (index >= 0) state.checks[index] = incoming;
     else state.checks.push(incoming);
+    // Drop pending placeholders for this layer so actual results replace them
+    const hasResultsForLayer = state.checks.some(i => i.layer === incoming.layer && !i.pending);
+    if (hasResultsForLayer) {
+      state.checks = state.checks.filter(i => !(i.pending && i.layer === incoming.layer));
+    }
     if (!state.selectedId) state.selectedId = incoming.id;
     render();
   }
@@ -516,21 +721,59 @@
     cancel.type = "button";
     cancel.disabled = true;
     cancel.addEventListener("click", cancelJob);
-    const gateway = $("auto-configure-gateway");
-    const anchor = gateway || run;
-    actions.insertBefore(cancel, anchor.nextSibling);
-    actions.insertBefore(controls, cancel.nextSibling);
+    actions.insertBefore(controls, run);
+    actions.insertBefore(cancel, run);
+  }
+
+  function loadChecks() {
+    api("/api/checks").then((payload) => {
+      const planned = (payload.checks || []).map((c) => ({
+        id: c.id,
+        layer: c.layer,
+        title: c.title,
+        status: "pending",
+        pending: true,
+        message: "",
+        cause: null,
+        evidence: {},
+        fix_ids: [],
+      }));
+      state.checks = planned;
+      state.checksLoaded = true;
+      render();
+    }).catch(() => {
+      state.checksLoaded = true;
+      state.checks = [];
+      render();
+    });
   }
 
   function loadCatalog() {
-    api("/api/fixes").then((payload) => { state.fixes = payload.fixes || []; }).catch(() => { });
+    api("/api/fixes").then((payload) => {
+      state.fixes = payload.fixes || [];
+      if (state.libraryId) selectRepair(state.libraryId);
+      else if (state.fixes.length) selectRepair(state.fixes[0].id);
+      else renderRepairLibrary();
+    }).catch(() => { renderRepairLibrary(); });
   }
 
   function initialize() {
-    if (!$("diag-stage") || !$("run-all-checks")) return;
+    // Adopt the shared troubleshoot controls: replacing each node with a
+    // listener-free clone drops the legacy dashboard handlers that were
+    // registered first (registration order at the target beats capture), so a
+    // click cannot run both the legacy registry checks and the engine
+    // diagnosis at the same time.
+    const checks = adopt("check-steps");
+    const repairs = adopt("repair-steps");
+    const stage = adopt("diag-stage");
+    const gateway = adopt("auto-configure-gateway");
+    const run = $("run-engine-diagnosis");
+    if (!run || !checks || !stage) return;
     addLayerControls();
+    loadAdminStatus();
+    loadChecks();
     loadCatalog();
-    $("run-all-checks").addEventListener("click", (event) => {
+    run.addEventListener("click", (event) => {
       event.preventDefault();
       runDiagnosis();
     });
@@ -538,20 +781,47 @@
       event.preventDefault();
       configureGateway();
     });
-    [checks, repairs].forEach((container) => container.addEventListener("click", (event) => {
+    if (checks) checks.addEventListener("click", (event) => {
       const item = event.target.closest("[data-engine-item]");
       if (!item) return;
       event.preventDefault();
       state.selectedId = item.dataset.engineItem;
       render();
-    }));
+    });
+    if (repairs) repairs.addEventListener("click", (event) => {
+      const item = event.target.closest("[data-engine-item]");
+      if (!item) return;
+      event.preventDefault();
+      state.selectedId = item.dataset.engineItem;
+      render();
+    });
     stage.addEventListener("click", (event) => {
       const button = event.target.closest("[data-fix-id]");
       const rollback = event.target.closest("[data-rollback-id]");
-      if (!button && !rollback) return;
+      const procedure = event.target.closest("[data-procedure-id]");
+      if (!button && !rollback && !procedure) return;
       event.preventDefault();
       if (button) planFix(button.dataset.fixId);
+      else if (procedure) openRepairLibrary(procedure.dataset.procedureId);
       else rollbackFix(rollback.dataset.rollbackId);
+    });
+    const libraryList = $("repair-library-list");
+    if (libraryList) libraryList.addEventListener("click", (event) => {
+      const row = event.target.closest("[data-repair-id]");
+      if (!row) return;
+      event.preventDefault();
+      selectRepair(row.dataset.repairId);
+    });
+    const libraryDetail = $("repair-library-detail");
+    if (libraryDetail) libraryDetail.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-fix-id]");
+      if (!button) return;
+      event.preventDefault();
+      planFix(button.dataset.fixId);
+    });
+    [["run-as-admin", requestElevation], ["repair-run-as-admin", requestElevation]].forEach(([id, handler]) => {
+      const button = $(id);
+      if (button) button.addEventListener("click", (event) => { event.preventDefault(); handler(); });
     });
     guardLegacyContent(checks, repairs, stage);
     render();
@@ -571,9 +841,9 @@
     const observer = new MutationObserver(() => {
       if (
         !checks.childElementCount ||
-        !repairs.childElementCount ||
+        (repairs && !repairs.childElementCount) ||
         checks.querySelector(".diag-item:not([data-engine-item])") ||
-        repairs.querySelector(".diag-item:not([data-engine-item])") ||
+        (repairs && repairs.querySelector(".diag-item:not([data-engine-item])")) ||
         stage.querySelector("#console-output, #clear-console, .step-run[data-id]")
       ) {
         // The legacy dashboard rendered its registry into the shared stage
@@ -582,7 +852,9 @@
         render();
       }
     });
-    [checks, repairs, stage].forEach((node) => observer.observe(node, { childList: true, subtree: true }));
+    const nodes = [checks, stage];
+    if (repairs) nodes.push(repairs);
+    nodes.forEach((node) => observer.observe(node, { childList: true, subtree: true }));
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initialize, { once: true });

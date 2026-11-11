@@ -138,3 +138,259 @@
         min-width: 0;
     }
 }
+
+.admin-control {
+    display: grid;
+    gap: 8px;
+    margin: 2px 0 16px;
+}
+
+.admin-button {
+    width: 100%;
+    min-height: 40px;
+    padding: 9px 12px;
+    border: 1px solid rgba(98, 167, 255, 0.35);
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(98, 167, 255, 0.22), rgba(139, 124, 255, 0.12));
+    color: #e7efff;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    cursor: pointer;
+    transition: border-color 0.18s ease, transform 0.18s ease;
+}
+
+.admin-button:hover:not(:disabled) {
+    border-color: rgba(98, 167, 255, 0.6);
+    transform: translateY(-1px);
+}
+
+.admin-button:disabled {
+    opacity: 0.55;
+    cursor: wait;
+}
+
+.admin-hint,
+.admin-notice {
+    margin: 0;
+    color: var(--muted);
+    font-size: 10px;
+    line-height: 1.5;
+}
+
+.admin-notice {
+    color: var(--accent);
+}
+
+.repair-library-panel {
+    margin-top: 16px;
+}
+
+.repair-library-layout {
+    display: grid;
+    grid-template-columns: minmax(240px, 340px) minmax(0, 1fr);
+    gap: 18px;
+    align-items: start;
+}
+
+.repair-library-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 640px;
+    overflow: auto;
+    padding-right: 4px;
+}
+
+.repair-row {
+    appearance: none;
+    display: grid;
+    gap: 6px;
+    width: 100%;
+    padding: 11px 12px;
+    border: 1px solid transparent;
+    border-radius: 11px;
+    background: transparent;
+    color: #9eacc5;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.repair-row:hover {
+    background: rgba(98, 167, 255, 0.07);
+    border-color: rgba(98, 167, 255, 0.14);
+    color: #e7efff;
+}
+
+.repair-row.selected {
+    background: linear-gradient(90deg, rgba(98, 167, 255, 0.18), rgba(98, 167, 255, 0.04));
+    border-color: rgba(98, 167, 255, 0.28);
+    color: #ffffff;
+    box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.repair-row-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.repair-row-id {
+    color: var(--accent);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1px;
+}
+
+.repair-row-head strong {
+    font-size: 11.5px;
+}
+
+.repair-row-symptom {
+    margin: 0;
+    color: var(--muted);
+    font-size: 10.5px;
+    line-height: 1.45;
+}
+
+.repair-row-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.repair-row-tag {
+    padding: 2px 6px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--muted);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+}
+
+.repair-row-tag.admin {
+    border-color: rgba(255, 198, 109, 0.3);
+    color: #d8b878;
+}
+
+.repair-library-detail {
+    min-height: 240px;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.018);
+}
+
+.repair-section {
+    display: grid;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.repair-step {
+    padding: 11px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: rgba(3, 8, 18, 0.28);
+}
+
+.repair-step-head {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.repair-step-number {
+    display: grid;
+    place-items: center;
+    width: 25px;
+    height: 25px;
+    border: 1px solid rgba(255, 198, 109, 0.18);
+    border-radius: 8px;
+    color: #d8b878;
+    font-size: 9.5px;
+    font-weight: 700;
+}
+
+.repair-step-head strong {
+    color: #e7efff;
+    font-size: 11.5px;
+}
+
+.repair-step-tag {
+    padding: 2px 6px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--muted);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+}
+
+.repair-step-tag.risk {
+    border-color: rgba(255, 107, 129, 0.35);
+    color: var(--red);
+}
+
+.repair-step-desc {
+    margin: 6px 0 0;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.55;
+}
+
+.repair-commands {
+    margin-top: 8px;
+}
+
+.repair-commands summary {
+    color: var(--accent);
+    font-size: 10.5px;
+    cursor: pointer;
+}
+
+.repair-command {
+    margin-top: 8px;
+}
+
+.repair-list-points {
+    margin: 0;
+    padding-left: 18px;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.6;
+}
+
+@media (max-width: 900px) {
+    .repair-library-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .repair-library-list {
+        max-height: 320px;
+    }
+}
+
+/* Scrollable diagnostic rail - independent of right detail */
+@media (min-width: 1001px) {
+    .diag-rail {
+        position: sticky;
+        top: 18px;
+        max-height: calc(100vh - 190px);
+        overflow-y: auto;
+        padding-right: 6px;
+        scrollbar-gutter: stable;
+    }
+}
+
+@media (max-width: 1000px) {
+    .diag-rail {
+        max-height: 360px;
+        overflow-y: auto;
+    }
+}

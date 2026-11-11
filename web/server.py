@@ -85,7 +85,7 @@ class WebState:
         self.last_heartbeat = time.monotonic()
 
     def should_shutdown(self) -> bool:
-        if (time.monotonic() - self.last_heartbeat) <= 20:
+        if (time.monotonic() - self.last_heartbeat) <= 120:
             return False
         return not self.jobs.has_active_jobs()
 
@@ -109,6 +109,10 @@ def create_app(state: WebState | None = None) -> Flask:
         st: WebState = app.extensions["netscope_state"]
         if not st.security.host_ok(request, st.port):
             return jsonify({"error": {"code": "host_rejected", "message": "Host not allowed."}}), 403
+        # Any successful request proves the UI is still alive; keep the
+        # heartbeat timer from firing while the tab is open (Chrome throttles
+        # background-tab timers, so the dedicated heartbeat may be delayed).
+        st.touch()
         path = request.path or ""
         if path.startswith("/api/"):
             try:

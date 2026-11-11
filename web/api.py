@@ -23,6 +23,8 @@ from fixes.executor import FixExecutor
 from fixes.gateway_config import auto_configure_gateway
 from fixes.if_unresolved import build_unresolved_sections, unresolved_section
 from gui.launch import gui_relaunch_argv
+from core.checks.descriptors import CHECK_DESCRIPTORS
+from core.models import Layer
 
 api_bp = Blueprint("api", __name__)
 
@@ -122,6 +124,11 @@ def _dashboard_status_payload():
 @api_bp.get("/status")
 def api_status():  # type: ignore[no-untyped-def]
     return jsonify(_dashboard_status_payload())
+
+
+@api_bp.get("/checks")
+def api_checks():  # type: ignore[no-untyped-def]
+    return jsonify({"checks": [d.to_dict() for d in CHECK_DESCRIPTORS]})
 
 
 @api_bp.post("/heartbeat")
@@ -228,6 +235,16 @@ def api_fixes():  # type: ignore[no-untyped-def]
     ]
     fixes.sort(key=lambda item: item["id"])
     return jsonify({"fixes": fixes})
+
+
+@api_bp.get("/fixes/<fix_id>")
+def api_fix_detail(fix_id: str):  # type: ignore[no-untyped-def]
+    st = _state()
+    catalog = getattr(st.runtime, "catalog", None)
+    entry = catalog.get(fix_id) if catalog is not None else None
+    if entry is None:
+        return _err("unknown_fix", f"Unknown fix id: {fix_id}", 404)
+    return jsonify({"fix": entry.to_dict(), "admin": bool(is_admin())})
 
 
 @api_bp.get("/info")
@@ -428,11 +445,14 @@ def api_open_log_folder():  # type: ignore[no-untyped-def]
 def api_elevate():  # type: ignore[no-untyped-def]
     st = _state()
     try:
-        relaunch_elevated(gui_relaunch_argv())
-        st.logger.action("web", "elevate_requested")
+        launched = relaunch_elevated(gui_relaunch_argv())
     except Exception as exc:  # noqa: BLE001
         st.logger.error("elevate_failed", source="web", error=str(exc), exc_info=True)
         return _err("elevate_failed", str(exc), 500)
+    if not launched:
+        st.logger.action("web", "elevate_cancelled")
+        return _err("elevate_cancelled", "Administrator elevation was cancelled.", 409)
+    st.logger.action("web", "elevate_requested")
     st.shutdown_event.set()
     return jsonify({"ok": True})
 
