@@ -20,7 +20,8 @@ while the localhost web UI replaces it.
 
 ### Diagnostics and fixes
 - Engine-backed diagnosis across eight network layers
-- 61-entry fix catalog with exact-command preview and dry-run
+- 62-entry fix catalog with exact-command preview and dry-run
+- Automatic default-gateway detection and one-click configuration (`IP-09`)
 - Admin, risk, and reboot labels; typed confirmation for high-risk steps
 - Verification by re-checking and rollback from saved snapshots
 - Unresolved-cause ranking when a fix does not help ("probable"/"possible")
@@ -33,8 +34,10 @@ while the localhost web UI replaces it.
 - Desktop GUI with findings detail, fix preview, and unresolved-causes panel
 - Localhost web UI with per-check streaming and local assets
 - Legacy LAN dashboard for other devices on the same network
+- Separate engine-backed Run diagnosis and legacy Run all checks (1–7) actions
 
 ### Dashboard
+- Combined Internet and Gateway connectivity status card
 - Internet connectivity and ping latency monitoring
 - Smoothed live bandwidth charts
 - Local IP, default gateway, and adapter information
@@ -44,6 +47,9 @@ while the localhost web UI replaces it.
 - Custom device labels saved in the browser
 - Eight-row device table with in-panel scrolling
 - Guided troubleshooting workflow with grouped checks and repairs
+- Run all checks (1–7) from the diagnostics rail
+- One-click Configure gateway button when no default gateway is detected
+- Separate engine-backed Run diagnosis action in the web UI
 
 ## Technologies
 
