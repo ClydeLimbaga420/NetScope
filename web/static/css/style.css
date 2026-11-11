@@ -621,7 +621,13 @@ h1 {
 }
 
 
-#internet-status {
+.card.connectivity .metric-line {
+    margin: 14px 0 8px;
+}
+
+
+#internet-status,
+#gateway-status {
     font-size: 22px;
     letter-spacing: -0.4px;
 }

@@ -16,7 +16,7 @@ engine and two front ends (CLI + GUI). Work phase by phase; update this file and
 - This checkout originally had **no `.venv`**. A venv now exists (Python 3.14.7).
   Recreate with `py -m venv .venv`, then
   `.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt`.
-- Run tests: `.\.venv\Scripts\python.exe -m pytest` (latest full run: 197 passed, 2026-11-11).
+- Run tests: `.\.venv\Scripts\python.exe -m pytest` (latest full run: 210 passed, 2026-11-11).
 - Run the CLI: `.\.venv\Scripts\python.exe netscope.py --help`
   (or `python -m cli`). `netscope.py diagnose --json` is the machine interface.
 - Run the web UI: `netscope gui` launches the localhost interface; use
@@ -107,14 +107,24 @@ engine and two front ends (CLI + GUI). Work phase by phase; update this file and
   IDs, required fields, parameter sources/validators, PS `$Param` declarations,
   native placeholders, high-risk second-confirmation, DETECT-ONLY restrictions,
   `[VERIFY]` flag on IP-08, LAN-10, DNS-04, DNS-05, NET-06, NET-08, NET-11.
-- `fixes/fixes.json` — 61 seeded entries: ADP-01..06, SVC-01..06, IP-01..08,
+- `fixes/fixes.json` — 62 seeded entries: ADP-01..06, SVC-01..06, IP-01..09,
   LAN-01..11, DNS-01..05, NET-01..11, VPN-01..06, WIFI-01..04, STK-01..04.
   Each has id, name, symptom, detection, explanation, admin, risk, reboot,
   snapshot (PS commands), rollback (commands + notes), verify (check IDs),
   ladder (steps with PS + native fallback), if_unresolved (this_device,
   beyond_device, next_checks, evidence_to_collect).
+- `core/gateway_setup.py` — read-only gateway discovery for `IP-09`:
+  `active_target()` picks an active physical adapter (preferring one without a
+  default gateway); `detect_gateway()` ranks DHCP server/lease, existing
+  gateways, default routes, then first/last/common subnet addresses, and pings
+  candidates. `fixes/gateway_config.py` runs the one-click path: it skips when
+  any default route exists, otherwise detects and executes `IP-09` immediately
+  (snapshot/verification/rollback preserved). Both the legacy dashboard and the
+  web Troubleshoot header expose `#auto-configure-gateway` for this action.
 - `fixes/executor.py` — `FixExecutor`: `prepare()` builds `FixPlan` with
-  resolved parameter values and preview lines; `run()` executes ladder with
+  resolved parameter values and preview lines; parameter sources
+  `adapter_missing_gateway` and `detected_gateway` use `core/gateway_setup.py`.
+  `run()` executes ladder with
   per-step confirmations (`--yes` skips normal, `--yes-i-understand-risk`
   required for risk-H), takes pre-fix snapshot, verifies by re-checking,
   stops when resolved, returns `FixOutcome` with status (resolved/dry_run/
@@ -244,17 +254,22 @@ raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
   add diagnostic or fix business logic to the web layer. `/api/logs/stream`
   emits keep-alives when idle and stops on `shutdown_event`; fix execution does
   not pass the stale `snapshot=` kwarg to `FixExecutor.run()`.
+- The overview card is a combined Connectivity card showing both Internet and
+  Gateway status (`#internet-dot`/`#gateway-dot`), fed by `/api/status`
+  `internet_ping` and `gateway_ping`.
 - `web/static/js/engine-ui.js` adopts the shared Troubleshoot controls by
   `cloneNode(true)` + `replaceWith`, dropping the legacy dashboard handlers
-  registered first (cannot stop them with capture ordering alone). A
+  registered first (cannot stop them with capture ordering alone). This also
+  covers `#auto-configure-gateway`, which calls `/api/gateway/configure`. A
   `MutationObserver` re-asserts the engine view if the legacy registry renders
   late into `#check-steps`/`#repair-steps`/`#diag-stage`.
-- Tests: latest full suite is 197 passing (2026-11-11). Session 30's live repro
+- Tests: latest full suite is 210 passing (2026-11-11). Session 30's live repro
   verified the real CLI child, boot/session/CSP, local assets, 33 SSE check
   events, findings/fixes/catalog, fix plan+dry-run, log streaming, shutdown,
-  single-instance reuse and bind-failure logging (25/25). Phase C still needs
-  browser E2E and design-fidelity verification; Phase D owns frozen-build
-  launch/log checks.
+  single-instance reuse and bind-failure logging (25/25); the gateway repair
+  adds `/api/gateway/configure` and combined Internet/Gateway status. Phase C
+  still needs browser E2E and design-fidelity verification; Phase D owns
+  frozen-build launch/log checks.
 
 ## Logging
 - JSON-lines file at `%LOCALAPPDATA%\NetScope\logs\netscope.log`, rotating
@@ -306,7 +321,9 @@ raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
   dashboard applies EMA smoothing (`SMOOTHING_FACTOR = 0.34`) client-side.
 - Each `/api/status` call synchronously shells out to `ping` twice
   (hardcoded internet host `1.1.1.1` and the detected gateway); ping output
-  is regex-parsed per OS.
+  is regex-parsed per OS. `modules/network_info.get_default_gateway()` uses
+  `_windows_default_gateway()` to handle `ipconfig` output where an IPv6
+  gateway line is followed by the IPv4 gateway on a continuation line.
 - Device discovery warms the ARP cache (private subnets, max 1024 hosts, 15 s
   cache) then parses `arp -a`, filtering multicast/broadcast entries; it never
   scans public/routed networks. Names via NetBIOS UDP 137 then reverse DNS

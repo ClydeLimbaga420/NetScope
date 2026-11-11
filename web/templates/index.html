@@ -34,11 +34,11 @@
         <!-- STATISTICS -->
         <section class="cards">
 
-            <article class="card">
+            <article class="card connectivity">
 
                 <div class="card-top">
 
-                    <p class="card-label">INTERNET STATUS</p>
+                    <p class="card-label">CONNECTIVITY</p>
 
                     <span class="card-icon" aria-hidden="true">
                         <svg viewBox="0 0 24 24" fill="none"
@@ -66,10 +66,29 @@
                 </div>
 
                 <p class="card-foot" id="internet-host">
-                    Target: 1.1.1.1
+                    Internet &middot; 1.1.1.1
+                </p>
+
+                <div class="metric-line">
+
+                    <span
+                        class="status-dot"
+                        id="gateway-dot">
+                    </span>
+
+                    <strong id="gateway-status">
+                        Checking
+                    </strong>
+
+                </div>
+
+                <p class="card-foot" id="gateway-host">
+                    Gateway &middot; &mdash;
                 </p>
 
                 <p class="card-foot card-reason" id="internet-reason" hidden></p>
+
+                <p class="card-foot card-reason" id="gateway-reason" hidden></p>
 
             </article>
 
@@ -401,6 +420,14 @@
 
                     <button id="run-all-checks" type="button">
                         Run all checks
+                    </button>
+
+                    <button
+                        id="auto-configure-gateway"
+                        class="ghost-button"
+                        type="button"
+                        title="Detect this network's router and add it as the default gateway immediately">
+                        Configure gateway
                     </button>
 
                 </div>

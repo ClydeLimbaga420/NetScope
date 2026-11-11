@@ -21,6 +21,8 @@ PARAM_SOURCES = {
     "adapter",
     "adapter_alias",
     "adapter_index",
+    "adapter_missing_gateway",
+    "detected_gateway",
     "instance_id",
     "gateway",
     "profile",

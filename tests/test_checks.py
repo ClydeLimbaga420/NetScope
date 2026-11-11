@@ -116,7 +116,7 @@ def test_ip_missing_default_route(snapshot_factory, healthy_probe):
     )
     result = by_id(ip.run(ctx(snapshot, probe, hosts)), "IP-05")
     assert result.status.value == "fail"
-    assert result.fix_ids == ["IP-05"]
+    assert result.fix_ids == ["IP-09"]
 
 
 def test_ip_overlapping_routes(snapshot_factory, healthy_probe):

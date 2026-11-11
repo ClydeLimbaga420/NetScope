@@ -62,6 +62,41 @@ def _active_ipv4_interfaces():
     return interfaces
 
 
+def _windows_default_gateway(output):
+    lines = output.splitlines()
+
+    for index, line in enumerate(lines):
+        match = re.search(
+            r"Default Gateway[ .]*:\s*(.*)$",
+            line,
+            re.I,
+        )
+
+        if not match:
+            continue
+
+        candidates = []
+
+        if match.group(1).strip():
+            candidates.append(match.group(1).strip())
+
+        for follow in lines[index + 1:index + 4]:
+            if not follow.strip() or ":" in follow:
+                break
+            candidates.append(follow.strip())
+
+        for candidate in candidates:
+            ipv4 = re.search(
+                r"\b(\d{1,3}(?:\.\d{1,3}){3})\b",
+                candidate,
+            )
+
+            if ipv4 and ipv4.group(1) != "0.0.0.0":
+                return ipv4.group(1)
+
+    return None
+
+
 def get_default_gateway():
 
     system = platform.system().lower()
@@ -82,16 +117,7 @@ def get_default_gateway():
                 )
             )
 
-            gateways = re.findall(
-                r"Default Gateway[ .]*:\s*([0-9.]+)",
-                output,
-                re.I
-            )
-
-            return next(
-                (g for g in gateways if g and g != "0.0.0.0"),
-                None
-            )
+            return _windows_default_gateway(output)
 
         elif system == "linux":
 

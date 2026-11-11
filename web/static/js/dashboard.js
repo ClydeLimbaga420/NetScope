@@ -332,7 +332,7 @@ async function refreshStatus() {
         setStatus("internet-dot", ping.online);
 
         $("internet-host").textContent =
-            `Target: ${ping.host || "1.1.1.1"}`;
+            `Internet \u00b7 ${ping.host || "1.1.1.1"}`;
 
         const internetReason = $("internet-reason");
 
@@ -348,6 +348,40 @@ async function refreshStatus() {
             else {
                 internetReason.textContent = "";
                 internetReason.hidden = true;
+            }
+        }
+
+
+        // GATEWAY STATUS
+
+        $("gateway-status").textContent =
+            gatewayPing.online ? "Connected" : "Unavailable";
+
+        setStatus("gateway-dot", gatewayPing.online);
+
+        $("gateway-host").textContent =
+            `Gateway \u00b7 ${
+                gatewayPing.host ||
+                network.gateway ||
+                "Not detected"
+            }`;
+
+        const gatewayReason = $("gateway-reason");
+
+        if (gatewayReason) {
+            const gatewayProblem = problems.find(
+                problem => problem.source === "gateway"
+            ) || (!gatewayPing.online && gatewayPing.reason
+                ? { message: gatewayPing.reason }
+                : null);
+
+            if (gatewayProblem && gatewayProblem.message) {
+                gatewayReason.textContent = gatewayProblem.message;
+                gatewayReason.hidden = false;
+            }
+            else {
+                gatewayReason.textContent = "";
+                gatewayReason.hidden = true;
             }
         }
 
@@ -506,6 +540,10 @@ async function refreshStatus() {
         $("internet-status").textContent = "API error";
 
         setStatus("internet-dot", false);
+
+        $("gateway-status").textContent = "API error";
+
+        setStatus("gateway-dot", false);
 
         console.error(error);
 

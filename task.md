@@ -809,3 +809,56 @@ Session 30 (Phase 6C live-stack P0 verification):
 - Browser-level E2E (engine-ui adopt/MutationObserver double-fire guard, SSE
   reconnect, design fidelity) remains Phase C; the repro verified only the
   served page's local asset wiring and CSP.
+
+Session 30 (automatic default-gateway repair, merged from origin/main):
+- Added `core/gateway_setup.py` for read-only gateway discovery. It selects an
+  active physical adapter (preferring one without a gateway), ranks DHCP
+  server/lease, existing gateways, default routes, and first/last/common subnet
+  addresses, then pings candidates.
+- Added catalog fix `IP-09` ("No default gateway configured", verify `IP-05`,
+  admin, risk medium). Its ladder renews DHCP, then adds a persistent default
+  route via PowerShell/`netsh`; snapshot and rollback are catalog-driven.
+- `IP-05` (missing default route) now points to `IP-09`; both the legacy
+  dashboard and the new web Troubleshoot header have an
+  `#auto-configure-gateway` button.
+- The button now runs the one-click `fixes/gateway_config.py` path: if any
+  default route exists it does nothing; otherwise it detects the gateway and
+  executes `IP-09` immediately (still using the pre-fix snapshot, verification
+  and rollback). No preview/confirmation dialog is shown.
+- Fixed the web fix-execute call to stop passing an unsupported `snapshot` kwarg.
+- Tests: added `tests/test_gateway_setup.py` (detection, one-click path, ladder,
+  rollback), a web gateway-job test, and template assertions. Full suite: 197
+  passed (2026-11-11). Browser-level verification of the new button remains
+  Phase C.
+
+Session 31 (gateway false-negative fix):
+- The legacy `/api/status` warning "No default gateway was detected" was a
+  parser bug, not a missing gateway: `ipconfig` can print an IPv6 gateway and
+  then the IPv4 gateway on the next line, and the old regex only read the first
+  line. Added `_windows_default_gateway()` with continuation-line handling and
+  tests in `tests/test_network_info.py`.
+- Verified on this host that `get_network_info()` now reports
+  `192.168.254.254` and no missing-gateway issue. Full suite: 200 passed
+  (2026-11-11). The running web UI must be restarted to load the fix.
+
+Session 32 (combined connectivity card):
+- Replaced the single Internet status card with a Connectivity card that shows
+  both Internet and Gateway reachability from `/api/status`
+  (`internet_ping` / `gateway_ping`) in both the web UI and legacy dashboard.
+- Added `#internet-dot`, `#internet-status`, `#internet-host`,
+  `#gateway-dot`, `#gateway-status`, `#gateway-host`, and reason rows, plus
+  matching JS updates and a CSS `.card.connectivity` layout. Template tests now
+  assert both status dots.
+- Full suite remains 200 passed (2026-11-11).
+
+Session 33 (merge origin/main into main):
+- Merged `origin/main` (`88d3150` "Added Gateway Ping") into local main
+  (`543b08a` "fixed engine patches, api handling and few bugs"), keeping both
+  feature sets: the Session 30 live-stack/web fixes and the gateway discovery,
+  `IP-09` repair, and combined Connectivity card.
+- Conflicts were in `AGENTS.md`, `task.md`, and `web/static/js/engine-ui.js`.
+  The engine UI now adopts `#auto-configure-gateway` with the same
+  `cloneNode(true)` + `replaceWith` approach used for the other Troubleshoot
+  controls (dropping legacy handlers) while still calling
+  `/api/gateway/configure`; `configureGateway()` is retained.
+- Full merged suite: 210 passed (2026-11-11).

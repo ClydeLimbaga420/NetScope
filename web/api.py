@@ -20,6 +20,7 @@ from core.info import build_info
 from core.logging_config import LOG_FILE_NAME
 from fixes.catalog import CatalogError, load_catalog
 from fixes.executor import FixExecutor
+from fixes.gateway_config import auto_configure_gateway
 from fixes.if_unresolved import build_unresolved_sections, unresolved_section
 from gui.launch import gui_relaunch_argv
 
@@ -506,6 +507,35 @@ def api_fix_plan():  # type: ignore[no-untyped-def]
             "detection_only": entry.detection_only,
         }
     )
+
+
+@api_bp.post("/gateway/configure")
+def api_gateway_configure():  # type: ignore[no-untyped-def]
+    st = _state()
+    job = st.jobs.create("fix", meta={"fix_id": "IP-09", "auto": "gateway"})
+    if not st.jobs.try_mark_fix_started(job.id):
+        st.jobs.cancel(job.id)
+        return _err("fix_in_progress", "Another fix is already running.", 409)
+    st.logger.confirmation("gateway_configure:IP-09", True, source="web", auto=True)
+
+    def work(_job):  # type: ignore[no-untyped-def]
+        try:
+            result = auto_configure_gateway(st.runtime)
+            st.logger.action(
+                "web",
+                "gateway_configure",
+                status=result.status,
+                adapter=result.adapter,
+                gateway=result.gateway,
+            )
+            if result.outcome is not None:
+                st.logger.fix_applied(result.fix_id, status=result.status, source="web", auto=True)
+            return result.to_dict()
+        finally:
+            st.jobs.mark_fix_finished(job.id)
+
+    st.jobs.submit(job, work)
+    return jsonify({"job_id": job.id, "fix_id": "IP-09"})
 
 
 @api_bp.post("/fix/execute")

@@ -110,7 +110,7 @@ def test_catalog_contains_every_seeded_entry():
     for prefix, count in (
         ("ADP", 6),
         ("SVC", 6),
-        ("IP", 8),
+        ("IP", 9),
         ("LAN", 11),
         ("DNS", 5),
         ("NET", 11),
@@ -120,7 +120,7 @@ def test_catalog_contains_every_seeded_entry():
     ):
         expected.update(f"{prefix}-{index:02d}" for index in range(1, count + 1))
     assert set(catalog.ids) == expected
-    assert len(catalog.entries) == 61
+    assert len(catalog.entries) == 62
     assert catalog.version >= 1
 
 
