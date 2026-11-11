@@ -1427,6 +1427,7 @@ async function runDiagnostic(step) {
 async function runAllChecks() {
 
     const button = $("run-all-checks");
+    const engineButton = $("run-engine-diagnosis");
 
     const checks = diagnosticSteps.filter(
         step =>
@@ -1440,7 +1441,8 @@ async function runAllChecks() {
     }
 
     button.disabled = true;
-    button.textContent = "Running checks...";
+    if (engineButton) engineButton.disabled = true;
+    button.textContent = "Running checks 1–7...";
 
     for (const step of checks) {
 
@@ -1453,7 +1455,8 @@ async function runAllChecks() {
     }
 
     button.disabled = false;
-    button.textContent = "Run all checks";
+    if (engineButton) engineButton.disabled = false;
+    button.textContent = "Run all checks (1–7)";
 
 }
 

@@ -930,6 +930,7 @@ h1 {
 
 .devices-panel button,
 .troubleshoot-panel #run-all-checks,
+.troubleshoot-panel #run-engine-diagnosis,
 .troubleshoot-panel .step-run {
     appearance: none;
 
@@ -962,6 +963,7 @@ h1 {
 
 .devices-panel button:hover,
 .troubleshoot-panel #run-all-checks:hover,
+.troubleshoot-panel #run-engine-diagnosis:hover,
 .troubleshoot-panel .step-run:hover {
     border-color: rgba(98, 167, 255, 0.45);
 
@@ -977,6 +979,7 @@ h1 {
 
 .devices-panel button:active,
 .troubleshoot-panel #run-all-checks:active,
+.troubleshoot-panel #run-engine-diagnosis:active,
 .troubleshoot-panel .step-run:active {
     transform: translateY(0);
 }
@@ -984,6 +987,7 @@ h1 {
 
 .devices-panel button:disabled,
 .troubleshoot-panel #run-all-checks:disabled,
+.troubleshoot-panel #run-engine-diagnosis:disabled,
 .troubleshoot-panel .step-run:disabled {
     cursor: not-allowed;
 
@@ -1885,6 +1889,13 @@ tbody tr:last-child td {
     font-size: 8.5px;
     font-weight: 700;
     letter-spacing: 1.4px;
+}
+
+
+.diag-group > #run-all-checks {
+    width: 100%;
+    margin-bottom: 10px;
+    text-align: center;
 }
 
 

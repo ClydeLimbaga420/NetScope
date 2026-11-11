@@ -818,3 +818,25 @@ Session 32 (combined connectivity card):
   matching JS updates and a CSS `.card.connectivity` layout. Template tests now
   assert both status dots.
 - Full suite remains 200 passed (2026-11-11).
+
+Session 33 (diagnostics action order):
+- In the web Troubleshoot header, the layer controls and cancel-run button were
+  inserted before `#run-all-checks`, which pushed the Run all checks action out
+  of the expected leading position. `addLayerControls()` now inserts those
+  controls after the Configure gateway button, so the action order is:
+  Run all checks, Configure gateway, Cancel run, layer controls.
+- Full suite remains 200 passed (2026-11-11).
+
+Session 34 (diagnostic-check run-all option):
+- Added a dedicated **Run all checks (1–7)** button at the top of the
+  **DIAGNOSTIC CHECKS** rail in both the web UI and the legacy dashboard, so the
+  legacy 1–7 check sequence can be run from the diagnostics list itself.
+- Renamed the web Troubleshoot header button to **Run diagnosis**
+  (`#run-engine-diagnosis`), and updated `engine-ui.js` to target that new ID
+  instead of `#run-all-checks`. This separates engine diagnosis from the legacy
+  1–7 checks.
+- Updated `dashboard.js` (both copies) so the new rail button disables and
+  relabels itself as **Running checks 1–7…** while the sequence is executing.
+- The engine and legacy run buttons now disable each other while either sequence
+  is running, preventing concurrent diagnostics.
+- Full suite remains 200 passed (2026-11-11).

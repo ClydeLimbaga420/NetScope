@@ -35,11 +35,13 @@
 
   function setBusy(busy, label, redraw) {
     state.busy = busy;
-    const run = $("run-all-checks");
+    const run = $("run-engine-diagnosis");
     if (run) {
       run.disabled = busy;
-      run.textContent = busy ? (label || "Running...") : "Run all checks";
+      run.textContent = busy ? (label || "Running...") : "Run diagnosis";
     }
+    const legacy = $("run-all-checks");
+    if (legacy) legacy.disabled = busy;
     const cancel = $("engine-cancel-job");
     if (cancel) cancel.disabled = !busy || !state.jobId;
     const gateway = $("auto-configure-gateway");
@@ -496,7 +498,7 @@
 
   function addLayerControls() {
     const actions = document.querySelector(".troubleshoot-actions");
-    const run = $("run-all-checks");
+    const run = $("run-engine-diagnosis");
     if (!actions || !run || $("engine-layer-controls")) return;
     const controls = element("div", "engine-layer-controls");
     controls.id = "engine-layer-controls";
@@ -514,8 +516,10 @@
     cancel.type = "button";
     cancel.disabled = true;
     cancel.addEventListener("click", cancelJob);
-    actions.insertBefore(controls, run);
-    actions.insertBefore(cancel, run);
+    const gateway = $("auto-configure-gateway");
+    const anchor = gateway || run;
+    actions.insertBefore(cancel, anchor.nextSibling);
+    actions.insertBefore(controls, cancel.nextSibling);
   }
 
   function loadCatalog() {
@@ -523,10 +527,10 @@
   }
 
   function initialize() {
-    if (!$("diag-stage") || !$("run-all-checks")) return;
+    if (!$("diag-stage") || !$("run-engine-diagnosis")) return;
     addLayerControls();
     loadCatalog();
-    $("run-all-checks").addEventListener("click", (event) => {
+    $("run-engine-diagnosis").addEventListener("click", (event) => {
       event.preventDefault();
       event.stopImmediatePropagation();
       runDiagnosis();
