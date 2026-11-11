@@ -159,3 +159,39 @@ def test_sse_stream_delivers_result_and_end_marker():
     assert '"type": "result"' in payload
     assert '"ok": true' in payload
     assert '"type": "end"' in payload
+
+
+def test_sse_stream_ends_promptly_for_finished_job_without_buffered_events():
+    manager = JobManager()
+    job = manager.create("test")
+    manager.submit(job, lambda _job: {"ok": True})
+
+    deadline = time.monotonic() + 2
+    while not job.events_done and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert job.events_done
+
+    app = Flask(__name__)
+    with app.test_request_context("/"):
+        manager.stream(job).get_data(as_text=True)  # first stream consumes events
+
+    started = time.monotonic()
+    with app.test_request_context("/"):
+        payload = manager.stream(job).get_data(as_text=True)
+
+    assert time.monotonic() - started < 5
+    assert '{"type":"end"}' in payload
+
+
+def test_has_active_jobs_reflects_live_and_terminal_states():
+    manager = JobManager()
+    assert not manager.has_active_jobs()
+
+    job = manager.create("fix")
+    assert manager.has_active_jobs()
+
+    job.status = "cancelling"
+    assert manager.has_active_jobs()
+
+    job.status = "done"
+    assert not manager.has_active_jobs()

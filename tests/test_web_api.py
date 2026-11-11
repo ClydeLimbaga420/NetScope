@@ -306,37 +306,28 @@ def test_idle_shutdown_waits_for_cancelling_job(client):
 
 def test_fixes_endpoint_returns_catalog_metadata(client):
     c, st = client
-    st.runtime.catalog = types.SimpleNamespace(
-        entries={
-            "IP-01": types.SimpleNamespace(
-                id="IP-01",
-                name="Renew address",
-                symptom="Address issue",
-                explanation="Refresh the lease.",
-                admin=False,
-                risk="low",
-                reboot=False,
-                detection_only=False,
-            )
-        }
-    )
+    catalog = load_catalog()
+    st.runtime.catalog = catalog
     _boot(c, st)
 
     response = c.get("/api/fixes", headers={"Host": "127.0.0.1:5000"})
 
     assert response.status_code == 200
-    assert response.get_json()["fixes"] == [
-        {
-            "id": "IP-01",
-            "name": "Renew address",
-            "symptom": "Address issue",
-            "explanation": "Refresh the lease.",
-            "admin": False,
-            "risk": "low",
-            "reboot": False,
-            "detection_only": False,
-        }
-    ]
+    fixes = response.get_json()["fixes"]
+    assert len(fixes) == len(catalog.entries)
+    by_id = {fix["id"]: fix for fix in fixes}
+    assert set(by_id) == set(catalog.ids)
+    assert set(by_id["ADP-01"]) == {
+        "id",
+        "name",
+        "symptom",
+        "explanation",
+        "admin",
+        "risk",
+        "reboot",
+        "detection_only",
+    }
+    assert by_id["ADP-01"]["detection_only"] is False
 
 
 
@@ -450,7 +441,7 @@ class FakeExecutor:
     def prepare(self, entry, snapshot=None, overrides=None):
         self.prepare_calls += 1
         return FakePlan()
-    def run(self, entry, plan=None, assume_yes=True, dry_run=False, confirm=None, isolation=None, snapshot=None):
+    def run(self, entry, plan=None, assume_yes=True, dry_run=False, confirm=None, isolation=None):
         self.run_calls += 1
         self.last_run = {'dry_run': dry_run, 'assume_yes': assume_yes}
         return FakeOutcome()
@@ -668,3 +659,82 @@ def test_fix_dry_run_flag_passed(client):
         time.sleep(0.05)
     assert j['status'] == 'done'
     assert ex.last_run and ex.last_run.get('dry_run') is True
+
+
+def test_fix_execute_dry_run_against_real_executor(client, tmp_path):
+    """Regression: the web layer must call FixExecutor.run() with the real
+    signature (a stray ``snapshot=`` kwarg used to fail every execution)."""
+    c, st = client
+    token = _boot(c, st)
+    runner = FakeRunner(default=(0, "", ""))
+    catalog = load_catalog()
+    st.runtime.runner = runner
+    st.runtime.catalog = catalog
+    st.last_snapshot = DummySnap()
+    st.runtime.executor = lambda: FixExecutor(
+        runner,
+        None,
+        st.logger,
+        st.runtime.engine,
+        catalog,
+        backup_dir=tmp_path,
+    )
+
+    plan = c.post('/api/fix/plan', headers=_post_headers(st, token), json={'fix_id': 'DNS-01'})
+    assert plan.status_code == 200
+    conf = plan.get_json()['confirmation_token']
+    execute = c.post(
+        '/api/fix/execute',
+        headers=_post_headers(st, token),
+        json={'confirmation_token': conf, 'dry_run': True},
+    )
+    assert execute.status_code == 200
+    job_id = execute.get_json()['job_id']
+
+    import time
+    job = st.jobs.get(job_id)
+    deadline = time.monotonic() + 5
+    while job.status in {'queued', 'running', 'cancelling'} and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+    assert job.status == 'done'
+    assert job.result['status'] == 'dry_run'
+    assert job.result['fix_id'] == 'DNS-01'
+    assert runner.calls == []
+
+
+def test_web_state_falls_back_to_empty_catalog(monkeypatch, tmp_path):
+    """If fixes.json cannot be loaded the server must still start and serve
+    an empty fix list (the old fallback crashed with a TypeError)."""
+    import config
+    import web.server as server
+
+    class DummyLogger:
+        session_id = "test-session"
+
+        def __getattr__(self, name):
+            def _noop(*_args, **_kwargs):
+                return None
+
+            return _noop
+
+    monkeypatch.setattr(server, "setup_logging", lambda *args, **kwargs: DummyLogger())
+    monkeypatch.setattr(
+        server,
+        "load_catalog",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("catalog unavailable")),
+    )
+    monkeypatch.setattr(config, "backup_dir", lambda: tmp_path)
+
+    state = server.WebState(mode="web")
+    assert list(state.runtime.catalog.entries) == []
+
+    state.port = 5000
+    app = server.create_app(state)
+    app.config["TESTING"] = True
+    client = app.test_client()
+    headers = {"Host": "127.0.0.1:5000"}
+    client.get(f"/__boot__?token={state.security.boot_token}", headers=headers)
+    response = client.get("/api/fixes", headers=headers)
+    assert response.status_code == 200
+    assert response.get_json() == {"fixes": []}

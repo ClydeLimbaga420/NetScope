@@ -25,3 +25,5 @@ Thumbs.db
 
 # Project prompt (internal)
 prompt.txt
+
+build/

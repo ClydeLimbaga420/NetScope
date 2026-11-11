@@ -8,7 +8,10 @@ import subprocess
 import sys
 import threading
 import time
+import types
 import urllib.request
+
+import pytest
 
 import config
 from web import run
@@ -123,6 +126,176 @@ def test_werkzeug_request_logs_route_to_netscope_without_duplicate_handlers():
         log.handlers = original_handlers
         log.setLevel(original_level)
         log.propagate = original_propagate
+
+
+class _MonitorRecorder:
+    def __init__(self):
+        self.events = []
+
+    def event(self, name, **fields):
+        self.events.append((name, fields))
+
+
+def _monitor_state(**overrides):
+    state = types.SimpleNamespace(
+        shutdown_event=threading.Event(),
+        should_shutdown=lambda: False,
+        logger=_MonitorRecorder(),
+    )
+    for key, value in overrides.items():
+        setattr(state, key, value)
+    return state
+
+
+@pytest.fixture
+def exit_guard(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
+    removed: list[int] = []
+    monkeypatch.setattr(run, "_remove_lock", lambda pid: removed.append(pid))
+
+    def fake_exit(code):
+        raise SystemExit(code)
+
+    monkeypatch.setattr(run.os, "_exit", fake_exit)
+    return removed
+
+
+def test_monitor_exits_process_on_api_shutdown_request(exit_guard):
+    state = _monitor_state()
+    state.shutdown_event.set()
+
+    with pytest.raises(SystemExit):
+        run._monitor(state, interval=0.01)
+
+    assert exit_guard == [run.os.getpid()]
+    assert state.logger.events[0][0] == "server_shutdown"
+    assert state.logger.events[0][1]["reason"] == "api_request"
+
+
+def test_monitor_exits_process_on_heartbeat_timeout(exit_guard):
+    state = _monitor_state(should_shutdown=lambda: True)
+
+    with pytest.raises(SystemExit):
+        run._monitor(state, interval=0.01)
+
+    assert state.logger.events[0][1]["reason"] == "heartbeat_timeout"
+    assert state.shutdown_event.is_set()
+    assert exit_guard == [run.os.getpid()]
+
+
+def test_monitor_keeps_running_while_heartbeat_and_jobs_are_active(exit_guard):
+    state = _monitor_state(should_shutdown=lambda: False)
+
+    def run_monitor():
+        try:
+            run._monitor(state, 0.01)
+        except SystemExit:
+            pass  # the patched os._exit from the shared exit guard
+
+    thread = threading.Thread(target=run_monitor, daemon=True)
+    thread.start()
+    thread.join(0.3)
+
+    assert thread.is_alive()
+    assert not state.shutdown_event.is_set()
+    assert exit_guard == []
+    state.shutdown_event.set()
+    thread.join(2)
+
+
+class _BindRecorder:
+    def __init__(self):
+        self.events = []
+
+    def event(self, name, **fields):
+        self.events.append((name, fields))
+
+    def error(self, name, **fields):
+        self.events.append((name, fields))
+
+
+def _bind_failure_state(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
+    recorder = _BindRecorder()
+
+    class State:
+        def __init__(self):
+            class Security:
+                boot_token = "boot-token"
+
+            self.security = Security()
+            self.logger = recorder
+            self.shutdown_event = threading.Event()
+            self.port = None
+
+        def should_shutdown(self):
+            return False
+
+    monkeypatch.setattr(run, "WebState", lambda mode="web": State())
+    monkeypatch.setattr(run, "create_app", lambda state: object())
+    return recorder
+
+
+def test_bind_failure_surfaces_as_systemexit_and_returns_cleanly(monkeypatch, tmp_path, capsys):
+    """Regression (found by the live repro): werkzeug 3.x turns bind errors
+    into print(strerror) + sys.exit(1) inside BaseWSGIServer.__init__, so the
+    failure reaches run_web_ui as SystemExit(1), not OSError."""
+    recorder = _bind_failure_state(monkeypatch, tmp_path)
+
+    def fake_make_server(*_args, **_kwargs):
+        raise SystemExit(1)
+
+    monkeypatch.setattr(run, "make_server", fake_make_server)
+
+    assert run.run_web_ui(port=run._find_free_port(), no_browser=True) == 1
+
+    names = [name for name, _fields in recorder.events]
+    assert "server_bind_failed" in names
+    assert "__boot__" not in capsys.readouterr().out  # no boot URL for a dead server
+    assert not run._lock_path().exists()  # no port lock published
+    handle = run._acquire_instance_lock()  # instance lock was released
+    assert handle is not None
+    run._release_instance_lock(handle)
+
+
+def test_bind_failure_surfaces_as_oserror_and_returns_cleanly(monkeypatch, tmp_path, capsys):
+    """Direct OSError binds (other werkzeug versions) take the same clean path."""
+    recorder = _bind_failure_state(monkeypatch, tmp_path)
+
+    def fake_make_server(*_args, **_kwargs):
+        raise OSError(10013, "An attempt was made to access a socket in a way forbidden")
+
+    monkeypatch.setattr(run, "make_server", fake_make_server)
+
+    assert run.run_web_ui(port=run._find_free_port(), no_browser=True) == 1
+
+    names = [name for name, _fields in recorder.events]
+    assert "server_bind_failed" in names
+    assert "__boot__" not in capsys.readouterr().out
+    handle = run._acquire_instance_lock()
+    assert handle is not None
+    run._release_instance_lock(handle)
+
+
+def test_run_web_ui_serves_until_keyboard_interrupt(monkeypatch, tmp_path, capsys):
+    """Bind happens before the boot URL is advertised; serving runs until Ctrl+C."""
+    recorder = _bind_failure_state(monkeypatch, tmp_path)
+
+    class Srv:
+        def serve_forever(self):
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(run, "make_server", lambda *_args, **_kwargs: Srv())
+
+    assert run.run_web_ui(port=run._find_free_port(), no_browser=True) == 0
+
+    assert capsys.readouterr().out.startswith("http://127.0.0.1:")
+    names = [name for name, _fields in recorder.events]
+    assert "server_start" in names
+    assert "server_shutdown" in names
+    handle = run._acquire_instance_lock()
+    assert handle is not None
+    run._release_instance_lock(handle)
 
 
 def test_source_cli_starts_local_web_server(tmp_path):

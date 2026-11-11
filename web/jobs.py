@@ -25,6 +25,7 @@ class Job:
     result: Any = None
     error: str | None = None
     events: "queue.Queue[dict[str, Any]]" = field(default_factory=queue.Queue)
+    events_done: bool = False
     cancel_event: threading.Event = field(default_factory=threading.Event)
     lock: threading.Lock = field(default_factory=threading.Lock)
     meta: dict[str, Any] = field(default_factory=dict)
@@ -59,6 +60,13 @@ class JobManager:
     def get(self, job_id: str) -> Job | None:
         with self._lock:
             return self._jobs.get(job_id)
+
+    def has_active_jobs(self) -> bool:
+        with self._lock:
+            return any(
+                job.status in {"queued", "running", "cancelling"}
+                for job in self._jobs.values()
+            )
 
     def can_start_fix(self) -> bool:
         with self._lock:
@@ -117,6 +125,8 @@ class JobManager:
                 job.events.put({"type": "error", "error": str(exc)})
             finally:
                 job.events.put({"type": "end"})
+                with job.lock:
+                    job.events_done = True
 
         thread = threading.Thread(target=runner, daemon=True)
         thread.start()
@@ -143,12 +153,17 @@ class JobManager:
             yield ": ok\n\n"
             while True:
                 try:
-                    event = job.events.get(timeout=15)
+                    event = job.events.get_nowait()
                 except queue.Empty:
-                    if job.status in {"done", "error", "cancelled"}:
+                    if job.events_done or job.status in {"done", "error", "cancelled"}:
                         break
-                    yield ": keep-alive\n\n"
-                    continue
+                    try:
+                        event = job.events.get(timeout=15)
+                    except queue.Empty:
+                        if job.status in {"done", "error", "cancelled"}:
+                            break
+                        yield ": keep-alive\n\n"
+                        continue
                 yield f"data: {json.dumps(event, default=str)}\n\n"
                 if event.get("type") == "end":
                     break
