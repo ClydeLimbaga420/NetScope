@@ -940,3 +940,42 @@ Session 38 (initial load + nav fix):
 Session 38b (polyfill + verification):
 - Added a small append/replaceChildren polyfill to web-init.js for older browsers.
 - Re-verified node --check on all web JS and full suite 213 passed.
+Session 39 (diagnostics rail: per-step Run + descriptions):
+- Removed the **Run all checks (1–7)** button from the Troubleshoot rail; users
+  now run individual steps instead.
+- Each diagnostics/repair rail item now has its own **Run** button on the right,
+  so a single command can be executed without first selecting the step.
+- Every rail item now shows a short plain-language description under its title
+  (2-line clamp), sourced from the step metadata.
+- Added running-state animation: a spinner on the per-step Run button, a pulse on
+  the item marker, and a subtle shimmer across the row while a check executes.
+- Engine-backed diagnosis now toggles an `engine-busy` class on the diagnostics
+  rails so per-step Run buttons are also disabled while an engine job is active.
+- Updated both the web UI and legacy dashboard templates/JS/CSS, removed the
+  dead `runAllChecks()` code and its listener, and refreshed the README wording.
+- Verified: node --check clean; full suite 213 passed.
+
+Session 40 (web UI freeze fix + engine rail per-step Run):
+- Symptom: "crashing when I open the exe" - running `netscope.py gui` froze the
+  page ~1-2s after load (the user relaunched three times in three minutes).
+  Server and all APIs returned 200; only client-side JS died (status polling
+  stopped, then heartbeat timeout shut the server down).
+- Root cause: Session 39's engine-ui.js edit accidentally REPLACED the entire
+  `renderDetail()` function with `getProgressStats()` while leaving the
+  `renderDetail()` call inside `render()`. Every render threw ReferenceError,
+  and guardLegacyContent's MutationObserver kept re-calling the broken render
+  in an infinite observe->render->throw->mutate loop, hard-freezing the page.
+- Fix 1: restored `renderDetail()` (detail pane for checks/fixes + tool panel).
+- Fix 2: completed Session 39 in the live engine rail (engine-ui renderRail had
+  no Run buttons/descriptions - only the legacy rail did, which engine-ui
+  wipes): each engine rail item is now wrapped in `.diag-row` with a
+  `.diag-item-desc` plain-language description and a `.diag-item-run` button
+  that runs that check's layer via /api/diagnose (layers=[layer]) through the
+  same job stream; running items get the diagSpin/diagShimmer/pulse animations
+  and the engine-busy class disables buttons during jobs.
+- Fix 3: added `description` to CheckDescriptor (31 plain-language one-liners)
+  and exposed it via /api/checks; loadChecks/runDiagnosis carry it through.
+- Verified: node --check clean; full suite 214 passed (new
+  test_checks_endpoint_lists_planned_check_descriptions); live 32s headless
+  Edge page test showed /api/status polling continuing the whole window
+  (previously it stopped after ~2 polls) and no new web_error entries.

@@ -40,14 +40,16 @@
       run.disabled = busy;
       run.textContent = busy ? (label || "Running...") : "Run diagnosis";
     }
-    const legacy = $("run-all-checks");
-    if (legacy) legacy.disabled = busy;
     const cancel = $("engine-cancel-job");
     if (cancel) cancel.disabled = !busy || !state.jobId;
     const gateway = $("auto-configure-gateway");
     if (gateway) gateway.disabled = busy;
     const adminButton = $("run-as-admin");
     if (adminButton) adminButton.disabled = busy;
+    ["check-steps", "repair-steps"].forEach((id) => {
+      const rail = $(id);
+      if (rail) rail.classList.toggle("engine-busy", busy);
+    });
     if (redraw !== false) render();
   }
 
@@ -115,15 +117,23 @@
       return;
     }
     items.forEach((item, index) => {
+      const running = item.status === "running";
+      const row = element("div", ["diag-row", running ? "running" : ""].filter(Boolean).join(" "));
       const button = element("button", `diag-item ${kind} ${statusClass(item.status)}${item.id === state.selectedId ? " selected" : ""}`);
       button.type = "button";
       button.dataset.engineItem = item.id;
       const number = element("span", "diag-item-index", statusClass(item.status) === "success" ? "✓" : statusClass(item.status) === "error" ? "!" : String(index + 1).padStart(2, "0"));
       const text = element("span", "diag-item-text");
       text.append(element("strong", "", resultTitle(item)));
-      text.append(element("small", "", item.status || (kind === "repair" ? item.risk : item.layer)));
+      text.append(element("small", "diag-item-desc", item.description || item.status || (kind === "repair" ? item.risk : item.layer)));
       button.append(number, text);
-      container.append(button);
+      const runButton = element("button", ["diag-item-run", running ? "running" : ""].filter(Boolean).join(" "));
+      runButton.type = "button";
+      runButton.dataset.runItem = item.id;
+      runButton.textContent = running ? "Running" : "Run";
+      runButton.title = running ? "Running this check..." : `Run check: ${resultTitle(item)}`;
+      row.append(button, runButton);
+      container.append(row);
     });
   }
 
@@ -334,25 +344,50 @@
     renderToolPanel(stage);
   }
 
+  function getProgressStats() {
+    const total = state.checks.length;
+    const completed = state.checks.filter((item) => !["pending", "running"].includes(item.status)).length;
+    const passed = state.checks.filter((item) => ["pass", "resolved", "success", "done"].includes(item.status)).length;
+    const failed = state.checks.filter((item) => ["fail", "error", "warn", "warning", "cancelled"].includes(item.status)).length;
+    const running = state.checks.filter((item) => item.status === "running").length;
+    return { total, completed, passed, failed, running };
+  }
+
   function render() {
     const checks = $("check-steps");
     if (!checks) return;
     renderRail(checks, state.checks, "check");
     renderDetail();
-    const planned = state.checks.filter(i => i.status === "pending").length;
-    const total = state.checks.length - planned;
-    const complete = state.checks.filter(i => !["running","pending"].includes(i.status)).length;
+    const stats = getProgressStats();
     const summary = $("troubleshoot-summary");
     const percent = $("troubleshoot-percent");
     const fill = $("diag-progress-fill");
     if (summary) {
-      if (state.busy) summary.textContent = `Running diagnostics (${complete} of ${total})`;
-      else if (planned && !total) summary.textContent = `${planned} checks ready to run`;
-      else summary.textContent = `${complete} checks in the latest diagnosis`;
+      if (!stats.total) {
+        summary.textContent = "Loading troubleshooting steps...";
+      } else if (state.busy) {
+        summary.textContent = `${stats.passed} passed • ${stats.failed} failed • ${stats.completed}/${stats.total} checks complete`;
+      } else if (stats.completed === stats.total) {
+        summary.textContent = `${stats.passed} passed • ${stats.failed} failed • diagnosis complete`;
+      } else {
+        summary.textContent = `${stats.passed} passed • ${stats.failed} failed • ${stats.completed}/${stats.total} checks complete`;
+      }
     }
-    const value = total ? Math.round((complete / total) * 100) : 0;
+    const value = stats.total ? Math.round((stats.completed / stats.total) * 100) : 0;
     if (percent) percent.textContent = `${value}%`;
     if (fill) fill.style.width = `${value}%`;
+  }
+
+  function resetChecksForRun() {
+    state.checks = state.checks.map((item) => ({
+      ...item,
+      status: "pending",
+      pending: true,
+      message: "",
+      cause: null,
+      evidence: {},
+      fix_ids: [],
+    }));
   }
 
   function receiveCheck(result) {
@@ -360,10 +395,11 @@
     const index = state.checks.findIndex((item) => item.id === incoming.id);
     if (index >= 0) state.checks[index] = incoming;
     else state.checks.push(incoming);
-    // Drop pending placeholders for this layer so actual results replace them
-    const hasResultsForLayer = state.checks.some(i => i.layer === incoming.layer && !i.pending);
+    // Keep the checklist visible while checks resolve, and drop only stale
+    // pending placeholders from the same layer after real results arrive.
+    const hasResultsForLayer = state.checks.some((item) => item.layer === incoming.layer && !item.pending);
     if (hasResultsForLayer) {
-      state.checks = state.checks.filter(i => !(i.pending && i.layer === incoming.layer));
+      state.checks = state.checks.filter((item) => !(item.pending && item.layer === incoming.layer));
     }
     if (!state.selectedId) state.selectedId = incoming.id;
     render();
@@ -384,7 +420,6 @@
         state.jobId = null;
         if (job.result && job.result.results) {
           state.report = job.result;
-          state.checks = [];
           job.result.results.forEach(receiveCheck);
         }
       },
@@ -394,14 +429,38 @@
   async function runDiagnosis() {
     if (state.busy) return;
     setBusy(true, "Starting diagnosis...");
-    state.checks = [];
-    state.fixes = [];
+    if (!state.checks.length) {
+      state.checks = [];
+      const selectedLayers = Array.from(document.querySelectorAll("input[data-engine-layer]:checked"), (input) => input.dataset.engineLayer);
+      try {
+        const catalog = await api("/api/fixes");
+        state.fixes = catalog.fixes || [];
+      } catch (_error) {
+        state.fixes = [];
+      }
+      const checksPayload = await api("/api/checks");
+      const planned = (checksPayload.checks || []).map((c) => ({
+        id: c.id,
+        layer: c.layer,
+        title: c.title,
+        description: c.description || "",
+        status: "pending",
+        pending: true,
+        message: "",
+        cause: null,
+        evidence: {},
+        fix_ids: [],
+      }));
+      state.checks = planned;
+      state.checksLoaded = true;
+    } else {
+      resetChecksForRun();
+    }
+    state.fixes = state.fixes || [];
     state.selectedId = null;
     state.report = null;
     const selectedLayers = Array.from(document.querySelectorAll("input[data-engine-layer]:checked"), (input) => input.dataset.engineLayer);
     try {
-      const catalog = await api("/api/fixes");
-      state.fixes = catalog.fixes || [];
       const started = await api("/api/diagnose", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ layers: selectedLayers }) });
       state.jobId = started.job_id;
       setBusy(true, "Running diagnostics...");
@@ -413,6 +472,47 @@
       if (stage) {
         stage.replaceChildren(element("p", "step-reason error", error.message));
       }
+    } finally {
+      state.jobId = null;
+      setBusy(false);
+    }
+  }
+
+  async function runSingleCheck(item) {
+    if (state.busy) return;
+    const layer = item.layer;
+    if (!state.fixes.length) {
+      try {
+        const catalog = await api("/api/fixes");
+        state.fixes = catalog.fixes || [];
+      } catch (_error) {
+        state.fixes = [];
+      }
+    }
+    state.checks = state.checks.map((entry) => (
+      entry.layer === layer
+        ? { ...entry, status: "running", pending: true, message: "", cause: null, evidence: {}, fix_ids: [] }
+        : entry
+    ));
+    state.selectedId = item.id;
+    state.report = null;
+    setBusy(true, "Running check...");
+    try {
+      const started = await api("/api/diagnose", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ layers: [layer] }) });
+      state.jobId = started.job_id;
+      setBusy(true, "Running diagnostics...");
+      const job = await followJob(state.jobId);
+      if (job.status === "error") throw new Error(job.error || "Diagnosis failed.");
+      if (job.status === "cancelled") state.checks.forEach((entry) => { if (entry.status === "running") entry.status = "skip"; });
+    } catch (error) {
+      state.checks = state.checks.map((entry) => (
+        entry.layer === layer && entry.status === "running"
+          ? { ...entry, status: "error", message: error.message || "This check could not run." }
+          : entry
+      ));
+      render();
+      const stage = $("diag-stage");
+      if (stage) stage.append(element("p", "step-reason error", error.message));
     } finally {
       state.jobId = null;
       setBusy(false);
@@ -731,6 +831,7 @@
         id: c.id,
         layer: c.layer,
         title: c.title,
+        description: c.description || "",
         status: "pending",
         pending: true,
         message: "",
@@ -758,7 +859,7 @@
   }
 
   function initialize() {
-    // Adopt the shared troubleshoot controls: replacing each node with a
+    // Adopt the shared troubleshoot content: replacing each node with a
     // listener-free clone drops the legacy dashboard handlers that were
     // registered first (registration order at the target beats capture), so a
     // click cannot run both the legacy registry checks and the engine
@@ -782,6 +883,13 @@
       configureGateway();
     });
     if (checks) checks.addEventListener("click", (event) => {
+      const runButton = event.target.closest(".diag-item-run");
+      if (runButton) {
+        event.preventDefault();
+        const item = state.checks.find((entry) => entry.id === runButton.dataset.runItem);
+        if (item) runSingleCheck(item);
+        return;
+      }
       const item = event.target.closest("[data-engine-item]");
       if (!item) return;
       event.preventDefault();

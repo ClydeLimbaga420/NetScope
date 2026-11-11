@@ -1043,25 +1043,49 @@ function renderRailGroup(steps, container) {
         const unavailable =
             !step.supported || !step.available;
 
+        const runDisabled =
+            unavailable || status === "running";
+
         return `
 
-            <button
-                class="diag-item ${step.kind} ${status} ${selected} ${
-                    unavailable ? "unavailable" : ""
-                }"
-                type="button"
-                data-id="${escapeHtml(step.id)}">
+            <div class="diag-row ${status}">
 
-                <span class="diag-item-index">
-                    ${stepMarker(step, status, index)}
-                </span>
+                <button
+                    class="diag-item ${step.kind} ${status} ${selected} ${
+                        unavailable ? "unavailable" : ""
+                    }"
+                    type="button"
+                    data-id="${escapeHtml(step.id)}">
 
-                <span class="diag-item-text">
-                    <strong>${escapeHtml(step.title)}</strong>
-                    <small>${statusLabel(step, status)}</small>
-                </span>
+                    <span class="diag-item-index">
+                        ${stepMarker(step, status, index)}
+                    </span>
 
-            </button>
+                    <span class="diag-item-text">
+                        <strong>${escapeHtml(step.title)}</strong>
+                        <span class="diag-item-desc">${
+                            escapeHtml(step.description || statusLabel(step, status))
+                        }</span>
+                    </span>
+
+                </button>
+
+                <button
+                    class="diag-item-run ${status}"
+                    type="button"
+                    data-id="${escapeHtml(step.id)}"
+                    ${runDisabled ? "disabled" : ""}
+                    title="${
+                        status === "running"
+                            ? "Running this step..."
+                            : `Run ${step.kind === "repair" ? "repair" : "check"}: ${
+                                escapeHtml(step.title)
+                            }`
+                    }">
+                    ${status === "running" ? "Running" : "Run"}
+                </button>
+
+            </div>
 
         `;
 
@@ -1256,7 +1280,7 @@ function renderDetail() {
                 <span class="diag-detail-hint">${hint}</span>
 
                 <button
-                    class="step-run"
+                    class="step-run ${status === "running" ? "running" : ""}"
                     type="button"
                     data-id="${escapeHtml(step.id)}"
                     ${disabled ? "disabled" : ""}>
@@ -1420,43 +1444,6 @@ async function runDiagnostic(step) {
         updateDiagnosticsSummary();
 
     }
-
-}
-
-
-async function runAllChecks() {
-
-    const button = $("run-all-checks");
-    const engineButton = $("run-engine-diagnosis");
-
-    const checks = diagnosticSteps.filter(
-        step =>
-            step.kind === "check" &&
-            step.supported &&
-            step.available
-    );
-
-    if (!checks.length) {
-        return;
-    }
-
-    button.disabled = true;
-    if (engineButton) engineButton.disabled = true;
-    button.textContent = "Running checks 1–7...";
-
-    for (const step of checks) {
-
-        selectedDiagnosticId = step.id;
-
-        renderDiagnostics();
-
-        await runDiagnostic(step);
-
-    }
-
-    button.disabled = false;
-    if (engineButton) engineButton.disabled = false;
-    button.textContent = "Run all checks (1–7)";
 
 }
 
@@ -1669,6 +1656,23 @@ window.addEventListener(
 
 function selectDiagnosticStep(event) {
 
+    const runButton = event.target.closest(".diag-item-run");
+
+    if (runButton) {
+
+        const step = diagnosticSteps.find(
+            item => item.id === runButton.dataset.id
+        );
+
+        if (step) {
+            selectedDiagnosticId = step.id;
+            runDiagnostic(step);
+        }
+
+        return;
+
+    }
+
     const item = event.target.closest(".diag-item");
 
     if (!item) {
@@ -1734,12 +1738,6 @@ $("diag-stage").addEventListener(
         }
 
     }
-);
-
-
-$("run-all-checks").addEventListener(
-    "click",
-    runAllChecks
 );
 
 

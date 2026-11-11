@@ -36,7 +36,8 @@ while the localhost web UI replaces it.
 - Desktop GUI with findings detail, fix preview, and unresolved-causes panel
 - Localhost web UI with per-check streaming, a repair library, and local assets
 - Legacy LAN dashboard for other devices on the same network
-- Separate engine-backed Run diagnosis and legacy Run all checks (1–7) actions
+- Separate engine-backed Run diagnosis action in the web UI
+- Per-step Run buttons on every diagnostics and repair item
 
 ### Dashboard
 - Combined Internet and Gateway connectivity status card
@@ -50,7 +51,9 @@ while the localhost web UI replaces it.
 - Custom device labels saved in the browser
 - Eight-row device table with in-panel scrolling
 - Guided troubleshooting workflow with grouped checks and repairs
-- Run all checks (1–7) from the diagnostics rail
+- Run buttons on every diagnostic and repair item
+- Simple descriptions under each diagnostics title
+- Animated running state on in-progress checks
 - One-click Configure gateway button when no default gateway is detected
 - Separate engine-backed Run diagnosis action in the web UI
 

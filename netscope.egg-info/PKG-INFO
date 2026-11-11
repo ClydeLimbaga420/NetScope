@@ -35,7 +35,8 @@ while the localhost web UI replaces it.
 
 ### Diagnostics and fixes
 - Engine-backed diagnosis across eight network layers
-- 61-entry fix catalog with exact-command preview and dry-run
+- 62-entry fix catalog with exact-command preview and dry-run
+- Automatic default-gateway detection and one-click configuration (`IP-09`)
 - Admin, risk, and reboot labels; typed confirmation for high-risk steps
 - Verification by re-checking and rollback from saved snapshots
 - Unresolved-cause ranking when a fix does not help ("probable"/"possible")
@@ -50,9 +51,13 @@ while the localhost web UI replaces it.
 - Desktop GUI with findings detail, fix preview, and unresolved-causes panel
 - Localhost web UI with per-check streaming, a repair library, and local assets
 - Legacy LAN dashboard for other devices on the same network
+- Separate engine-backed Run diagnosis action in the web UI
+- Per-step Run buttons on every diagnostics and repair item
 
 ### Dashboard
+- Combined Internet and Gateway connectivity status card
 - Internet connectivity and ping latency monitoring
+- Packet loss monitoring for internet and gateway pings
 - Smoothed live bandwidth charts
 - Local IP, default gateway, and adapter information
 - Active device discovery through ARP
@@ -61,6 +66,11 @@ while the localhost web UI replaces it.
 - Custom device labels saved in the browser
 - Eight-row device table with in-panel scrolling
 - Guided troubleshooting workflow with grouped checks and repairs
+- Run buttons on every diagnostic and repair item
+- Simple descriptions under each diagnostics title
+- Animated running state on in-progress checks
+- One-click Configure gateway button when no default gateway is detected
+- Separate engine-backed Run diagnosis action in the web UI
 
 ## Technologies
 
@@ -197,7 +207,6 @@ The SQLite schema in database/db.py is not currently used by the application.
 - mDNS/SSDP device name discovery
 - Historical network statistics
 - SQLite monitoring history
-- Packet loss monitoring
 - Per-device traffic analysis
 - Device type inference
 - Export device list

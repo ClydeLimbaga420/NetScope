@@ -5,6 +5,7 @@ import shutil
 
 import pytest
 
+from core.checks.descriptors import CHECK_DESCRIPTORS
 from core.runner import FakeRunner, SubprocessRunner
 from fixes.catalog import load_catalog
 from fixes.executor import FixExecutor
@@ -127,6 +128,20 @@ def test_session_and_status(client):
     assert r.status_code == 403
     r = c.post('/api/heartbeat', headers={'Host': '127.0.0.1:5000', 'Origin': 'http://127.0.0.1:5000', 'X-NetScope-Token': token, 'Content-Type': 'application/json'}, json={})
     assert r.status_code == 200
+
+
+def test_checks_endpoint_lists_planned_check_descriptions(client):
+    c, st = client
+    c.get(f'/__boot__?token={st.security.boot_token}', headers={'Host': '127.0.0.1:5000'})
+    r = c.get('/api/checks', headers={'Host': '127.0.0.1:5000'})
+    assert r.status_code == 200
+    checks = r.get_json()['checks']
+    assert len(checks) == len(CHECK_DESCRIPTORS)
+    for entry, descriptor in zip(checks, CHECK_DESCRIPTORS):
+        assert entry['id'] == descriptor.id
+        assert entry['layer'] == descriptor.layer.value
+        assert entry['title'] == descriptor.title
+        assert entry['description'].strip(), f"{descriptor.id} is missing its plain-language description"
 
 
 def test_diagnose_job(client):

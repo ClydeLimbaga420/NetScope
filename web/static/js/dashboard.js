@@ -1000,6 +1000,9 @@ function renderRailGroup(steps, container) {
         const selected = step.id === selectedDiagnosticId ? "selected" : "";
         const unavailable = !step.supported || !step.available;
 
+        const row = document.createElement("div");
+        row.className = ["diag-row", status].filter(Boolean).join(" ");
+
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = ["diag-item", step.kind, status, selected, unavailable ? "unavailable" : ""].filter(Boolean).join(" ");
@@ -1013,14 +1016,28 @@ function renderRailGroup(steps, container) {
         textWrap.className = "diag-item-text";
         const strong = document.createElement("strong");
         strong.textContent = String(step.title || "");
-        const small = document.createElement("small");
-        small.textContent = String(statusLabel(step, status));
+        const desc = document.createElement("span");
+        desc.className = "diag-item-desc";
+        desc.textContent = String(step.description || statusLabel(step, status));
         textWrap.appendChild(strong);
-        textWrap.appendChild(small);
+        textWrap.appendChild(desc);
 
         btn.appendChild(idx);
         btn.appendChild(textWrap);
-        container.appendChild(btn);
+
+        const runBtn = document.createElement("button");
+        runBtn.type = "button";
+        runBtn.className = ["diag-item-run", status].filter(Boolean).join(" ");
+        runBtn.dataset.id = String(step.id || "");
+        runBtn.disabled = Boolean(unavailable || status === "running");
+        runBtn.textContent = status === "running" ? "Running" : "Run";
+        runBtn.title = status === "running"
+            ? "Running this step..."
+            : `Run ${step.kind === "repair" ? "repair" : "check"}: ${step.title || ""}`;
+
+        row.appendChild(btn);
+        row.appendChild(runBtn);
+        container.appendChild(row);
     });
 }
 
@@ -1190,7 +1207,7 @@ function renderDetail() {
     hintEl.className = "diag-detail-hint";
     hintEl.textContent = hint;
     const runBtn = document.createElement("button");
-    runBtn.className = "step-run";
+    runBtn.className = ["step-run", status === "running" ? "running" : ""].filter(Boolean).join(" ");
     runBtn.type = "button";
     runBtn.dataset.id = String(step.id || "");
     runBtn.disabled = Boolean(disabled);
@@ -1349,43 +1366,6 @@ async function runDiagnostic(step) {
 }
 
 
-async function runAllChecks() {
-
-    const button = $("run-all-checks");
-    const engineButton = $("run-engine-diagnosis");
-
-    const checks = diagnosticSteps.filter(
-        step =>
-            step.kind === "check" &&
-            step.supported &&
-            step.available
-    );
-
-    if (!checks.length) {
-        return;
-    }
-
-    button.disabled = true;
-    if (engineButton) engineButton.disabled = true;
-    button.textContent = "Running checks 1–7...";
-
-    for (const step of checks) {
-
-        selectedDiagnosticId = step.id;
-
-        renderDiagnostics();
-
-        await runDiagnostic(step);
-
-    }
-
-    button.disabled = false;
-    if (engineButton) engineButton.disabled = false;
-    button.textContent = "Run all checks (1–7)";
-
-}
-
-
 async function loadDiagnostics() {
 
     try {
@@ -1465,6 +1445,23 @@ window.addEventListener(
 
 function selectDiagnosticStep(event) {
 
+    const runButton = event.target.closest(".diag-item-run");
+
+    if (runButton) {
+
+        const step = diagnosticSteps.find(
+            item => item.id === runButton.dataset.id
+        );
+
+        if (step) {
+            selectedDiagnosticId = step.id;
+            runDiagnostic(step);
+        }
+
+        return;
+
+    }
+
     const item = event.target.closest(".diag-item");
 
     if (!item) {
@@ -1533,12 +1530,6 @@ if (diagStageEl) diagStageEl.addEventListener(
         }
 
     }
-);
-
-
-$("run-all-checks").addEventListener(
-    "click",
-    runAllChecks
 );
 
 
