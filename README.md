@@ -188,6 +188,33 @@ The SQLite schema in database/db.py is not currently used by the application.
 - Export device list
 - Packaged executable, installer, and GitHub Actions CI
 
+## Running
+
+### One-time dev setup (creates the `netscope` command)
+
+```bash
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pip install -e .
+```
+
+After that, just type `netscope` from any shell:
+
+```bash
+netscope --help
+netscope diagnose
+netscope gui
+netscope info
+```
+
+### From source (without editable install)
+
+```bash
+python app.py                    # legacy Flask dashboard on http://127.0.0.1:5000
+.\.venv\Scripts\python.exe netscope.py --help
+.\.venv\Scripts\python.exe netscope.py gui
+```
+
 ## License
 
 MIT License

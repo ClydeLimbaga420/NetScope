@@ -390,3 +390,28 @@ raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
   stubs. Document: LAN-09 stays DETECT-ONLY (deliberate deviation from
   `prompt.txt`'s optional registry fix) and the console-flash launcher
   tradeoff.
+## Dev install / running
+- `pip install -e .` (after requirements) exposes the `netscope` command from any
+  shell; a `netscope.bat` wrapper is also provided in `.venv\Scripts`. Run
+  `netscope --help`, `netscope diagnose`, `netscope gui`.
+- Troubleshoot now lists all 32 planned checks before a run (via
+  `/api/checks` + `core/checks/descriptors.py`); repairs live only in the
+  Repair Library. The diagnostic rail scrolls independently of the detail pane.
+## Packaging fix (dev install root cause)
+- Bug: `netscope` command failed with `ModuleNotFoundError: No module named 'config'`
+  because flat imports (`import config`, `from modules...`) assume the project
+  root is importable, but `pyproject.toml` only declared packages `cli`, `core`,
+  `fixes`, `gui`, `powershell`, `web`. `config.py` (a top-level module) and
+  the `modules` package were not declared, so the editable finder never exposed
+  them.
+- Fix: `pyproject.toml` now sets `py-modules = ["config"]` and adds `modules*`
+  to `[tool.setuptools.packages.find] include`. No PYTHONPATH tricks or wrapper
+  scripts. Deleted the masking `.venv\Scripts\netscope.bat`.
+- Verify with venv activated/on PATH: `netscope --help`, `netscope diagnose`,
+  `netscope gui` work from any directory.
+## Stale-UI fix (Session 37)
+- `refreshDevices` referenced an undefined `devices` variable, so the device
+  table never updated (stuck on "Loading..."). refreshStatus could throw on
+  missing fields (latency_ms strict-null check). Both fixed with null-safe
+  guards and explicit 401 handling. All /api/* endpoints verified to return
+  real data with a valid session cookie.

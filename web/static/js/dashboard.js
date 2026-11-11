@@ -70,7 +70,8 @@ function areaGradient(context, color) {
 // TRAFFIC CHART
 // =====================================
 
-const chart = new Chart(
+let chart = null;
+try { chart = new Chart(
     $("traffic-chart"),
     {
         type: "line",
@@ -286,7 +287,7 @@ const chart = new Chart(
         }
 
     }
-);
+); } catch (e) { console.error('chart init failed', e); chart = null; }
 
 
 // =====================================
@@ -311,15 +312,22 @@ async function refreshStatus() {
 
         const response = await fetch("/api/status");
 
+        if (response.status === 401) {
+            $("internet-status").textContent = "Session expired";
+            $("gateway-status").textContent = "Session expired";
+            console.error("NetScope session expired; reopen via 'netscope gui'.");
+            return;
+        }
+
         if (!response.ok) {
             throw new Error("API request failed");
         }
 
-        const data = await response.json();
+        const data = await response.json() || {};
 
-        const network = data.network;
-        const traffic = data.traffic;
-        const ping = data.internet_ping;
+        const network = data.network || {};
+        const traffic = data.traffic || {};
+        const ping = data.internet_ping || {};
         const gatewayPing = data.gateway_ping || {};
         const problems = Array.isArray(data.problems) ? data.problems : [];
 
@@ -425,7 +433,7 @@ async function refreshStatus() {
         // LATENCY
 
         $("latency").textContent =
-            ping.latency_ms === null
+            ping.latency_ms == null
                 ? "\u2014"
                 : ping.latency_ms.toFixed(1);
 
@@ -531,7 +539,7 @@ async function refreshStatus() {
 
         }
 
-        chart.update();
+        if (chart) chart.update();
 
     }
 
@@ -745,18 +753,33 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
 
         const response = await fetch("/api/devices");
 
-        const data = await response.json();
+        if (response.status === 401) {
+            body.replaceChildren();
+            const tr = document.createElement("tr");
+            const td = document.createElement("td");
+            td.colSpan = 6;
+            td.className = "empty";
+            td.textContent = "Session expired. Reopen NetScope via 'netscope gui'."
+            tr.appendChild(td);
+            body.appendChild(tr);
+            updateDeviceCount(null);
+            return;
+        }
+
+
+        const data = await response.json() || {};
+        const devices = Array.isArray(data.devices) ? data.devices : [];
 
         const aliases = loadDeviceAliases();
 
-        if (data.devices.length > 0) {
+        if (devices.length > 0) {
 
             missingNames = data.devices.some(
                 device => !(aliases[device.mac] || device.name)
             );
 
             body.replaceChildren();
-            data.devices.forEach(device => {
+            devices.forEach(device => {
                 const name = aliases[device.mac] || device.name;
                 const label = name || "Unnamed device";
                 const nameClass = name ? "device-name" : "device-name unnamed";
@@ -838,7 +861,7 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
             body.appendChild(tr);
         }
 
-        updateDeviceCount(data.devices.length);
+        updateDeviceCount(devices.length);
 
         applyDeviceScrollHeight();
 
@@ -1577,8 +1600,8 @@ function showView(viewName, options = {}) {
         window.requestAnimationFrame(() => {
             applyDeviceScrollHeight();
             if (typeof chart !== 'undefined') {
-                chart.resize();
-                chart.update();
+                if (chart) chart.resize();
+                if (chart) chart.update();
             }
         });
         if (scrollToId) {

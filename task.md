@@ -881,3 +881,48 @@ Session 34 (web UI: elevation and repair library):
 - Added tests for the detail endpoint, template ids, elevation cancellation and
   successful restart request. Full suite: 213 passed (2026-11-11); JS passes
   `node --check`.
+Session 35 (dev install + Troubleshoot UI improvements):
+- Added pyproject.toml with [project.scripts] netscope entry point so an
+  editable install (pip install -e .) exposes the `netscope` command after one
+  setup step. Created .venv\Scripts\netscope.bat wrapper (PYTHONPATH set to
+  project root) so `netscope` works from any shell without activating venv;
+  venv Scripts directory is on PATH after activation.
+- Fixed pyproject.toml TOML error (optional-dependencies -> project.optional-dependencies).
+- Added core/checks/descriptors.py with 32 CheckDescriptor entries so the web
+  UI can list all planned checks before a diagnosis runs.
+- Added GET /api/checks returning the descriptor list.
+- web/static/js/engine-ui.js: loadChecks() on init; pending rows shown with
+  layer badge; receiveCheck() drops pending placeholders for the layer when
+  real results arrive; render() computes progress excluding pending checks
+  and shows "N checks ready to run" before a run; renderDetail() shows
+  "This check has not run yet..." for pending selections; scrollable
+  diagnostic rail CSS (sticky, independent overflow) added to
+  web/static/css/web-overrides.css.
+- Removed the separate REPAIRS group from the Troubleshoot rail; repairs remain
+  only in the Repair Library view.
+- Updated README.md with one-time dev setup and `netscope` usage; docs/run.md
+  added with run instructions.
+- Full suite: 213 passed; node --check clean; /api/checks returns 32 checks.
+Session 36 (packaging fix - dev install root cause):
+- Root cause: flat imports (`import config`, `from modules...`) assume the project
+  root is importable, but pyproject.toml only declared packages cli, core, fixes,
+  gui, powershell, web. `config.py` (top-level module) and the `modules` package
+  were not declared, so the editable finder never exposed them -> ModuleNotFoundError.
+- Fix: pyproject.toml now sets `py-modules = ["config"]` and adds `modules*` to
+  `[tool.setuptools.packages.find] include`. Deleted the masking
+  `.venv\Scripts\netscope.bat` wrapper.
+- Verified: pip install -e . succeeds; `netscope --help`, `netscope diagnose`,
+  `netscope gui` work from the project dir and from %TEMP%; full suite 213 passed.
+Session 37 (stale web UI fix):
+- Root cause: refreshDevices referenced an undefined `devices` variable (ReferenceError)
+  because the `const devices = ...` declaration was missing, so the device table
+  never updated and stayed on "Loading...". refreshStatus could also throw on
+  missing fields (latency_ms === null check used strict equality, so undefined
+  slipped through to .toFixed and threw, leaving "Checking"/"API error").
+- Fix: added the missing `devices` declaration, made refreshStatus/refreshDevices
+  null-safe (data || {}, Array.isArray guards, latency_ms == null), and added
+  explicit 401 handling that shows "Session expired" instead of stale placeholders.
+- Verified: /api/status, /api/devices, /api/info, /api/checks, /api/diagnostics,
+  /api/packet-loss, /api/fixes all return 200 with real data when a valid
+  session cookie is present; without a cookie they correctly return 401.
+  node --check passes on both JS files; full suite 213 passed.
