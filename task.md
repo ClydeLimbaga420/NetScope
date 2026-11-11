@@ -926,3 +926,17 @@ Session 37 (stale web UI fix):
   /api/packet-loss, /api/fixes all return 200 with real data when a valid
   session cookie is present; without a cookie they correctly return 401.
   node --check passes on both JS files; full suite 213 passed.
+Session 38 (initial load + nav fix):
+- Root cause of "stale on open" and "Repair Library won't open": dashboard.js
+  called `$("repair-steps").addEventListener(...)` at top level, but
+  `#repair-steps` was removed from the template, so `$()` returned null and
+  `.addEventListener` threw a TypeError that aborted the entire script before
+  `refreshStatus()`/`refreshDevices()`/nav listeners ran.
+- Fix: guarded all top-level addEventListener calls (check-steps, repair-steps,
+  diag-stage, refresh-devices) with null checks so a missing element no longer
+  aborts initialization.
+- Verified: node --check passes; full suite 213 passed. Initial load should now
+  populate overview/devices and make Troubleshoot/Repair Library nav work.
+Session 38b (polyfill + verification):
+- Added a small append/replaceChildren polyfill to web-init.js for older browsers.
+- Re-verified node --check on all web JS and full suite 213 passed.

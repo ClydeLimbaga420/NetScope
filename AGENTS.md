@@ -415,3 +415,7 @@ raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
   missing fields (latency_ms strict-null check). Both fixed with null-safe
   guards and explicit 401 handling. All /api/* endpoints verified to return
   real data with a valid session cookie.
+## Initial-load / nav fix (Session 38)
+- `$("repair-steps").addEventListener(...)` threw (element removed from
+  template), aborting dashboard.js before refreshStatus/refreshDevices/nav
+  listeners ran. Guarded all top-level addEventListener calls with null checks.

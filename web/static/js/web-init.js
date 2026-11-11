@@ -1,4 +1,5 @@
-﻿(function () {
+(function(){ if(typeof Element!=='undefined'){ if(!Element.prototype.append){ Element.prototype.append=function(){ for(var i=0;i<arguments.length;i++){ var n=arguments[i]; this.appendChild(n && n.nodeType? n : document.createTextNode(n)); } }; } if(!Element.prototype.replaceChildren){ Element.prototype.replaceChildren=function(){ while(this.firstChild) this.removeChild(this.firstChild); for(var i=0;i<arguments.length;i++){ var n=arguments[i]; this.appendChild(n && n.nodeType? n : document.createTextNode(n)); } }; } } })();
+(function () {
   // Bootstrap web session token for POST requests (kept in memory only).
   window.__netscope = window.__netscope || { token: null, sessionId: null, ready: false };
   async function boot() {
@@ -39,3 +40,4 @@
   setInterval(heartbeat, 5000);
   document.addEventListener('visibilitychange', function(){ if(!document.hidden) heartbeat(); });
 })();
+

@@ -1447,7 +1447,8 @@ async function loadDiagnostics() {
 // EVENT LISTENERS
 // =====================================
 
-$("refresh-devices").addEventListener(
+const refreshDevicesEl = $("refresh-devices");
+if (refreshDevicesEl) refreshDevicesEl.addEventListener(
     "click",
     () => refreshDevices()
 );
@@ -1474,19 +1475,22 @@ function selectDiagnosticStep(event) {
 }
 
 
-$("check-steps").addEventListener(
+const checkStepsEl = $("check-steps");
+if (checkStepsEl) checkStepsEl.addEventListener(
     "click",
     selectDiagnosticStep
 );
 
 
-$("repair-steps").addEventListener(
+const repairStepsEl = $("repair-steps");
+if (repairStepsEl) repairStepsEl.addEventListener(
     "click",
     selectDiagnosticStep
 );
 
 
-$("diag-stage").addEventListener(
+const diagStageEl = $("diag-stage");
+if (diagStageEl) diagStageEl.addEventListener(
     "click",
     event => {
 
