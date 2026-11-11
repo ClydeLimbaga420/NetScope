@@ -477,16 +477,6 @@
 
                     </div>
 
-                    <div class="diag-group">
-
-                        <p class="diag-group-label">REPAIRS</p>
-
-                        <div class="diag-items" id="repair-steps">
-                            <p class="muted">Loading repairs...</p>
-                        </div>
-
-                    </div>
-
                 </aside>
 
                 <div class="diag-stage" id="diag-stage">
@@ -496,10 +486,76 @@
             </div>
 
             <p class="note">
-                Checks are read-only. Repairs change Windows network
-                settings and ask for confirmation. Winsock and TCP/IP
-                resets need administrator rights and a restart. Only
-                predefined commands are run.
+                Checks are read-only. Repairs are listed in the Repair
+                Library; they change Windows network settings and ask for
+                confirmation. Winsock and TCP/IP resets need administrator
+                rights and a restart. Only predefined commands are run.
+            </p>
+
+        </section>
+
+        </div>
+
+
+        <div class="page-view" id="view-repairs" data-view="repairs">
+
+        <!-- REPAIR LIBRARY -->
+        <section class="panel repair-library-panel" id="repair-library">
+
+            <div class="panel-head troubleshoot-head">
+
+                <div>
+                    <p class="eyebrow">TOOLS / REPAIR LIBRARY</p>
+
+                    <h2>Repair Library</h2>
+
+                    <p class="muted">
+                        Every catalogued repair, what it changes, and the
+                        exact procedure before anything runs.
+                    </p>
+                </div>
+
+                <div class="troubleshoot-actions">
+
+                    <span
+                        class="elevation-badge"
+                        id="repair-elevation-badge"
+                        hidden>
+                    </span>
+
+                    <button
+                        id="repair-run-as-admin"
+                        class="ghost-button"
+                        type="button"
+                        hidden>
+                        Run as administrator
+                    </button>
+
+                </div>
+
+            </div>
+
+            <div class="repair-library-layout">
+
+                <aside
+                    class="repair-library-list"
+                    id="repair-library-list">
+                    <p class="muted">Loading repairs...</p>
+                </aside>
+
+                <div
+                    class="repair-library-detail"
+                    id="repair-library-detail">
+                    <p class="muted">Select a repair to see what it does.</p>
+                </div>
+
+            </div>
+
+            <p class="note">
+                Nothing changes until a repair is planned and confirmed.
+                Repairs marked ADMIN require NetScope to run elevated.
+                Standard checks remain available without administrator
+                rights.
             </p>
 
         </section>

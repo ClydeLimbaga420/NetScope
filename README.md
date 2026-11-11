@@ -24,6 +24,8 @@ while the localhost web UI replaces it.
 - Admin, risk, and reboot labels; typed confirmation for high-risk steps
 - Verification by re-checking and rollback from saved snapshots
 - Unresolved-cause ranking when a fix does not help ("probable"/"possible")
+- Repair library with plain-language steps and collapsible exact commands
+- One-click **Run as administrator** (UAC) for admin-only repairs
 - Structured JSON-lines logging with secrets redacted
 
 ### Interfaces
@@ -31,7 +33,7 @@ while the localhost web UI replaces it.
   `ports`, `mtu`, `monitor`, `logs`, `report`, and `gui`
 - Interactive `netscope>` shell with history, completion, and a numbered menu
 - Desktop GUI with findings detail, fix preview, and unresolved-causes panel
-- Localhost web UI with per-check streaming and local assets
+- Localhost web UI with per-check streaming, a repair library, and local assets
 - Legacy LAN dashboard for other devices on the same network
 
 ### Dashboard

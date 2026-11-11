@@ -263,7 +263,14 @@ raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
   covers `#auto-configure-gateway`, which calls `/api/gateway/configure`. A
   `MutationObserver` re-asserts the engine view if the legacy registry renders
   late into `#check-steps`/`#repair-steps`/`#diag-stage`.
-- Tests: latest full suite is 210 passing (2026-11-11). Session 30's live repro
+- The Repair Library (`data-view="repairs"`, nav below Troubleshoot) lists every
+  catalog entry as a row (id/name/symptom/risk/admin) and renders its procedure
+  from `/api/fixes/<id>`: plain-language steps, collapsible exact commands,
+  verification, rollback, and if-unresolved guidance. The Troubleshoot repair
+  detail links to it with **View full procedure**. A sidebar **Run as
+  administrator** button calls `/api/elevate`; cancellation (UAC declined) logs
+  `elevate_cancelled`, returns 409 and keeps the server running.
+- Tests: latest full suite is 213 passing (2026-11-11). Session 30's live repro
   verified the real CLI child, boot/session/CSP, local assets, 33 SSE check
   events, findings/fixes/catalog, fix plan+dry-run, log streaming, shutdown,
   single-instance reuse and bind-failure logging (25/25); the gateway repair

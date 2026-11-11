@@ -392,7 +392,7 @@ strictly required for web (document why).
 - [ ] Changelog of every edit to main's design files (file/lines/reason) and
       list of every new design file.
 - [x] Tests: dashboard template render and referenced static assets; full suite
-      passes (197 tests as of Session 30, 2026-11-11).
+      passes (213 tests as of Session 34, 2026-11-11).
 - [ ] Tests: dynamic template autoescape, browser end-to-end flows, design
       fidelity (screenshot/computed styles), design-file changelog, and
       unchanged-main-CSS assertions where feasible.
@@ -862,3 +862,22 @@ Session 33 (merge origin/main into main):
   controls (dropping legacy handlers) while still calling
   `/api/gateway/configure`; `configureGateway()` is retained.
 - Full merged suite: 210 passed (2026-11-11).
+
+Session 34 (web UI: elevation and repair library):
+- Added a sidebar **Run as administrator** button (hidden when elevated) that
+  calls `/api/elevate`; `/api/elevate` now returns 409
+  `elevate_cancelled` and keeps the server alive when UAC is declined, instead
+  of shutting down with no replacement instance. An ADMINISTRATOR badge and a
+  short hint replace the button when elevated.
+- Added a Repair Library page (`data-view="repairs"`, nav below Troubleshoot)
+  with a row per catalog entry (id, name, symptom, risk, admin, detect-only)
+  and a procedure pane. Each procedure shows plain-language step names and
+  descriptions, exact commands in collapsible sections, verification checks,
+  rollback notes/commands, and if-unresolved guidance.
+- Added `/api/fixes/<id>` returning the catalog entry `to_dict()` plus current
+  admin state. The Troubleshoot repair detail links to the library with **View
+  full procedure**. Standard checks and non-admin repairs remain available to
+  standard users; admin repairs are labelled and instruct users to elevate.
+- Added tests for the detail endpoint, template ids, elevation cancellation and
+  successful restart request. Full suite: 213 passed (2026-11-11); JS passes
+  `node --check`.

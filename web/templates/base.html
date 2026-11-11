@@ -30,6 +30,20 @@
             </div>
         </div>
 
+        <div class="admin-control">
+            <button id="run-as-admin" class="admin-button" type="button" hidden
+                    title="Restart NetScope with administrator rights">
+                Run as administrator
+            </button>
+            <span id="admin-mode-badge" class="elevation-badge elevated" hidden>
+                ADMINISTRATOR
+            </span>
+            <p id="admin-hint" class="admin-hint" hidden>
+                Admin-only repairs need elevation. Standard checks keep working.
+            </p>
+            <p id="admin-notice" class="admin-notice" hidden></p>
+        </div>
+
         <p class="nav-label">MONITORING</p>
 
         <a href="#overview" class="nav-item active" data-view="main" data-scroll="overview-top">
@@ -48,6 +62,10 @@
 
         <a href="#troubleshoot" class="nav-item" data-view="troubleshoot">
             &#9881; Troubleshoot
+        </a>
+
+        <a href="#repairs" class="nav-item" data-view="repairs">
+            &#9874; Repair library
         </a>
 
         <div class="sidebar-bottom">

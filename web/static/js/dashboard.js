@@ -1563,7 +1563,11 @@ function showView(viewName, options = {}) {
     });
 
     if (updateHash) {
-        const hash = viewName === 'troubleshoot' ? '#troubleshoot' : '#overview';
+        const hash = viewName === 'troubleshoot'
+            ? '#troubleshoot'
+            : viewName === 'repairs'
+                ? '#repairs'
+                : '#overview';
         if (window.location.hash !== hash) {
             window.history.replaceState(null, '', hash);
         }
@@ -1597,6 +1601,9 @@ function showView(viewName, options = {}) {
             renderDiagnostics();
             updateDiagnosticsSummary();
         });
+        window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+    else if (viewName === 'repairs') {
         window.scrollTo({ top: 0, behavior: 'auto' });
     }
 
@@ -1701,6 +1708,9 @@ async function refreshPacketLoss() {
 const initialHash = (window.location.hash || "#overview").replace("#", "");
 if (initialHash === "troubleshoot") {
     showView("troubleshoot");
+}
+else if (initialHash === "repairs") {
+    showView("repairs");
 }
 else if (initialHash === "devices" || initialHash === "traffic") {
     showView("main", { scrollToId: initialHash });
