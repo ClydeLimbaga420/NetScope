@@ -234,8 +234,9 @@ raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
   `server_bind_failed`, and returns 1 cleanly (verified against the real
   stack, 2026-11-11). A monitor thread handles explicit shutdown (sleeps briefly
   to flush the HTTP response, logs `server_shutdown`, removes the port lock,
-  `os._exit(0)`), while heartbeat timeout shutdown is gated on
-  `jobs.has_active_jobs()`.
+  `os._exit(0)`),   while heartbeat timeout shutdown is gated on
+  `jobs.has_active_jobs()`; the heartbeat threshold is 120s to survive
+  Chrome's background-tab timer throttling.
 - `web/security.py` enforces localhost Host checks, boot/session tokens,
   same-origin state-changing requests, CSP, and security headers.
 - `web/server.py` builds the runtime explicitly with `SubprocessRunner`,

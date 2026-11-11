@@ -38,6 +38,13 @@
     fetch('/api/heartbeat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(function(){});
   }
   setInterval(heartbeat, 5000);
-  document.addEventListener('visibilitychange', function(){ if(!document.hidden) heartbeat(); });
+  // Keep heartbeating while the tab is hidden/backgrounded as well; Chrome
+  // throttles timers but the dedicated endpoint plus any API activity keeps the
+  // server alive. Also pulse on lifecycle events.
+  document.addEventListener('visibilitychange', function(){ heartbeat(); });
+  document.addEventListener('pageshow', function(){ heartbeat(); });
+  window.addEventListener('focus', function(){ heartbeat(); });
+  document.addEventListener('freeze', function(){ /* no-op: connection stays open */ });
+  document.addEventListener('resume', function(){ heartbeat(); });
 })();
 

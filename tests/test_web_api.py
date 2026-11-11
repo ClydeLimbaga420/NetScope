@@ -294,7 +294,7 @@ def test_tool_api_rejects_command_injection_before_runner(client, tool_name, bod
 
 def test_idle_shutdown_waits_for_cancelling_job(client):
     _client, st = client
-    st.last_heartbeat = __import__('time').monotonic() - 21
+    st.last_heartbeat = __import__('time').monotonic() - 121
 
     assert st.should_shutdown()
     job = st.jobs.create("fix")
