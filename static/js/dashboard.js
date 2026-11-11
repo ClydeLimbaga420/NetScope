@@ -332,7 +332,7 @@ async function refreshStatus() {
         setStatus("internet-dot", ping.online);
 
         $("internet-host").textContent =
-            `Target: ${ping.host || "1.1.1.1"}`;
+            `Internet \u00b7 ${ping.host || "1.1.1.1"}`;
 
         const internetReason = $("internet-reason");
 
@@ -348,6 +348,40 @@ async function refreshStatus() {
             else {
                 internetReason.textContent = "";
                 internetReason.hidden = true;
+            }
+        }
+
+
+        // GATEWAY STATUS
+
+        $("gateway-status").textContent =
+            gatewayPing.online ? "Connected" : "Unavailable";
+
+        setStatus("gateway-dot", gatewayPing.online);
+
+        $("gateway-host").textContent =
+            `Gateway \u00b7 ${
+                gatewayPing.host ||
+                network.gateway ||
+                "Not detected"
+            }`;
+
+        const gatewayReason = $("gateway-reason");
+
+        if (gatewayReason) {
+            const gatewayProblem = problems.find(
+                problem => problem.source === "gateway"
+            ) || (!gatewayPing.online && gatewayPing.reason
+                ? { message: gatewayPing.reason }
+                : null);
+
+            if (gatewayProblem && gatewayProblem.message) {
+                gatewayReason.textContent = gatewayProblem.message;
+                gatewayReason.hidden = false;
+            }
+            else {
+                gatewayReason.textContent = "";
+                gatewayReason.hidden = true;
             }
         }
 
@@ -512,6 +546,10 @@ async function refreshStatus() {
         $("internet-status").textContent = "API error";
 
         setStatus("internet-dot", false);
+
+        $("gateway-status").textContent = "API error";
+
+        setStatus("gateway-dot", false);
 
         console.error(error);
 
@@ -1420,6 +1458,134 @@ async function runAllChecks() {
 }
 
 
+function renderGatewayResult(result) {
+
+    const stage = $("diag-stage");
+
+    if (!stage) {
+        return;
+    }
+
+    const good =
+        result.status === "resolved" ||
+        result.status === "already_configured";
+
+    const wrapper = document.createElement("div");
+    wrapper.className = `diag-detail repair ${good ? "success" : "error"}`;
+
+    const head = document.createElement("div");
+    head.className = "diag-detail-head";
+
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "diag-detail-title";
+
+    const tags = document.createElement("div");
+    tags.className = "diag-tags";
+
+    const kind = document.createElement("span");
+    kind.className = "step-kind repair";
+    kind.textContent = "REPAIR";
+
+    tags.append(kind);
+
+    const title = document.createElement("h3");
+    title.textContent = "Gateway configuration";
+
+    const description = document.createElement("p");
+    description.className = "diag-desc";
+    description.textContent =
+        result.message || "Gateway configuration finished.";
+
+    titleWrap.append(tags, title, description);
+
+    const status = document.createElement("span");
+    status.className = `step-status ${good ? "success" : "error"}`;
+    status.textContent =
+        result.status === "already_configured"
+            ? "Already configured"
+            : String(result.status || "result");
+
+    head.append(titleWrap, status);
+
+    const panel = document.createElement("div");
+    panel.className = "console-panel";
+
+    const panelHead = document.createElement("div");
+    panelHead.className = "console-head";
+
+    const panelTitle = document.createElement("span");
+    panelTitle.className = "console-title";
+    panelTitle.textContent = "RESULT";
+
+    panelHead.append(panelTitle);
+
+    const consoleBox = document.createElement("div");
+    consoleBox.className = "console";
+
+    const output = document.createElement("pre");
+    output.className = "console-text";
+    output.textContent = JSON.stringify(result, null, 2);
+
+    consoleBox.append(output);
+    panel.append(panelHead, consoleBox);
+    wrapper.append(head, panel);
+    stage.replaceChildren(wrapper);
+
+}
+
+
+async function configureGateway() {
+
+    const button = $("auto-configure-gateway");
+
+    if (!button) {
+        return;
+    }
+
+    const label = button.textContent;
+
+    button.disabled = true;
+    button.textContent = "Configuring...";
+
+    try {
+
+        const response = await fetch(
+            "/api/gateway/configure",
+            { method: "POST" }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(
+                (data.error && data.error.message) ||
+                "Gateway configuration failed"
+            );
+        }
+
+        renderGatewayResult(data);
+
+    }
+
+    catch (error) {
+
+        renderGatewayResult({
+            status: "error",
+            message: error.message
+        });
+
+    }
+
+    finally {
+
+        button.disabled = false;
+        button.textContent = label;
+
+    }
+
+}
+
+
 async function loadDiagnostics() {
 
     try {
@@ -1571,6 +1737,12 @@ $("diag-stage").addEventListener(
 $("run-all-checks").addEventListener(
     "click",
     runAllChecks
+);
+
+
+$("auto-configure-gateway").addEventListener(
+    "click",
+    configureGateway
 );
 
 

@@ -11,6 +11,8 @@ from modules.bandwidth import BandwidthMonitor
 from modules.ping_monitor import ping_host, ping_host_stats
 from modules.device_scanner import get_arp_devices
 from modules.diagnostics import list_diagnostics, run_diagnostic
+from fixes.gateway_config import auto_configure_gateway
+from gui.runtime import build_runtime
 
 
 def _status_problems(network, internet_ping, gateway_ping):
@@ -89,6 +91,17 @@ app = Flask(__name__)
 
 bandwidth_monitor = BandwidthMonitor()
 
+_gateway_runtime = None
+
+
+def _get_gateway_runtime():
+    global _gateway_runtime
+
+    if _gateway_runtime is None:
+        _gateway_runtime = build_runtime()
+
+    return _gateway_runtime
+
 
 def _lan_urls():
     urls = set()
@@ -120,6 +133,16 @@ def _lan_urls():
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/api/gateway/configure", methods=["POST"])
+def api_configure_gateway():
+    try:
+        result = auto_configure_gateway(_get_gateway_runtime())
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"status": "error", "message": str(exc)}), 500
+
+    return jsonify(result.to_dict())
 
 
 @app.route("/api/status")

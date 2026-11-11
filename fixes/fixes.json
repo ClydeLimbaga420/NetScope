@@ -1855,6 +1855,132 @@
       }
     },
     {
+      "id": "IP-09",
+      "name": "No default gateway configured",
+      "symptom": "The adapter has an address but no default gateway, so only local-subnet traffic works.",
+      "detection": "An active physical adapter has an IPv4 address and no 0.0.0.0/0 route or configured gateway",
+      "explanation": "NetScope derives the most likely router from the DHCP server, an existing gateway on the same subnet, or a responding address at the start or end of the adapter's subnet. It first renews the DHCP lease; if Windows still has no default route, it adds a persistent default route for the detected gateway. The exact gateway is shown before anything changes.",
+      "admin": true,
+      "risk": "medium",
+      "reboot": false,
+      "detection_only": false,
+      "verify_flag": false,
+      "verify": [
+        "IP-05"
+      ],
+      "state_changing": true,
+      "params": [
+        {
+          "name": "AdapterName",
+          "source": "adapter_missing_gateway",
+          "required": true,
+          "validator": "adapter"
+        },
+        {
+          "name": "Gateway",
+          "source": "detected_gateway",
+          "required": true,
+          "description": "Detected router address for this adapter's subnet",
+          "validator": "ip"
+        }
+      ],
+      "snapshot": [
+        {
+          "kind": "powershell",
+          "label": "default routes",
+          "script": "Get-NetRoute -AddressFamily IPv4 -ErrorAction SilentlyContinue |\n  Where-Object { $_.DestinationPrefix -eq '0.0.0.0/0' } |\n  Select-Object DestinationPrefix,NextHop,InterfaceAlias,RouteMetric,InterfaceMetric,Store |\n  ConvertTo-Json -Depth 4",
+          "params": []
+        },
+        {
+          "kind": "powershell",
+          "label": "adapter configuration",
+          "script": "param($AdapterName)\nGet-NetIPConfiguration -InterfaceAlias $AdapterName -ErrorAction SilentlyContinue |\n  Select-Object InterfaceAlias,InterfaceIndex,IPv4Address,IPv4DefaultGateway |\n  ConvertTo-Json -Depth 4",
+          "params": [
+            "AdapterName"
+          ]
+        }
+      ],
+      "rollback": [
+        {
+          "kind": "powershell",
+          "label": "remove the added default route",
+          "script": "param($Gateway)\nRemove-NetRoute -DestinationPrefix '0.0.0.0/0' -NextHop $Gateway -Confirm:$false -ErrorAction SilentlyContinue",
+          "params": [
+            "Gateway"
+          ]
+        }
+      ],
+      "rollback_notes": "Rollback removes the default route this fix added. If the PC should use DHCP, confirm the adapter is set to automatic addressing (IP-01/IP-02 handle lease repairs).",
+      "ladder": [
+        {
+          "name": "Renew the DHCP lease",
+          "description": "If the router hands out a gateway by DHCP, this restores it without a manual route.",
+          "commands": [
+            {
+              "kind": "native",
+              "label": "renew the lease",
+              "args": [
+                "ipconfig",
+                "/renew",
+                "{AdapterName}"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Add a persistent default route",
+          "description": "Adds the detected router as the default gateway for this adapter. Existing default routes on the adapter are replaced.",
+          "commands": [
+            {
+              "kind": "powershell",
+              "label": "set the detected gateway",
+              "script": "param($AdapterName,$Gateway)\nRemove-NetRoute -InterfaceAlias $AdapterName -DestinationPrefix '0.0.0.0/0' -Confirm:$false -ErrorAction SilentlyContinue\nNew-NetRoute -DestinationPrefix '0.0.0.0/0' -InterfaceAlias $AdapterName -NextHop $Gateway -RouteMetric 0 -Store Persistent -ErrorAction Stop",
+              "params": [
+                "AdapterName",
+                "Gateway"
+              ],
+              "native": [
+                "netsh",
+                "interface",
+                "ipv4",
+                "add",
+                "route",
+                "prefix=0.0.0.0/0",
+                "interface={AdapterName}",
+                "nexthop={Gateway}",
+                "store=persistent"
+              ]
+            }
+          ]
+        }
+      ],
+      "if_unresolved": {
+        "this_device": [
+          "adapter is configured as static with no gateway",
+          "VPN or virtual adapter holds the default route",
+          "security software blocking route changes",
+          "wrong subnet mask hides the real router"
+        ],
+        "beyond_device": [
+          "router does not respond or is powered off",
+          "DHCP server is not supplying a gateway",
+          "router is on a different subnet than the PC"
+        ],
+        "next_checks": [
+          "compare the PC address and mask with another device that works",
+          "open the router's admin page and confirm its LAN address",
+          "try DHCP instead of a static address",
+          "check whether a VPN is active"
+        ],
+        "evidence_to_collect": [
+          "Get-NetIPConfiguration output",
+          "Get-NetRoute table",
+          "router LAN address and subnet",
+          "another device's IP configuration"
+        ]
+      }
+    },
+    {
       "id": "LAN-01",
       "name": "Stale or poisoned ARP cache",
       "symptom": "The gateway or a peer maps to a wrong MAC, or its ARP entry stays unreachable.",

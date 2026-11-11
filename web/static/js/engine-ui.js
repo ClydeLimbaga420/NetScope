@@ -42,6 +42,8 @@
     }
     const cancel = $("engine-cancel-job");
     if (cancel) cancel.disabled = !busy || !state.jobId;
+    const gateway = $("auto-configure-gateway");
+    if (gateway) gateway.disabled = busy;
     if (redraw !== false) render();
   }
 
@@ -298,6 +300,36 @@
     }
   }
 
+  async function configureGateway() {
+    setBusy(true, "Configuring gateway...", false);
+    try {
+      const started = await api("/api/gateway/configure", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}"
+      });
+      state.jobId = started.job_id;
+      const job = await followJob(state.jobId);
+      const stage = $("diag-stage");
+      if (stage) {
+        showOutput("GATEWAY RESULT", job.result || { error: job.error || job.status });
+        const outcome = job.result && job.result.outcome;
+        if (outcome && outcome.rollback_available) {
+          const rollback = element("button", "ghost-button", "Roll back this fix");
+          rollback.type = "button";
+          rollback.dataset.rollbackId = started.fix_id;
+          stage.append(rollback);
+        }
+      }
+    } catch (error) {
+      const stage = $("diag-stage");
+      if (stage) stage.append(element("p", "step-reason error", error.message));
+    } finally {
+      state.jobId = null;
+      setBusy(false, null, false);
+    }
+  }
+
   async function planFix(fixId) {
     try {
       const plan = await api("/api/fix/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fix_id: fixId }) });
@@ -498,6 +530,12 @@
       event.preventDefault();
       event.stopImmediatePropagation();
       runDiagnosis();
+    }, true);
+    const gateway = $("auto-configure-gateway");
+    if (gateway) gateway.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      configureGateway();
     }, true);
     ["check-steps", "repair-steps"].forEach((id) => $(id).addEventListener("click", (event) => {
       const item = event.target.closest("[data-engine-item]");

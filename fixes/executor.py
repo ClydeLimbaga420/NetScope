@@ -18,6 +18,7 @@ from typing import Any, Callable
 
 import config
 from core.checks.context import configured_dns_servers, text, truthy
+from core.gateway_setup import active_target, detect_gateway
 from core.models import CheckResult, Status
 from core.native import (
     parse_mtu,
@@ -346,6 +347,28 @@ class FixExecutor:
 
         if source in {"adapter", "adapter_alias"}:
             return _adapter_name(adapter)
+        if source == "adapter_missing_gateway":
+            target = active_target(snapshot, values.get("AdapterName")) if snapshot is not None else None
+            if target is not None:
+                return _adapter_name(target.get("adapter")) or text(target.get("alias")) or None
+            return _adapter_name(adapter)
+        if source == "detected_gateway":
+            if snapshot is None:
+                raise PlanError(
+                    "Cannot detect a gateway without a network snapshot. Run a diagnosis first."
+                )
+            suggestion = detect_gateway(
+                snapshot,
+                adapter_name=values.get("AdapterName") or None,
+                runner=self.runner,
+                ps=self.ps,
+            )
+            if not suggestion.gateway:
+                raise PlanError(
+                    "Could not detect a default gateway on this network. "
+                    + (suggestion.note or "Enter the router address manually.")
+                )
+            return suggestion.gateway
         if source == "adapter_index":
             return text((adapter or {}).get("ifIndex")) or None
         if source == "instance_id":

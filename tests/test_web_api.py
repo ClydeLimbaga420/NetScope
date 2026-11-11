@@ -400,6 +400,11 @@ def test_dashboard_template_uses_shared_shell_and_local_assets(client):
     assert '<aside class="sidebar">' in html
     assert '<main class="main">' in html
     assert '<footer>' in html
+    assert 'id="auto-configure-gateway"' in html
+    assert 'id="internet-dot"' in html
+    assert 'id="gateway-dot"' in html
+    assert 'id="internet-status"' in html
+    assert 'id="gateway-status"' in html
     assert "fonts.googleapis.com" not in html
     assert "cdn.jsdelivr.net" not in html
 
@@ -496,6 +501,41 @@ def test_fix_plan_execute_requires_token(client):
     # reused token rejected
     r = c.post('/api/fix/execute', headers=_post_headers(st, token), json={'confirmation_token': conf})
     assert r.status_code == 403
+
+
+def test_gateway_configure_runs_auto_fix_job(client, monkeypatch):
+    c, st = client
+    token = _boot(c, st)
+    from fixes.gateway_config import GatewayConfigResult
+
+    def fake_auto_configure(runtime):
+        assert runtime is st.runtime
+        return GatewayConfigResult(
+            "resolved",
+            adapter="Ethernet",
+            gateway="192.168.1.1",
+            message="Gateway configured.",
+            outcome={"status": "resolved"},
+        )
+
+    monkeypatch.setattr("web.api.auto_configure_gateway", fake_auto_configure)
+
+    response = c.post("/api/gateway/configure", headers=_post_headers(st, token), json={})
+
+    assert response.status_code == 200
+    job_id = response.get_json()["job_id"]
+
+    import time
+    deadline = time.monotonic() + 5
+    job = st.jobs.get(job_id)
+    while job.status in {"queued", "running", "cancelling"} and time.monotonic() < deadline:
+        time.sleep(0.02)
+        job = st.jobs.get(job_id)
+
+    assert job.status == "done"
+    assert job.result["status"] == "resolved"
+    assert job.result["adapter"] == "Ethernet"
+    assert job.result["gateway"] == "192.168.1.1"
 
 
 def test_fix_high_risk_requires_second_confirmation(client):

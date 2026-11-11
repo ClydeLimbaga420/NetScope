@@ -245,7 +245,7 @@ def run(ctx: CheckContext) -> list[CheckResult]:
             ),
             cause="Missing default route means traffic cannot leave the local subnet." if have_route_source and not default_routes and active else None,
             evidence={"default_routes": default_routes},
-            fix_ids=["IP-05"] if have_route_source and not default_routes and active else [],
+            fix_ids=["IP-09"] if have_route_source and not default_routes and active else [],
         )
     )
 
