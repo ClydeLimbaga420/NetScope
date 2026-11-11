@@ -13,8 +13,11 @@ import config
 from cli.admin import is_admin
 from core.engine import DiagnosticEngine
 from core.logging_config import setup_logging
+from core.probes import NetworkProbe
+from core.runner import SubprocessRunner
 from fixes.catalog import load_catalog
-from gui.runtime import GuiRuntime
+from gui.runtime import GuiRuntime, empty_catalog
+from powershell.runner import PowerShellLayer
 from web.api import api_bp
 from web.jobs import JobManager
 from web.pages import pages_bp
@@ -59,22 +62,19 @@ class WebState:
         self.last_report: Any = None
 
     def _build_runtime(self) -> GuiRuntime:
-        engine = DiagnosticEngine(logger=self.logger)
+        runner = SubprocessRunner(self.logger)
+        ps = PowerShellLayer(runner, self.logger)
+        engine = DiagnosticEngine(runner=runner, ps=ps, logger=self.logger, probe=NetworkProbe())
         try:
             catalog = load_catalog()
-        except Exception:
-            catalog = load_catalog  # type: ignore[assignment]
-            # fallback handled below
-        try:
-            catalog_obj = load_catalog()
-        except Exception:
-            from fixes.catalog import Catalog
-            catalog_obj = Catalog(entries={})
+        except Exception as exc:
+            self.logger.warning("fix_catalog_unavailable", source="web", error=str(exc))
+            catalog = empty_catalog()
         return GuiRuntime(
             engine=engine,
-            catalog=catalog_obj,
-            runner=engine.runner,
-            ps=getattr(engine, "ps", None),
+            catalog=catalog,
+            runner=runner,
+            ps=ps,
             logger=self.logger,
             admin_check=is_admin,
             session_id=self.session_id,
@@ -85,15 +85,9 @@ class WebState:
         self.last_heartbeat = time.monotonic()
 
     def should_shutdown(self) -> bool:
-        idle = (time.monotonic() - self.last_heartbeat) > 20
-        if not idle:
+        if (time.monotonic() - self.last_heartbeat) <= 20:
             return False
-        # no active jobs/fix
-        for job_id in list(getattr(self.jobs, "_jobs", {}).keys()):  # type: ignore[attr-defined]
-            job = self.jobs.get(job_id)
-            if job and job.status in {"queued", "running", "cancelling"}:
-                return False
-        return True
+        return not self.jobs.has_active_jobs()
 
 
 def create_app(state: WebState | None = None) -> Flask:

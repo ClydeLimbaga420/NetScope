@@ -5,7 +5,7 @@ dashboard into a universal Windows network troubleshooting tool with one shared
 engine and two front ends (CLI + GUI). Work phase by phase; update this file and
 `task.md` Notes at the end of every phase.
 
-**Current status: Phase 4 complete; Phase 6 Phase B complete and Phase C in progress.** Phase 5 packaging is pending. The web UI now has its localhost server/API/job/security foundation, local assets, and initial engine-backed Troubleshoot integration.
+**Current status: Phase 4 complete; Phase 6 Phase B complete and Phase C in progress.** Phase 5 packaging is pending. The web UI has its localhost server/API/job/security foundation, local assets, and engine-backed Troubleshoot integration. Session 30's live-stack verification passed 25/25 against the real engine/PowerShell/jobs; remaining Phase C work is browser E2E and design fidelity.
 
 ## Run / environment
 - The Flask dashboard still works: `python app.py` → http://127.0.0.1:5000
@@ -16,7 +16,7 @@ engine and two front ends (CLI + GUI). Work phase by phase; update this file and
 - This checkout originally had **no `.venv`**. A venv now exists (Python 3.14.7).
   Recreate with `py -m venv .venv`, then
   `.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt`.
-- Run tests: `.\.venv\Scripts\python.exe -m pytest` (latest full run: 200 passed, 2026-11-11).
+- Run tests: `.\.venv\Scripts\python.exe -m pytest` (latest full run: 210 passed, 2026-11-11).
 - Run the CLI: `.\.venv\Scripts\python.exe netscope.py --help`
   (or `python -m cli`). `netscope.py diagnose --json` is the machine interface.
 - Run the web UI: `netscope gui` launches the localhost interface; use
@@ -227,19 +227,49 @@ raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
 - `web/run.py` serves on `127.0.0.1`, owns a per-user process lock, atomically
   publishes its port/boot token, validates existing instances with `/health`,
   and uses a bounded detached-launch URL handoff. Source startup is banner-free.
+  The server binds via `werkzeug.serving.make_server` *before* advertising the
+  boot URL/port lock; werkzeug 3.x turns bind errors into
+  `print(strerror)` + `sys.exit(1)` inside `BaseWSGIServer.__init__`, so
+  `run_web_ui` catches both `SystemExit(1)` and `OSError`, logs
+  `server_bind_failed`, and returns 1 cleanly (verified against the real
+  stack, 2026-11-11). A monitor thread handles explicit shutdown (sleeps briefly
+  to flush the HTTP response, logs `server_shutdown`, removes the port lock,
+  `os._exit(0)`), while heartbeat timeout shutdown is gated on
+  `jobs.has_active_jobs()`.
 - `web/security.py` enforces localhost Host checks, boot/session tokens,
   same-origin state-changing requests, CSP, and security headers.
+- `web/server.py` builds the runtime explicitly with `SubprocessRunner`,
+  `PowerShellLayer` and `NetworkProbe` (so `/api/status` reports a live
+  PowerShell layer) and falls back to `empty_catalog()` with a logged
+  `fix_catalog_unavailable` warning if the catalog fails to load.
 - `web/jobs.py` provides SSE plus job polling, cancellation states, and a
   job-scoped command cancellation context. Windows commands use kill-on-close
   Job Objects so cancelled commands and descendants terminate together.
+  Streams mark `Job.events_done` under the job lock and drain with `get_nowait`
+  first, so a stream opened on a finished job ends immediately (0.0s instead of
+  the old 15s timeout) and keep-alives are sent only while genuinely idle.
+  `JobManager.has_active_jobs()` is the single source for idle-shutdown gating.
 - `web/api.py` routes operations through the existing engine, catalog,
   `FixExecutor`, `UtilityRunner`, report builder, and structured logger. Do not
-  add diagnostic or fix business logic to the web layer.
+  add diagnostic or fix business logic to the web layer. `/api/logs/stream`
+  emits keep-alives when idle and stops on `shutdown_event`; fix execution does
+  not pass the stale `snapshot=` kwarg to `FixExecutor.run()`.
 - The overview card is a combined Connectivity card showing both Internet and
   Gateway status (`#internet-dot`/`#gateway-dot`), fed by `/api/status`
   `internet_ping` and `gateway_ping`.
-- Tests: latest full suite is 200 passing. Phase C still needs browser E2E and
-  design-fidelity verification; Phase D owns frozen-build launch/log checks.
+- `web/static/js/engine-ui.js` adopts the shared Troubleshoot controls by
+  `cloneNode(true)` + `replaceWith`, dropping the legacy dashboard handlers
+  registered first (cannot stop them with capture ordering alone). This also
+  covers `#auto-configure-gateway`, which calls `/api/gateway/configure`. A
+  `MutationObserver` re-asserts the engine view if the legacy registry renders
+  late into `#check-steps`/`#repair-steps`/`#diag-stage`.
+- Tests: latest full suite is 210 passing (2026-11-11). Session 30's live repro
+  verified the real CLI child, boot/session/CSP, local assets, 33 SSE check
+  events, findings/fixes/catalog, fix plan+dry-run, log streaming, shutdown,
+  single-instance reuse and bind-failure logging (25/25); the gateway repair
+  adds `/api/gateway/configure` and combined Internet/Gateway status. Phase C
+  still needs browser E2E and design-fidelity verification; Phase D owns
+  frozen-build launch/log checks.
 
 ## Logging
 - JSON-lines file at `%LOCALAPPDATA%\NetScope\logs\netscope.log`, rotating

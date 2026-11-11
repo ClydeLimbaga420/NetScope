@@ -392,7 +392,7 @@ strictly required for web (document why).
 - [ ] Changelog of every edit to main's design files (file/lines/reason) and
       list of every new design file.
 - [x] Tests: dashboard template render and referenced static assets; full suite
-      passes (148 tests).
+      passes (197 tests as of Session 30, 2026-11-11).
 - [ ] Tests: dynamic template autoescape, browser end-to-end flows, design
       fidelity (screenshot/computed styles), design-file changelog, and
       unchanged-main-CSS assertions where feasible.
@@ -772,13 +772,45 @@ Session 28 (Phase B API/CLI contract and logging parity):
 Session 29 (Phase B close-out):
 - Full suite passed: 171 tests in 3.79 seconds on 2026-11-10.
 - Closed Phase B after validating source launch, singleton locking, web
-      security/confirmation, API/core result shapes, utility/fix parameter
-      rejection, request/command logging, SSE polling fallback/disconnect recovery,
-      and cancellation through Windows process descendants.
+  security/confirmation, API/core result shapes, utility/fix parameter
+  rejection, request/command logging, SSE polling fallback/disconnect recovery,
+  and cancellation through Windows process descendants.
 - Browser E2E/design fidelity remains in Phase C; frozen executable launch and
   packaged log visibility remain in Phase D.
 
-Session 30 (automatic default-gateway repair):
+Session 30 (Phase 6C live-stack P0 verification):
+- Re-ran the live repro against the real stack (real `python -m cli gui
+  --no-browser --port N` child with isolated %LOCALAPPDATA%, real
+  engine/catalog/FixExecutor, real PowerShell/ping jobs; no test client or
+  mocks): 25/25 checks passed.
+- Proven live: boot/session handshake with strict CSP; local dashboard.js +
+  engine-ui.js asset wiring; /api/status real runtime (PowerShell layer
+  available, live gateway/internet pings); diagnose job streamed 33 per-check
+  SSE events and terminated with the end marker at EOF; a second SSE stream
+  opened on the finished job ended in 0.0s (old code: 15s+); /api/findings
+  returned the real machine findings; /api/fixes served all 61 catalog
+  entries; fix plan + dry-run execute completed on the real FixExecutor
+  (outcome dry_run, the old stray `snapshot=` kwarg TypeErrored); /api/logs
+  /stream emitted keep-alives while idle and hit EOF after shutdown; no idle
+  shutdown while a real job ran (>20s without heartbeat, /health ok);
+  single-instance reuse handoff printed the running URL and exited 0; POST
+  /api/shutdown exited the process (rc 0) and removed the port lock.
+- The repro caught a remaining defect in the bind-failure P0 fix: werkzeug
+  3.1.9 converts bind OSErrors into print(strerror) + sys.exit(1) inside
+  BaseWSGIServer.__init__, so run_web_ui's `except OSError` never fired (rc 1
+  came from werkzeug itself and `server_bind_failed` was never logged; the
+  boot URL was also printed before the bind was known to succeed). Fixed
+  web/run.py to bind via `werkzeug.serving.make_server` before advertising
+  the boot URL/port lock, catching SystemExit(1) and OSError into a
+  `server_bind_failed` event + clean return 1. Added regression tests
+  (SystemExit bind, OSError bind, serve-until-KeyboardInterrupt shape).
+- Full suite after the fix: 197 passed (2026-11-11); live repro re-run: 25/25
+  including the bind-failure log check.
+- Browser-level E2E (engine-ui adopt/MutationObserver double-fire guard, SSE
+  reconnect, design fidelity) remains Phase C; the repro verified only the
+  served page's local asset wiring and CSP.
+
+Session 30 (automatic default-gateway repair, merged from origin/main):
 - Added `core/gateway_setup.py` for read-only gateway discovery. It selects an
   active physical adapter (preferring one without a gateway), ranks DHCP
   server/lease, existing gateways, default routes, and first/last/common subnet
@@ -817,26 +849,4 @@ Session 32 (combined connectivity card):
   `#gateway-dot`, `#gateway-status`, `#gateway-host`, and reason rows, plus
   matching JS updates and a CSS `.card.connectivity` layout. Template tests now
   assert both status dots.
-- Full suite remains 200 passed (2026-11-11).
-
-Session 33 (diagnostics action order):
-- In the web Troubleshoot header, the layer controls and cancel-run button were
-  inserted before `#run-all-checks`, which pushed the Run all checks action out
-  of the expected leading position. `addLayerControls()` now inserts those
-  controls after the Configure gateway button, so the action order is:
-  Run all checks, Configure gateway, Cancel run, layer controls.
-- Full suite remains 200 passed (2026-11-11).
-
-Session 34 (diagnostic-check run-all option):
-- Added a dedicated **Run all checks (1–7)** button at the top of the
-  **DIAGNOSTIC CHECKS** rail in both the web UI and the legacy dashboard, so the
-  legacy 1–7 check sequence can be run from the diagnostics list itself.
-- Renamed the web Troubleshoot header button to **Run diagnosis**
-  (`#run-engine-diagnosis`), and updated `engine-ui.js` to target that new ID
-  instead of `#run-all-checks`. This separates engine diagnosis from the legacy
-  1–7 checks.
-- Updated `dashboard.js` (both copies) so the new rail button disables and
-  relabels itself as **Running checks 1–7…** while the sequence is executing.
-- The engine and legacy run buttons now disable each other while either sequence
-  is running, preventing concurrent diagnostics.
 - Full suite remains 200 passed (2026-11-11).

@@ -527,38 +527,62 @@
   }
 
   function initialize() {
-    if (!$("diag-stage") || !$("run-engine-diagnosis")) return;
+    if (!$("diag-stage") || !$("run-all-checks")) return;
     addLayerControls();
     loadCatalog();
-    $("run-engine-diagnosis").addEventListener("click", (event) => {
+    $("run-all-checks").addEventListener("click", (event) => {
       event.preventDefault();
-      event.stopImmediatePropagation();
       runDiagnosis();
-    }, true);
-    const gateway = $("auto-configure-gateway");
+    });
     if (gateway) gateway.addEventListener("click", (event) => {
       event.preventDefault();
-      event.stopImmediatePropagation();
       configureGateway();
-    }, true);
-    ["check-steps", "repair-steps"].forEach((id) => $(id).addEventListener("click", (event) => {
+    });
+    [checks, repairs].forEach((container) => container.addEventListener("click", (event) => {
       const item = event.target.closest("[data-engine-item]");
       if (!item) return;
       event.preventDefault();
-      event.stopImmediatePropagation();
       state.selectedId = item.dataset.engineItem;
       render();
-    }, true));
-    $("diag-stage").addEventListener("click", (event) => {
+    }));
+    stage.addEventListener("click", (event) => {
       const button = event.target.closest("[data-fix-id]");
       const rollback = event.target.closest("[data-rollback-id]");
       if (!button && !rollback) return;
       event.preventDefault();
-      event.stopImmediatePropagation();
       if (button) planFix(button.dataset.fixId);
       else rollbackFix(rollback.dataset.rollbackId);
-    }, true);
+    });
+    guardLegacyContent(checks, repairs, stage);
     render();
+  }
+
+  function adopt(id) {
+    const original = $(id);
+    if (!original) return null;
+    // cloneNode never copies event listeners, but does copy markup/children.
+    const adopted = original.cloneNode(true);
+    original.replaceWith(adopted);
+    return adopted;
+  }
+
+  function guardLegacyContent(checks, repairs, stage) {
+    if (typeof MutationObserver !== "function") return;
+    const observer = new MutationObserver(() => {
+      if (
+        !checks.childElementCount ||
+        !repairs.childElementCount ||
+        checks.querySelector(".diag-item:not([data-engine-item])") ||
+        repairs.querySelector(".diag-item:not([data-engine-item])") ||
+        stage.querySelector("#console-output, #clear-console, .step-run[data-id]")
+      ) {
+        // The legacy dashboard rendered its registry into the shared stage
+        // (late /api/diagnostics response, its error path, or the
+        // Troubleshoot nav click); re-assert the engine view.
+        render();
+      }
+    });
+    [checks, repairs, stage].forEach((node) => observer.observe(node, { childList: true, subtree: true }));
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initialize, { once: true });

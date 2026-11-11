@@ -212,7 +212,7 @@ def api_findings():  # type: ignore[no-untyped-def]
 @api_bp.get("/fixes")
 def api_fixes():  # type: ignore[no-untyped-def]
     st = _state()
-    entries = getattr(st.runtime.catalog, "entries", {})
+    entries = getattr(st.runtime.catalog, "entries", ())
     fixes = [
         {
             "id": entry.id,
@@ -224,7 +224,7 @@ def api_fixes():  # type: ignore[no-untyped-def]
             "reboot": entry.reboot,
             "detection_only": entry.detection_only,
         }
-        for entry in entries.values()
+        for entry in entries
     ]
     fixes.sort(key=lambda item: item["id"])
     return jsonify({"fixes": fixes})
@@ -342,7 +342,8 @@ def api_logs_stream():  # type: ignore[no-untyped-def]
             pos = log_path.stat().st_size if log_path.exists() else 0
         except Exception:
             pos = 0
-        while True:
+        while not st.shutdown_event.is_set():
+            produced = False
             try:
                 if log_path.exists():
                     with log_path.open("r", encoding="utf-8", errors="replace") as f:
@@ -354,9 +355,12 @@ def api_logs_stream():  # type: ignore[no-untyped-def]
                             obj = json.loads(line)
                         except Exception:
                             continue
+                        produced = True
                         yield f"data: {json.dumps({'type':'log','entry':obj}, default=str)}\n\n"
             except Exception:
                 pass
+            if not produced:
+                yield ": keep-alive\n\n"
             time.sleep(1)
 
     resp = Response(stream_with_context(generate()), mimetype="text/event-stream")

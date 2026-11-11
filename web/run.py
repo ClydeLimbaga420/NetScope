@@ -15,7 +15,7 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 from typing import BinaryIO
-from werkzeug.serving import run_simple
+from werkzeug.serving import make_server
 
 import config
 from web.security import TOKEN_PARAM
@@ -172,6 +172,22 @@ def _open_url(url: str) -> bool:
         return False
 
 
+def _monitor(state: WebState, interval: float = 2.0) -> None:
+    while True:
+        if state.shutdown_event.wait(interval):
+            # explicit request (POST /api/shutdown or /api/elevate): give the
+            # HTTP response a moment to flush before exiting the process.
+            time.sleep(0.5)
+            state.logger.event("server_shutdown", source="web", reason="api_request")
+            _remove_lock(os.getpid())
+            os._exit(0)
+        if state.should_shutdown():
+            state.logger.event("server_shutdown", source="web", reason="heartbeat_timeout")
+            state.shutdown_event.set()
+            _remove_lock(os.getpid())
+            os._exit(0)
+
+
 def run_web_ui(port: int | None = None, no_browser: bool = False) -> int:
     instance_lock = _acquire_instance_lock()
     if instance_lock is None:
@@ -194,18 +210,26 @@ def run_web_ui(port: int | None = None, no_browser: bool = False) -> int:
         port = int(port) if port else _find_free_port()
         state.port = port
         boot_url = f"http://127.0.0.1:{port}/__boot__?{TOKEN_PARAM}={state.security.boot_token}"
+
+        # Bind before advertising anything. Werkzeug 3.x converts bind
+        # OSErrors into print(strerror) + sys.exit(1) inside
+        # BaseWSGIServer.__init__, so a failed bind surfaces as SystemExit(1),
+        # not OSError; catch both so the failure is logged and returns
+        # cleanly instead of escaping the CLI.
+        try:
+            srv = make_server("127.0.0.1", port, app, threaded=True)
+        except SystemExit as exc:
+            if exc.code != 1:
+                raise
+            state.logger.error("server_bind_failed", source="web", port=port, error="port unavailable")
+            return 1
+        except OSError as exc:
+            state.logger.error("server_bind_failed", source="web", port=port, error=str(exc))
+            return 1
+
         _write_lock(port, state.security.boot_token, os.getpid())
 
-        def monitor() -> None:
-            while not state.shutdown_event.is_set():
-                if state.should_shutdown():
-                    state.logger.event("server_shutdown", source="web", reason="heartbeat_timeout")
-                    state.shutdown_event.set()
-                    _remove_lock(os.getpid())
-                    os._exit(0)
-                time.sleep(2)
-
-        threading.Thread(target=monitor, daemon=True).start()
+        threading.Thread(target=_monitor, args=(state,), daemon=True).start()
 
         if not no_browser:
             threading.Timer(0.6, lambda: _open_url(boot_url)).start()
@@ -213,14 +237,7 @@ def run_web_ui(port: int | None = None, no_browser: bool = False) -> int:
             print(boot_url, flush=True)
 
         state.logger.event("server_start", source="web", port=port)
-        run_simple(
-            "127.0.0.1",
-            port,
-            app,
-            use_reloader=False,
-            use_debugger=False,
-            threaded=True,
-        )
+        srv.serve_forever()
     except KeyboardInterrupt:
         if state is not None:
             state.logger.event("server_shutdown", source="web", reason="keyboard_interrupt")
