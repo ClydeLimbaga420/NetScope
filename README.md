@@ -39,6 +39,7 @@ while the localhost web UI replaces it.
 ### Dashboard
 - Combined Internet and Gateway connectivity status card
 - Internet connectivity and ping latency monitoring
+- Packet loss monitoring for internet and gateway pings
 - Smoothed live bandwidth charts
 - Local IP, default gateway, and adapter information
 - Active device discovery through ARP
@@ -186,7 +187,6 @@ The SQLite schema in database/db.py is not currently used by the application.
 - mDNS/SSDP device name discovery
 - Historical network statistics
 - SQLite monitoring history
-- Packet loss monitoring
 - Per-device traffic analysis
 - Device type inference
 - Export device list
