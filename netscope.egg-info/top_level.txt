@@ -1,8 +1,0 @@
-cli
-config
-core
-fixes
-gui
-modules
-powershell
-web

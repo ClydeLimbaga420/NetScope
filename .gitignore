@@ -27,3 +27,5 @@ Thumbs.db
 prompt.txt
 
 build/
+
+netscope.egg-info/

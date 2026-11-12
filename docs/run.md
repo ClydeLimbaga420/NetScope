@@ -5,3 +5,5 @@
 netscope --help
 netscope gui
 netscope diagnose --json
+
+add speed test
