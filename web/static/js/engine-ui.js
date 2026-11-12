@@ -417,11 +417,14 @@
     tags.append(element("span", `step-kind ${check ? "check" : "repair"}`, check ? String(item.layer || "check").toUpperCase() : String(item.risk || "fix").toUpperCase()));
     if (item.admin) tags.append(element("span", "admin-tag", "ADMIN"));
     title.append(tags, element("h3", "", resultTitle(item)));
-    const descText = check && item.pending ? "This check has not run yet. Select layers and run a diagnosis." : (check ? (item.message || "No additional detail.") : (item.symptom || item.explanation || "Catalog fix"));
+    const descText = check
+      ? (item.description || (item.pending ? "This check has not run yet. Select layers and run a diagnosis." : (item.message || "No additional detail.")))
+      : (item.symptom || item.explanation || "Catalog fix");
     title.append(element("p", "diag-desc", descText));
     header.append(title, element("span", `step-status ${statusClass(item.status)}`, item.status || "ready"));
     detail.append(header);
 
+    if (check && !item.pending && item.message) detail.append(element("p", "step-reason", item.message));
     if (check && item.cause && !item.pending) detail.append(element("p", "step-reason", item.cause));
     if (fix) {
       detail.append(element("p", "step-reason", item.explanation));
@@ -489,8 +492,14 @@
   function receiveCheck(result) {
     const incoming = Object.assign({ kind: "check", status: "skip", fix_ids: [] }, result);
     const index = state.checks.findIndex((item) => item.id === incoming.id);
-    if (index >= 0) state.checks[index] = incoming;
-    else state.checks.push(incoming);
+    if (index >= 0) {
+      // Results stream without the descriptor text, so keep the planned
+      // description available for the detail pane.
+      if (!incoming.description) incoming.description = state.checks[index].description || "";
+      state.checks[index] = incoming;
+    } else {
+      state.checks.push(incoming);
+    }
     // Keep the checklist visible while checks resolve, and drop only stale
     // pending placeholders from the same layer after real results arrive.
     const hasResultsForLayer = state.checks.some((item) => item.layer === incoming.layer && !item.pending);
