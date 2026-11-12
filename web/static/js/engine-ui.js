@@ -202,6 +202,251 @@
     target.append(title, pre);
   }
 
+  function toast(message, kind) {
+    if (window.NetScope && typeof window.NetScope.toast === "function") {
+      window.NetScope.toast(message, kind);
+    }
+  }
+
+  function syncCancelState() {
+    const cancel = $("engine-cancel-job");
+    if (cancel) cancel.disabled = !state.busy || !state.jobId;
+  }
+
+  function downloadJson(filename, value) {
+    const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(link.href), 0);
+  }
+
+  function cardHead(title, text) {
+    const head = element("div", "engine-output-head");
+    head.append(element("span", "", title));
+    const copy = element("button", "ghost-button engine-copy", "Copy");
+    copy.type = "button";
+    copy.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        copy.textContent = "Copied";
+        toast("Copied to clipboard", "success");
+        window.setTimeout(() => { copy.textContent = "Copy"; }, 1800);
+      } catch (_error) {
+        toast("Clipboard is unavailable in this browser", "error");
+      }
+    });
+    const save = element("button", "ghost-button engine-copy", "Export");
+    save.type = "button";
+    save.addEventListener("click", () => {
+      try {
+        downloadJson("netscope-output.json", JSON.parse(text));
+        toast("Saved netscope-output.json", "success");
+      } catch (_error) {
+        toast("This output could not be exported", "error");
+      }
+    });
+    head.append(copy, save);
+    return head;
+  }
+
+  function renderUnresolved(section, target) {
+    if (!section) return null;
+    const wrapper = element("div", "engine-unresolved");
+    wrapper.append(element("p", "diag-command-label", "IF THIS DID NOT HELP"));
+    const card = element("div", "engine-output");
+    card.append(element("div", "engine-output-head", "LIKELY CAUSES"));
+    if (section.reason) card.append(element("p", "diag-desc", section.reason));
+    if (section.wording) card.append(element("p", "muted", section.wording));
+    [
+      ["this_device", "On this device"],
+      ["beyond_device", "Beyond this device"],
+    ].forEach(([key, label]) => {
+      const causes = section[key] || [];
+      if (!causes.length) return;
+      const group = element("div", "engine-cause-group");
+      group.append(element("p", "diag-command-label", label.toUpperCase()));
+      causes.forEach((cause) => {
+        const row = element("div", "engine-cause");
+        const tag = element("span", `engine-cause-tag ${cause.likelihood === "probable" ? "probable" : ""}`, cause.likelihood || "possible");
+        row.append(tag, element("span", "", cause.cause || ""));
+        group.append(row);
+      });
+      card.append(group);
+    });
+    listSection(card, "NEXT CHECKS", section.next_checks);
+    listSection(card, "EVIDENCE TO COLLECT", section.evidence_to_collect);
+    wrapper.append(card);
+    target.append(wrapper);
+    return wrapper;
+  }
+
+  function renderFixOutcome(outcome, elapsedMs) {
+    const stage = $("diag-stage");
+    if (!stage) return;
+    outcome = outcome || {};
+    stage.replaceChildren();
+    const card = element("div", "engine-output");
+    card.append(cardHead(`FIX ${String(outcome.status || "result").toUpperCase()}`, JSON.stringify(outcome, null, 2)));
+    const meta = element("div", "engine-result-meta");
+    meta.append(fixFact("Status", outcome.status || "unknown"));
+    meta.append(fixFact("Exit code", String(outcome.exit_code == null ? "\u2014" : outcome.exit_code)));
+    if (elapsedMs != null) meta.append(fixFact("Duration", `${(elapsedMs / 1000).toFixed(1)} s`));
+    if (outcome.dry_run) meta.append(fixFact("Mode", "Dry run"));
+    card.append(meta);
+    if (outcome.message) card.append(element("p", "diag-desc", outcome.message));
+    if (outcome.error) card.append(element("p", "step-reason error", outcome.error));
+    const steps = outcome.steps || [];
+    if (steps.length) {
+      const section = element("div", "repair-section");
+      section.append(element("p", "diag-command-label", "STEPS"));
+      steps.forEach((step, index) => {
+        const row = element("div", "engine-step");
+        const head = element("div", "engine-step-head");
+        head.append(element("span", "repair-step-number", String((step.index == null ? index : step.index) + 1).padStart(2, "0")));
+        head.append(element("strong", "", step.name || `Step ${index + 1}`));
+        head.append(element("span", `engine-step-status ${statusClass(step.status)}`, step.status || ""));
+        row.append(head);
+        if (step.description) row.append(element("p", "engine-step-desc", step.description));
+        (step.commands || []).forEach((command) => row.append(renderCommand(command)));
+        if (step.verification) row.append(element("pre", "engine-evidence", JSON.stringify(step.verification, null, 2)));
+        section.append(row);
+      });
+      card.append(section);
+    }
+    if (outcome.verification) {
+      const section = element("div", "repair-section");
+      section.append(element("p", "diag-command-label", "RE-CHECK"));
+      section.append(element("pre", "engine-evidence", JSON.stringify(outcome.verification, null, 2)));
+      card.append(section);
+    }
+    stage.append(card);
+    if (outcome.rollback_available && outcome.fix_id) {
+      const rollback = element("button", "ghost-button", "Roll back this fix");
+      rollback.type = "button";
+      rollback.dataset.rollbackId = outcome.fix_id;
+      stage.append(rollback);
+    }
+    if (outcome.unresolved) renderUnresolved(outcome.unresolved, stage);
+    renderToolPanel(stage);
+  }
+
+  function formatValue(value) {
+    if (value == null || value === "") return "\u2014";
+    if (typeof value === "object") return JSON.stringify(value);
+    return String(value);
+  }
+
+  function infoTable(target, label, columns, rows) {
+    const section = element("div", "repair-section");
+    section.append(element("p", "diag-command-label", label));
+    if (!rows || !rows.length) {
+      section.append(element("p", "engine-info-empty", "None reported."));
+      target.append(section);
+      return;
+    }
+    const table = element("table", "engine-info-table");
+    const head = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    columns.forEach((column) => headRow.append(element("th", "", column.label)));
+    head.append(headRow);
+    const body = document.createElement("tbody");
+    rows.forEach((row) => {
+      const tr = document.createElement("tr");
+      columns.forEach((column) => {
+        const value = typeof column.value === "function" ? column.value(row) : formatValue(row[column.key]);
+        tr.append(element("td", "", value == null || value === "" ? "\u2014" : value));
+      });
+      body.append(tr);
+    });
+    table.append(head, body);
+    section.append(table);
+    target.append(section);
+  }
+
+  function renderInfoBody(target, info) {
+    target.replaceChildren();
+    const summary = element("div", "info-list");
+    [["Hostname", info.hostname], ["Default gateway", info.gateway], ["Captured", info.captured_at]].forEach(([label, value]) => {
+      const row = document.createElement("div");
+      row.append(element("span", "", label), element("strong", "", formatValue(value)));
+      summary.append(row);
+    });
+    target.append(summary);
+    infoTable(target, "NETWORK ADAPTERS", [
+      { label: "Adapter", value: (row) => row.name || row.alias },
+      { label: "Status", value: (row) => row.status },
+      { label: "IPv4", value: (row) => (row.ipv4 || []).map((item) => `${item.address}/${item.prefix}`).join(", ") },
+      { label: "Gateway", value: (row) => row.gateway },
+      { label: "MAC", value: (row) => row.mac },
+      { label: "MTU", value: (row) => row.mtu },
+    ], info.adapters);
+    infoTable(target, "ROUTES", [
+      { label: "Destination", value: (row) => row.DestinationPrefix },
+      { label: "Next hop", value: (row) => row.NextHop },
+      { label: "Interface", value: (row) => row.InterfaceAlias },
+      { label: "Metric", value: (row) => row.RouteMetric },
+    ], info.routes);
+    infoTable(target, "ARP / NEIGHBORS", [
+      { label: "IP", value: (row) => row.ip },
+      { label: "MAC", value: (row) => row.mac },
+      { label: "Type", value: (row) => row.type },
+    ], info.arp);
+    infoTable(target, "DNS SERVERS", [
+      { label: "Server", value: (row) => row },
+    ], info.dns_servers);
+    if (info.proxy) {
+      const section = element("div", "repair-section");
+      section.append(element("p", "diag-command-label", "PROXY"));
+      section.append(element("pre", "engine-evidence", JSON.stringify(info.proxy, null, 2)));
+      target.append(section);
+    }
+    infoTable(target, "VPN CONNECTIONS", [
+      { label: "Name", value: (row) => row.Name },
+      { label: "Server", value: (row) => row.ServerAddress },
+      { label: "Status", value: (row) => row.ConnectionStatus },
+    ], info.vpn);
+    if (info.wifi && Object.keys(info.wifi).length) {
+      const section = element("div", "repair-section");
+      section.append(element("p", "diag-command-label", "WI-FI"));
+      section.append(element("pre", "engine-evidence", JSON.stringify(info.wifi, null, 2)));
+      target.append(section);
+    }
+    if (info.mtu && Object.keys(info.mtu).length) {
+      infoTable(target, "MTU", [
+        { label: "Interface", value: (row) => row.interface },
+        { label: "MTU", value: (row) => row.mtu },
+      ], Object.entries(info.mtu).map(([name, mtu]) => ({ interface: name, mtu })));
+    }
+  }
+
+  function showInfo(info, refresh) {
+    const stage = $("diag-stage");
+    if (!stage) return;
+    stage.replaceChildren();
+    const card = element("div", "engine-output");
+    const text = JSON.stringify(info, null, 2);
+    const head = cardHead("NETWORK INFO", text);
+    const refreshButton = element("button", "ghost-button engine-copy", "Refresh");
+    refreshButton.type = "button";
+    refreshButton.addEventListener("click", () => refresh());
+    head.append(refreshButton);
+    card.append(head);
+    const body = element("div", "engine-info");
+    renderInfoBody(body, info);
+    card.append(body);
+    stage.append(card);
+    renderToolPanel(stage);
+  }
+
+  function showNetworkInfo() {
+    return api("/api/info").then((info) => showInfo(info, showNetworkInfo)).catch((error) => {
+      toast("Network info unavailable", "error");
+      showOutput("NETWORK INFO ERROR", { error: error.message });
+    });
+  }
+
   function renderFixActions(target, ids) {
     const fixes = ids.map((id) => state.fixes.find((fix) => fix.id === id)).filter(Boolean);
     if (!fixes.length) return;
@@ -675,28 +920,30 @@
 
   async function executeFix(plan, dryRun, secondConfirmation) {
     setBusy(true, "Applying fix...", false);
+    const started = Date.now();
     try {
-      const started = await api("/api/fix/execute", {
+      const response = await api("/api/fix/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ confirmation_token: plan.confirmation_token, dry_run: dryRun, second_confirmation: secondConfirmation })
       });
-      state.jobId = started.job_id;
+      state.jobId = response.job_id;
+      syncCancelState();
       const job = await followJob(state.jobId);
-      const stage = $("diag-stage");
-      if (stage) {
-        showOutput("FIX RESULT", job.result || { error: job.error || job.status });
-        if (job.result && job.result.rollback_available) {
-          const rollback = element("button", "ghost-button", "Roll back this fix");
-          rollback.type = "button";
-          rollback.dataset.rollbackId = started.fix_id;
-          stage.append(rollback);
-        }
+      const outcome = job.result || { error: job.error || job.status };
+      renderFixOutcome(outcome, Date.now() - started);
+      if (outcome.status === "resolved") toast(`${outcome.fix_id || "Fix"} resolved the problem`, "success");
+      else if (outcome.status === "dry_run") toast("Dry run complete. No changes were made.", "success");
+      else if (outcome.status === "unresolved") toast("The fix ran, but the problem remains.", "error");
+      else if (outcome.error) toast(outcome.error, "error");
+      if (outcome.unresolved) {
+        toast("Review the likely causes below.", "error");
+        showIsolationQuestion(String(outcome.fix_id || plan.fix_id || ""));
       }
-      if (job.result && job.result.status === "unresolved") showIsolationQuestion(started.fix_id);
     } catch (error) {
       const stage = $("diag-stage");
       if (stage) stage.append(element("p", "step-reason error", error.message));
+      toast(error.message, "error");
     } finally {
       state.jobId = null;
       setBusy(false, null, false);
@@ -712,6 +959,7 @@
         body: "{}"
       });
       state.jobId = started.job_id;
+      syncCancelState();
       const job = await followJob(state.jobId);
       const stage = $("diag-stage");
       if (stage) {
@@ -724,9 +972,11 @@
           stage.append(rollback);
         }
       }
+      toast("Gateway repair finished", "success");
     } catch (error) {
       const stage = $("diag-stage");
       if (stage) stage.append(element("p", "step-reason error", error.message));
+      toast(error.message, "error");
     } finally {
       state.jobId = null;
       setBusy(false, null, false);
@@ -754,10 +1004,13 @@
         body: JSON.stringify({ fix_id: fixId, confirmed: true })
       });
       state.jobId = started.job_id;
+      syncCancelState();
       const job = await followJob(state.jobId);
       showOutput("ROLLBACK RESULT", job.result || { error: job.error || job.status });
+      toast(`${fixId} rolled back`, "success");
     } catch (error) {
       showOutput("ROLLBACK ERROR", { error: error.message });
+      toast(error.message, "error");
     } finally {
       state.jobId = null;
       setBusy(false, null, false);
@@ -778,14 +1031,16 @@
         setButtonLabel(button, "Working...");
         try {
           const response = await api("/api/unresolved/answer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fix_id: fixId, another_device_works: answer }) });
-          const card = element("div", "engine-output");
-          card.append(element("div", "engine-output-head", "LIKELY CAUSES"));
-          card.append(element("pre", "engine-evidence", JSON.stringify(response.sections || [], null, 2)));
-          box.replaceChildren(element("p", "diag-command-label", "IF THIS DID NOT HELP"), card);
+          box.replaceChildren(element("p", "diag-command-label", "IF THIS DID NOT HELP"));
+          const section = (response.sections || [])[0];
+          if (section) renderUnresolved(section, box);
+          else box.append(element("p", "engine-info-empty", "No further guidance is available for this finding."));
+          toast("Likely causes re-ranked", "success");
         } catch (error) {
           button.disabled = false;
           setButtonLabel(button, label);
           box.append(element("p", "step-reason error", error.message));
+          toast(error.message, "error");
         }
       });
       box.append(button);
@@ -799,19 +1054,7 @@
     stage.replaceChildren();
     const text = JSON.stringify(value, null, 2);
     const card = element("div", "engine-output");
-    const head = element("div", "engine-output-head");
-    head.append(element("span", "", title));
-    const copy = element("button", "ghost-button engine-copy", "Copy");
-    copy.type = "button";
-    copy.addEventListener("click", async () => {
-      try {
-        await navigator.clipboard.writeText(text);
-        copy.textContent = "Copied";
-        window.setTimeout(() => { copy.textContent = "Copy"; }, 1800);
-      } catch (_error) { /* clipboard unavailable */ }
-    });
-    head.append(copy);
-    card.append(head, element("pre", "engine-evidence", text));
+    card.append(cardHead(title, text), element("pre", "engine-evidence", text));
     stage.append(card);
     renderToolPanel(stage);
   }
@@ -832,11 +1075,13 @@
     try {
       const started = await api(`/api/tools/${encodeURIComponent(name)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params) });
       state.jobId = started.job_id;
+      syncCancelState();
       const job = await followJob(state.jobId);
       if (job.status === "error") throw new Error(job.error || "Utility failed.");
       showOutput(`${name.toUpperCase()} RESULT`, job.result);
     } catch (error) {
       showOutput("UTILITY ERROR", { error: error.message });
+      toast(error.message, "error");
     } finally {
       state.jobId = null;
       button.disabled = false;
@@ -880,9 +1125,8 @@
     const info = element("button", "ghost-button");
     info.type = "button";
     info.append(svgIcon("M12 10v6m0-9.5v.01", 12), element("span", "btn-label", "Network info"));
-    info.addEventListener("click", async () => {
-      try { showOutput("NETWORK INFO", await api("/api/info")); }
-      catch (error) { showOutput("NETWORK INFO ERROR", { error: error.message }); }
+    info.addEventListener("click", () => {
+      showNetworkInfo();
     });
     const logs = element("button", "ghost-button");
     logs.type = "button";
@@ -897,13 +1141,12 @@
     report.addEventListener("click", async () => {
       try {
         const data = await api("/api/report?format=json");
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.download = "netscope-report.json";
-        link.click();
-        URL.revokeObjectURL(link.href);
-      } catch (error) { showOutput("REPORT ERROR", { error: error.message }); }
+        downloadJson("netscope-report.json", data);
+        toast("Saved netscope-report.json", "success");
+      } catch (error) {
+        showOutput("REPORT ERROR", { error: error.message });
+        toast(error.message, "error");
+      }
     });
     const history = element("button", "ghost-button");
     history.type = "button";

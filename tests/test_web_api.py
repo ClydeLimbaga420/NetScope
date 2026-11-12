@@ -845,3 +845,27 @@ def test_web_state_falls_back_to_empty_catalog(monkeypatch, tmp_path):
     response = client.get("/api/fixes", headers=headers)
     assert response.status_code == 200
     assert response.get_json() == {"fixes": []}
+
+
+def test_template_autoescape_escapes_dynamic_shell_values(client, monkeypatch):
+    import config
+
+    c, _st = client
+    monkeypatch.setattr(config, "APP_VERSION", "<script>alert(1)</script>")
+    response = c.get("/", headers={"Host": "127.0.0.1:5000"})
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+    assert "<script>alert(1)</script>" not in html
+    assert c.application.jinja_env.autoescape("index.html") is True
+
+
+def test_reusable_shell_partials_render(client):
+    c, _st = client
+    html = c.get("/", headers={"Host": "127.0.0.1:5000"}).get_data(as_text=True)
+    assert 'id="toast-region"' in html
+    assert 'role="status"' in html
+    assert 'aria-live="polite"' in html
+    assert '<header class="topbar">' in html
+    assert 'id="top-status"' in html
+    assert 'id="last-updated"' in html

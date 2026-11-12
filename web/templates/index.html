@@ -7,28 +7,9 @@
         <div id="overview-top"></div>
 
         <!-- HEADER -->
-        <header class="topbar">
-
-            <div>
-                <p class="eyebrow">Overview</p>
-
-                <h1>Network Overview</h1>
-
-                <p class="muted">
-                    Your local network, at a glance.
-                </p>
-            </div>
-
-            <div class="top-status" id="top-status">
-                <span class="pulse" aria-hidden="true"></span>
-                <span class="live-word" aria-hidden="true">LIVE</span>
-
-                <span id="last-updated">
-                    Waiting for data...
-                </span>
-            </div>
-
-        </header>
+        {% with eyebrow="Overview", title="Network Overview", subtitle="Your local network, at a glance." %}
+            {% include "_page_header.html" %}
+        {% endwith %}
 
 
         <!-- STATISTICS -->

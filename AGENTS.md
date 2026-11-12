@@ -5,7 +5,7 @@ dashboard into a universal Windows network troubleshooting tool with one shared
 engine and two front ends (CLI + GUI). Work phase by phase; update this file and
 `task.md` Notes at the end of every phase.
 
-**Current status: Phase 4 complete; Phase 6 Phase B complete and Phase C in progress.** Phase 5 packaging is pending. The web UI has its localhost server/API/job/security foundation, local assets, and engine-backed Troubleshoot integration. Session 30's live-stack verification passed 25/25 against the real engine/PowerShell/jobs; remaining Phase C work is browser E2E and design fidelity.
+**Current status: Phase 4 complete; Phase 6 Phase B complete and Phase C in progress.** Phase 5 packaging is pending. The web UI has its localhost server/API/job/security foundation, local assets, engine-backed Troubleshoot/Repair Library integration, reusable shell partials/toasts, structured fix/unresolved/network-info output, and Phase C audit/changelog docs. Remaining Phase C work is browser E2E and screenshot/computed-style design verification (no browser is installed on this host).
 
 ## Run / environment
 - The Flask dashboard still works: `python app.py` → http://127.0.0.1:5000
@@ -16,7 +16,7 @@ engine and two front ends (CLI + GUI). Work phase by phase; update this file and
 - This checkout originally had **no `.venv`**. A venv now exists (Python 3.14.7).
   Recreate with `py -m venv .venv`, then
   `.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt`.
-- Run tests: `.\.venv\Scripts\python.exe -m pytest` (latest full run: 210 passed, 2026-11-11).
+- Run tests: `.\.venv\Scripts\python.exe -m pytest` (latest full run: 226 passed, 2026-11-12).
 - Run the CLI: `.\.venv\Scripts\python.exe netscope.py --help`
   (or `python -m cli`). `netscope.py diagnose --json` is the machine interface.
 - Run the web UI: `netscope gui` launches the localhost interface; use
@@ -271,7 +271,7 @@ raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
   detail links to it with **View full procedure**. A sidebar **Run as
   administrator** button calls `/api/elevate`; cancellation (UAC declined) logs
   `elevate_cancelled`, returns 409 and keeps the server running.
-- Tests: latest full suite is 214 passing (2026-11-11). Session 30's live repro
+- Tests: latest full suite is 226 passing (2026-11-12). Session 30's live repro
   verified the real CLI child, boot/session/CSP, local assets, 33 SSE check
   events, findings/fixes/catalog, fix plan+dry-run, log streaming, shutdown,
   single-instance reuse and bind-failure logging (25/25); the gateway repair
@@ -313,6 +313,17 @@ raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
   the web templates must keep the literal tags `<aside class="sidebar">`,
   `<main class="main">`, `<footer>` (no extra attributes on those tags — the
   skip link targets the inner `#main-content` wrapper div instead).
+- Phase C session 42: reusable shell partials `web/templates/_page_header.html`,
+  `_status.html`, `_toast.html` (`#toast-region`, `window.NetScope.toast`,
+  textContent-only); fix outcomes render structured steps/timings/verification
+  and unresolved sections render ranked causes + next checks + evidence;
+  Network info renders tables with copy/export/refresh; utilities export and use
+  the shared cancel control. `docs/phaseC-web-ui.md` is the design-file
+  changelog/offline-CSP audit/parity map. `tests/test_web_design.py` enforces
+  offline/local assets, no inline handlers/scripts/styles, no unsafe DOM sinks,
+  design tokens/breakpoints, shared-CSS identity, and changelog coverage;
+  autoescape tests live in `tests/test_web_api.py`. Browser E2E/design
+  screenshots remain open (no browser on this host).
 
 ## Logging
 - JSON-lines file at `%LOCALAPPDATA%\NetScope\logs\netscope.log`, rotating

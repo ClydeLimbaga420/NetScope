@@ -87,3 +87,37 @@
   else bindDrawer();
 })();
 
+
+(function () {
+  // Reusable toast notifications. Text is always inserted as textContent so
+  // dynamic values from the API can never become markup.
+  function region() {
+    var element = document.getElementById('toast-region');
+    if (element) return element;
+    if (!document.body) return null;
+    element = document.createElement('div');
+    element.id = 'toast-region';
+    element.className = 'toast-region';
+    element.setAttribute('role', 'status');
+    element.setAttribute('aria-live', 'polite');
+    element.setAttribute('aria-atomic', 'true');
+    document.body.appendChild(element);
+    return element;
+  }
+
+  function toast(message, kind) {
+    var host = region();
+    if (!host || !message) return;
+    var item = document.createElement('div');
+    item.className = 'toast' + (kind ? ' ' + kind : '');
+    item.textContent = String(message);
+    host.appendChild(item);
+    window.setTimeout(function () {
+      item.classList.add('is-leaving');
+      window.setTimeout(function () { item.remove(); }, 200);
+    }, 3200);
+  }
+
+  window.NetScope = window.NetScope || {};
+  window.NetScope.toast = toast;
+})();

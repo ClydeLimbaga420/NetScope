@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import threading
 import time
 import uuid
@@ -444,8 +445,16 @@ def api_open_log_folder():  # type: ignore[no-untyped-def]
 @api_bp.post("/elevate")
 def api_elevate():  # type: ignore[no-untyped-def]
     st = _state()
+    argv = gui_relaunch_argv()
+    st.logger.action(
+        "web",
+        "elevate_launch",
+        argv=list(argv),
+        current_admin=is_admin(),
+        executable=sys.executable,
+    )
     try:
-        launched = relaunch_elevated(gui_relaunch_argv())
+        launched = relaunch_elevated(argv)
     except Exception as exc:  # noqa: BLE001
         st.logger.error("elevate_failed", source="web", error=str(exc), exc_info=True)
         return _err("elevate_failed", str(exc), 500)
