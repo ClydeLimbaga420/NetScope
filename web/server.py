@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import sys
 import threading
 import time
 from typing import Any
@@ -54,6 +56,14 @@ class WebState:
         self.jobs = JobManager()
         self.logger = setup_logging(mode)
         self.session_id = getattr(self.logger, "session_id", "-")
+        self.logger.event(
+            "web_state_init",
+            source="web",
+            admin=is_admin(),
+            pid=os.getpid(),
+            executable=sys.executable,
+            argv=list(sys.argv),
+        )
         self.runtime = self._build_runtime()
         self.last_heartbeat = time.monotonic()
         self.shutdown_event = threading.Event()

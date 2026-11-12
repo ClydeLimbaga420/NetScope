@@ -51,6 +51,18 @@ from powershell.validation import (
 ConfirmFunc = Callable[[str], bool]
 IsolationFunc = Callable[[], bool | None]
 AdminFunc = Callable[[], bool]
+ProgressFunc = Callable[[dict[str, Any]], None]
+
+
+def _emit_progress(progress: ProgressFunc | None, event: dict[str, Any]) -> None:
+    if progress is None:
+        return
+    try:
+        progress(event)
+    except Exception:
+        # Progress reporting is best-effort: a UI callback must never break a fix.
+        pass
+
 
 _VIRTUAL_HINTS = (
     "hyper-v",
@@ -644,6 +656,7 @@ class FixExecutor:
         risk_ack: bool = False,
         confirm: ConfirmFunc | None = None,
         isolation: IsolationFunc | None = None,
+        progress: ProgressFunc | None = None,
     ) -> FixOutcome:
         plan = plan or self.prepare(entry)
         outcome = FixOutcome(
@@ -660,6 +673,10 @@ class FixExecutor:
             outcome.status = "dry_run"
             outcome.resolved = None
             outcome.message = "Dry run: no changes were made."
+            _emit_progress(
+                progress,
+                {"phase": "dry_run", "status": "done", "message": outcome.message},
+            )
             return outcome
 
         if entry.detection_only:
@@ -668,6 +685,10 @@ class FixExecutor:
             outcome.message = (
                 "This finding is DETECT-ONLY. No setting on this PC can fix it; "
                 "see the probable causes and next checks."
+            )
+            _emit_progress(
+                progress,
+                {"phase": "guidance", "status": "running", "message": outcome.message},
             )
             outcome.unresolved = unresolved_section(
                 entry, reason=outcome.message, another_device_works=self._ask_isolation(isolation)
@@ -683,12 +704,17 @@ class FixExecutor:
         if entry.admin and not self.admin_check():
             outcome.status = "needs_admin"
             outcome.message = "This fix needs an elevated (administrator) session."
+            _emit_progress(
+                progress,
+                {"phase": "needs_admin", "status": "error", "message": outcome.message},
+            )
             return outcome
 
         snapshot_file: str | None = None
         verification: dict[str, Any] | None = None
         evidence: dict[str, Any] = {}
         executed_any = False
+        total = len(entry.ladder)
 
         for index, step in enumerate(entry.ladder, start=1):
             step_outcome = StepOutcome(
@@ -698,6 +724,17 @@ class FixExecutor:
                 status="skipped",
             )
             outcome.steps.append(step_outcome)
+            _emit_progress(
+                progress,
+                {
+                    "phase": "step",
+                    "status": "running",
+                    "index": index,
+                    "total": total,
+                    "name": step.name,
+                    "description": step.description or "",
+                },
+            )
 
             if not step.commands:
                 step_outcome.status = "guidance"
@@ -753,6 +790,14 @@ class FixExecutor:
                 )
 
             if not executed_any:
+                _emit_progress(
+                    progress,
+                    {
+                        "phase": "snapshot",
+                        "status": "running",
+                        "message": "Saving a safety snapshot before changing anything...",
+                    },
+                )
                 snapshot_file, _ = self._take_snapshot(entry, plan.values)
                 outcome.snapshot_file = snapshot_file
                 executed_any = True
@@ -797,6 +842,17 @@ class FixExecutor:
                     step_outcome.status = "failed"
                     break
 
+            _emit_progress(
+                progress,
+                {
+                    "phase": "verify",
+                    "status": "verifying",
+                    "index": index,
+                    "total": total,
+                    "name": step.name,
+                    "message": f"Re-checking after step {index}...",
+                },
+            )
             verification = self._verify(entry)
             step_outcome.verification = verification
             if verification:
@@ -809,6 +865,14 @@ class FixExecutor:
                 outcome.message = f"Re-check passed: {', '.join(entry.verify)}."
                 return outcome
 
+        _emit_progress(
+            progress,
+            {
+                "phase": "guidance",
+                "status": "running",
+                "message": "The re-check still fails. Collecting what to try next...",
+            },
+        )
         isolation_answer = self._ask_isolation(isolation)
         outcome.status = "unresolved"
         outcome.resolved = False

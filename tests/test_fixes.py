@@ -229,6 +229,43 @@ def test_executor_resolves_and_saves_snapshot(tmp_path, snapshot_factory):
     assert any("ipconfig" in call[0] for call in executor.runner.calls)
 
 
+def test_executor_reports_progress_events(tmp_path, snapshot_factory):
+    catalog = load_catalog()
+    entry = catalog.require("IP-01")
+    snapshot = snapshot_factory()
+    engine = StaticEngine(snapshot, check_id="IP-01", statuses=[Status.PASS])
+    executor = make_executor(tmp_path, snapshot, engine, catalog)
+    events: list[dict] = []
+
+    outcome = executor.run(entry, assume_yes=True, progress=events.append)
+
+    assert outcome.status == "resolved"
+    phases = [event["phase"] for event in events]
+    assert "snapshot" in phases
+    assert "step" in phases
+    assert "verify" in phases
+    steps = [event for event in events if event["phase"] == "step"]
+    assert steps[0]["index"] == 1
+    assert steps[0]["total"] == len(entry.ladder)
+    assert steps[0]["name"]
+    assert steps[0]["status"] == "running"
+
+
+def test_executor_ignores_progress_callback_errors(tmp_path, snapshot_factory):
+    catalog = load_catalog()
+    entry = catalog.require("IP-01")
+    snapshot = snapshot_factory()
+    engine = StaticEngine(snapshot, check_id="IP-01", statuses=[Status.PASS])
+    executor = make_executor(tmp_path, snapshot, engine, catalog)
+
+    def boom(event):
+        raise RuntimeError("progress callback failed")
+
+    outcome = executor.run(entry, assume_yes=True, progress=boom)
+
+    assert outcome.status == "resolved"
+
+
 def test_executor_dry_run_does_not_execute(tmp_path, snapshot_factory):
     catalog = load_catalog()
     entry = catalog.require("IP-01")

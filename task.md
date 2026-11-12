@@ -356,24 +356,31 @@ strictly required for web (document why).
 - [x] Convert the web dashboard template to inherit a Jinja `base.html` shell
       containing the existing sidebar/navigation, main wrapper, footer, and
       shared local assets; page-view markup remains in `index.html`.
-- [ ] Finish reusable header/status/toast blocks and any server-rendered
-      dynamic shell content while keeping the main markup and appearance exact.
+- [x] Finish reusable header/status/toast blocks and any server-rendered
+      dynamic shell content while keeping the main markup and appearance exact
+      (`_page_header.html`, `_status.html`, `_toast.html`, `#toast-region`,
+      `window.NetScope.toast`).
 - [x] Remove external runtime asset dependencies and keep dynamic dashboard
       rendering on safe DOM/text APIs; scripts/styles are external local assets
       and no inline handlers are required in the web template.
-- [ ] Complete the security/offline audit for every dynamic rendering path,
-      including CSP browser validation and an explicit autoescape test. Keep
-      class names/CSS/layout/interactions/copy/order.
+- [x] Complete the security/offline audit for every dynamic rendering path,
+      including CSP/browser validation and an explicit autoescape test. Keep
+      class names/CSS/layout/interactions/copy/order. (Static inline-handler,
+      external-URL, unsafe-DOM-sink, local-asset, CSP-header, and Jinja
+      autoescape checks are test-enforced; the served page is the real CSP
+      target for the remaining browser E2E.)
 - [x] Initial build-feature wiring in the existing Troubleshoot stage: layer
       selection, engine diagnosis with per-check SSE and polling fallback,
       findings/evidence, catalog fix preview, dry-run, typed high-risk
       confirmation, unresolved isolation question, CLI utility jobs, network
       info/logs/report access, and fix-history/rollback controls.
-- [ ] Complete feature parity and verify end-to-end behavior: live fix
-      output/timings/re-check, full unresolved causes/checklist, rich network
-      info tables and copy/refresh, utility cancellation/copy-export, dashboard
-      run/status integration, and shared settings where backed by build.
-- [ ] Wire any remaining build features into main's existing layout/components
+- [x] Complete feature parity wiring: live fix output/timings/re-check (step
+      list, duration, verification), full unresolved causes/checklist/evidence,
+      rich network info tables with copy/refresh, utility cancellation and
+      copy/export, dashboard run/status integration. No build settings surface
+      exists, so no settings UI was invented. Browser-level verification is the
+      remaining test item.
+- [x] Wire any remaining build features into main's existing layout/components
       only:
       Dashboard (run/layers/dry-run, live progress, summary); Findings+fixes
       (detail/evidence, Proceed-to-Fix modal with explanation+exact commands+
@@ -386,16 +393,19 @@ strictly required for web (document why).
       needed, validated streaming/cancel/copy-export) in existing TOOLS patterns;
       Settings/status (build-existing only, persisted in %LOCALAPPDATA%\NetScope
       shared with CLI). No new nav/pages/layout regions without asking.
-- [ ] Main elements without build backing left as-is and listed; add only
+- [x] Main elements without build backing left as-is and listed; add only
       states/components main lacks (e.g. modal) in main's style in separate
-      file(s) loaded after main CSS/JS.
-- [ ] Changelog of every edit to main's design files (file/lines/reason) and
-      list of every new design file.
+      file(s) loaded after main CSS/JS. (`docs/phaseC-web-ui.md`.)
+- [x] Changelog of every edit to main's design files (file/lines/reason) and
+      list of every new design file. (`docs/phaseC-web-ui.md`.)
 - [x] Tests: dashboard template render and referenced static assets; full suite
       passes (213 tests as of Session 34, 2026-11-11).
-- [ ] Tests: dynamic template autoescape, browser end-to-end flows, design
-      fidelity (screenshot/computed styles), design-file changelog, and
-      unchanged-main-CSS assertions where feasible.
+- [x] Tests: dynamic template autoescape, offline/CSP static audit,
+      design-file changelog, design-token/breakpoint regressions, shared-CSS
+      identity, and engine-component isolation from main's stylesheet.
+- [ ] Tests: browser end-to-end flows and screenshot/computed-style design
+      verification (needs an installed Chromium/Edge; none is available on this
+      host, so this stays open for a machine with a browser).
 
 ### Phase D - Launch/lifecycle, packaging, build tests
 - [ ] `netscope gui` / no-args from Win+R|Start|double-click start server+open UI;
@@ -1053,3 +1063,53 @@ Session 41b (stat cards squash fix):
   `--dump-dom` needs an isolated `--user-data-dir` when a real Edge is
   running. window-size can be offset by the OS display scale, so treat
   headless measurements as relative, not absolute.
+Session 42 (Phase C: reusable shell blocks, structured results, audit tests):
+- Reusable shell: `web/templates/_page_header.html` (eyebrow/title/subtitle +
+  status), `_status.html` (#top-status/#last-updated), and `_toast.html`
+  (#toast-region, aria-live). `base.html` includes the toast region; the
+  overview header now uses the page-header include with identical markup.
+  `web-init.js` exposes `window.NetScope.toast(message, kind)` using
+  textContent only; `.toast` styling lives in `web-overrides.css` and respects
+  reduced motion.
+- Feature parity: fix execution now renders a structured outcome (status,
+  exit code, client-measured duration, step names/commands/verification,
+  re-check evidence, rollback), and unresolved output renders ranked
+  this-device/beyond-device causes, next checks, and evidence-to-collect instead
+  of raw JSON. The isolation answer re-ranks the same structured panel. Network
+  info renders adapter/route/ARP/DNS/VPN/MTU tables with copy, export, and
+  refresh; utility output gained export and uses the shared cancel control
+  (enabled for fix/tool/rollback jobs). Toasts confirm copies, exports, fix
+  outcomes, rollback, and errors.
+- Audit/changelog: added `docs/phaseC-web-ui.md` with the design-file changelog,
+  new design-file list, offline/CSP audit, build-feature parity map, and the
+  main elements intentionally left without build backing.
+- Tests: added `tests/test_web_design.py` (inline script/handler/style rejection,
+  local asset URLs + available assets, offline hosts, unsafe DOM sinks,
+  shared stylesheet byte-identity, design tokens/breakpoints, engine-component
+  isolation, structured-render helpers, changelog coverage). Extended
+  `tests/test_web_api.py` with dynamic-value autoescape and reusable-partial
+  rendering. Full suite: 226 passed (2026-11-12); `node --check` clean for all
+  web JS.
+- Remaining Phase C: browser end-to-end flows and screenshot/computed-style
+  verification. No Chromium/Edge is installed on this host, so that check is
+  recorded as an open test item rather than claimed.
+
+Session 42b (readable history/logs + live fix progress):
+- `FixExecutor.run` gained an optional `progress` callback. It emits
+  best-effort events for the pre-fix snapshot, each ladder step
+  (`index`/`total`/`name`/`description`), verification, and unresolved
+  guidance; callback failures are swallowed so progress can never break a fix.
+- `/api/fix/execute` forwards those events into the job queue as
+  `{"type": "fix_progress", ...}`; the web UI consumes them over the existing
+  job SSE/polling stream. The Troubleshoot stage now shows an APPLYING FIX card
+  with a progress bar and per-step running/verifying/done chips before the
+  structured outcome replaces it.
+- Fix History no longer dumps raw JSON: rows show localized time, fix badge,
+  name, and rollback availability. Rollback is offered only for the newest
+  snapshot per fix (rollback restores the latest), older rows say
+  "older snapshot", and an empty state is shown. Recent Logs likewise renders
+  localized time, level badge, event/logger, and a compact field summary.
+- Tests: executor progress events + callback-failure safety in
+  `tests/test_fixes.py`; web forwarding test in `tests/test_web_api.py`; design
+  tests now require the new render helpers/selectors. Full suite: 229 passed
+  (2026-11-12); `node --check` clean for all web JS.
