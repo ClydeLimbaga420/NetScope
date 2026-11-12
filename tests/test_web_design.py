@@ -74,7 +74,15 @@ def test_design_tokens_and_breakpoints_are_preserved():
 def test_new_engine_components_stay_in_overrides_not_shared_stylesheet():
     shared = text(WEB / "static" / "css" / "style.css")
     overrides = text(WEB / "static" / "css" / "web-overrides.css")
-    for selector in (".toast-region", ".engine-info-table", ".engine-cause-tag", ".engine-step"):
+    for selector in (
+        ".toast-region",
+        ".engine-info-table",
+        ".engine-cause-tag",
+        ".engine-step",
+        ".engine-history-row",
+        ".engine-log-row",
+        ".engine-progress-track",
+    ):
         assert selector not in shared, selector
         assert selector in overrides, selector
 
@@ -91,9 +99,13 @@ def test_engine_ui_renders_structured_results_safely():
     for token in (
         "function renderUnresolved",
         "function renderFixOutcome",
+        "function renderFixHistory",
+        "function renderLogs",
+        "function renderFixProgress",
         "function showInfo",
         "engine-info-table",
         "function toast",
+        "fix_progress",
     ):
         assert token in source, token
     assert "textContent" in text(WEB / "static" / "js" / "web-init.js")

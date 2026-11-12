@@ -488,9 +488,11 @@ class FakeExecutor:
     def prepare(self, entry, snapshot=None, overrides=None):
         self.prepare_calls += 1
         return FakePlan()
-    def run(self, entry, plan=None, assume_yes=True, dry_run=False, confirm=None, isolation=None):
+    def run(self, entry, plan=None, assume_yes=True, dry_run=False, confirm=None, isolation=None, progress=None):
         self.run_calls += 1
-        self.last_run = {'dry_run': dry_run, 'assume_yes': assume_yes}
+        self.last_run = {'dry_run': dry_run, 'assume_yes': assume_yes, 'progress': progress}
+        if progress:
+            progress({'phase': 'step', 'status': 'running', 'index': 1, 'total': 1, 'name': 'Run command'})
         return FakeOutcome()
     def rollback(self, entry, assume_yes=True, confirm=None):
         return FakeOutcome()
@@ -534,6 +536,33 @@ def test_fix_plan_execute_requires_token(client):
     # reused token rejected
     r = c.post('/api/fix/execute', headers=_post_headers(st, token), json={'confirmation_token': conf})
     assert r.status_code == 403
+
+
+def test_fix_execute_forwards_progress_events(client):
+    c, st, token, ex = _setup_fix(client, risk='low')
+    r = c.post('/api/fix/plan', headers=_post_headers(st, token), json={'fix_id': 'IP-01'})
+    conf = r.get_json()['confirmation_token']
+
+    r = c.post('/api/fix/execute', headers=_post_headers(st, token), json={'confirmation_token': conf})
+    assert r.status_code == 200
+    job_id = r.get_json()['job_id']
+
+    import time
+    deadline = time.monotonic() + 5
+    job = st.jobs.get(job_id)
+    while job.status in {'queued', 'running', 'cancelling'} and time.monotonic() < deadline:
+        time.sleep(0.02)
+        job = st.jobs.get(job_id)
+
+    assert job.status == 'done'
+    assert ex.last_run['progress'] is not None
+    events = []
+    while not job.events.empty():
+        events.append(job.events.get_nowait())
+    progress = [event for event in events if event.get('type') == 'fix_progress']
+    assert progress
+    assert progress[0]['phase'] == 'step'
+    assert progress[0]['index'] == 1
 
 
 def test_gateway_configure_runs_auto_fix_job(client, monkeypatch):

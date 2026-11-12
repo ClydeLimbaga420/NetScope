@@ -594,6 +594,9 @@ def api_fix_execute():  # type: ignore[no-untyped-def]
     st.logger.confirmation(f"fix_execute:{entry.id}", True, source="web", dry_run=dry_run)
 
     def work(_job):  # type: ignore[no-untyped-def]
+        def report(event):  # type: ignore[no-untyped-def]
+            _job.events.put({"type": "fix_progress", **event})
+
         try:
             executor = st.runtime.executor()
             outcome = executor.run(
@@ -603,6 +606,7 @@ def api_fix_execute():  # type: ignore[no-untyped-def]
                 dry_run=dry_run,
                 confirm=lambda _q: True,
                 isolation=lambda: body.get("another_device_works"),
+                progress=report,
             )
             st.logger.fix_applied(entry.id, status=outcome.status, source="web", dry_run=dry_run)
             return outcome.to_dict()

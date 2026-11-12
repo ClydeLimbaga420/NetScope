@@ -332,6 +332,115 @@
     renderToolPanel(stage);
   }
 
+  function formatWhen(value) {
+    if (!value) return "\u2014";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  }
+
+  function renderFixHistory(entries) {
+    const stage = $("diag-stage");
+    if (!stage) return;
+    entries = entries || [];
+    stage.replaceChildren();
+    const card = element("div", "engine-output");
+    card.append(cardHead("FIX HISTORY", JSON.stringify({ history: entries }, null, 2)));
+    card.append(element(
+      "p",
+      "diag-desc",
+      `${entries.length} saved snapshot${entries.length === 1 ? "" : "s"}. The newest snapshot for each fix is used for rollback.`
+    ));
+    if (!entries.length) {
+      card.append(emptyState(
+        "No fixes recorded yet",
+        "Run a fix from the Repair Library or Troubleshoot to create a rollback snapshot."
+      ));
+    } else {
+      const list = element("div", "engine-history");
+      const seen = new Set();
+      entries.forEach((item) => {
+        const row = element("div", "engine-history-row");
+        row.append(element("span", "engine-history-time", formatWhen(item.captured_at)));
+        const body = element("div", "engine-history-body");
+        const title = element("div", "engine-history-title");
+        title.append(element("span", "engine-history-badge", item.fix_id || "?"));
+        title.append(element("strong", "", item.name || item.fix_id || "Saved snapshot"));
+        body.append(title);
+        body.append(element(
+          "span",
+          "engine-history-meta",
+          item.rollback_available ? "Rollback available" : "Rollback unavailable"
+        ));
+        row.append(body);
+        if (item.fix_id && !seen.has(item.fix_id)) {
+          seen.add(item.fix_id);
+          const rollback = element("button", "ghost-button engine-history-rollback");
+          rollback.type = "button";
+          rollback.dataset.rollbackId = item.fix_id;
+          rollback.append(svgIcon("M3 12a9 9 0 1 0 2.6-6.3L3 8", 12), element("span", "btn-label", "Roll back"));
+          row.append(rollback);
+        } else {
+          row.append(element("span", "engine-history-older", "older snapshot"));
+        }
+        list.append(row);
+      });
+      card.append(list);
+    }
+    stage.append(card);
+    renderToolPanel(stage);
+  }
+
+  function logFieldSummary(fields) {
+    if (!fields || typeof fields !== "object") return "";
+    const keys = ["message", "action", "method", "path", "status", "reason", "error", "fix_id", "step"];
+    const parts = [];
+    keys.forEach((key) => {
+      const value = fields[key];
+      if (value !== undefined && value !== null && value !== "") {
+        parts.push(`${key}: ${formatValue(value)}`);
+      }
+    });
+    if (parts.length) return parts.join(" \u00b7 ");
+    const text = JSON.stringify(fields);
+    return text.length > 240 ? `${text.slice(0, 237)}...` : text;
+  }
+
+  function renderLogs(payload) {
+    const stage = $("diag-stage");
+    if (!stage) return;
+    const entries = ((payload && payload.entries) || []).slice().reverse();
+    stage.replaceChildren();
+    const card = element("div", "engine-output");
+    card.append(cardHead("RECENT LOGS", JSON.stringify(payload, null, 2)));
+    card.append(element(
+      "p",
+      "diag-desc",
+      `${entries.length} recent entr${entries.length === 1 ? "y" : "ies"}${payload && payload.path ? ` \u00b7 ${payload.path}` : ""}`
+    ));
+    if (!entries.length) {
+      card.append(emptyState("No log entries yet", "Actions appear here as you use NetScope."));
+    } else {
+      const list = element("div", "engine-log-list");
+      entries.forEach((entry) => {
+        const row = element("div", "engine-log-row");
+        const head = element("div", "engine-log-head");
+        head.append(element("span", "engine-log-time", formatWhen(entry.ts)));
+        const level = String(entry.level || "INFO").toUpperCase();
+        head.append(element("span", `engine-log-level ${level.toLowerCase()}`, level));
+        head.append(element("strong", "engine-log-event", entry.event || "(event)"));
+        head.append(element("span", "engine-log-logger", entry.logger || ""));
+        row.append(head);
+        const summary = logFieldSummary(entry.fields);
+        if (summary) row.append(element("p", "engine-log-fields", summary));
+        list.append(row);
+      });
+      card.append(list);
+    }
+    stage.append(card);
+    renderToolPanel(stage);
+  }
+
   function formatValue(value) {
     if (value == null || value === "") return "\u2014";
     if (typeof value === "object") return JSON.stringify(value);
@@ -746,7 +855,8 @@
     render();
   }
 
-  function followJob(jobId) {
+  function followJob(jobId, extra) {
+    extra = extra || {};
     return window.NetScopeJobStream.follow(jobId, {
       request: api,
       onEvent(payload) {
@@ -756,6 +866,7 @@
           if (state.report && state.report.results) state.report.results.forEach(receiveCheck);
         }
         if (payload.type === "end") state.jobId = null;
+        if (extra.onEvent) extra.onEvent(payload);
       },
       onFallback(job) {
         state.jobId = null;
@@ -763,6 +874,7 @@
           state.report = job.result;
           job.result.results.forEach(receiveCheck);
         }
+        if (extra.onFallback) extra.onFallback(job);
       },
     });
   }
@@ -918,7 +1030,71 @@
     if (typed) typed.focus();
   }
 
+  function renderFixProgress(plan) {
+    const stage = $("diag-stage");
+    if (!stage) return null;
+    stage.replaceChildren();
+    const card = element("div", "engine-output engine-progress");
+    card.append(element("div", "engine-output-head", "APPLYING FIX"));
+    card.append(element("p", "diag-desc", plan && plan.name ? plan.name : "Preparing the fix..."));
+    const status = element("p", "engine-progress-status", "Starting...");
+    const track = element("div", "engine-progress-track");
+    const fill = element("div", "engine-progress-fill");
+    track.append(fill);
+    const list = element("div", "engine-progress-steps");
+    card.append(status, track, list);
+    stage.append(card);
+    renderToolPanel(stage);
+    return { status, fill, list, rows: new Map(), total: 0 };
+  }
+
+  function setProgressRowStatus(row, status) {
+    if (!row) return;
+    row.dataset.status = status;
+    const chip = row.querySelector(".engine-progress-chip");
+    if (chip) {
+      chip.textContent = status;
+      chip.className = `engine-progress-chip ${status}`;
+    }
+  }
+
+  function updateFixProgress(view, event) {
+    if (!view || !event) return;
+    if (event.total) view.total = event.total;
+    if (event.phase === "step") {
+      view.rows.forEach((row) => {
+        if (row.dataset.status === "running" || row.dataset.status === "verifying") setProgressRowStatus(row, "done");
+      });
+      view.status.textContent = `Step ${event.index} of ${event.total || "?"}: ${event.name || ""}`;
+      let row = view.rows.get(event.index);
+      if (!row) {
+        row = element("div", "engine-progress-step");
+        const text = element("span", "engine-progress-text");
+        text.append(element("strong", "", event.name || `Step ${event.index}`));
+        if (event.description) text.append(element("small", "", event.description));
+        row.append(
+          element("span", "engine-progress-index", String(event.index).padStart(2, "0")),
+          text,
+          element("span", "engine-progress-chip running", "running")
+        );
+        view.rows.set(event.index, row);
+        view.list.append(row);
+      }
+      setProgressRowStatus(row, "running");
+      const completed = Math.max(0, event.index - 1);
+      view.fill.style.width = `${view.total ? Math.round((completed / view.total) * 100) : 5}%`;
+    } else if (event.phase === "verify") {
+      view.status.textContent = event.message || "Re-checking...";
+      setProgressRowStatus(view.rows.get(event.index), "verifying");
+      if (view.total) view.fill.style.width = `${Math.round(((event.index - 0.5) / view.total) * 100)}%`;
+    } else {
+      if (event.message) view.status.textContent = event.message;
+      if (event.phase === "guidance") view.fill.style.width = "100%";
+    }
+  }
+
   async function executeFix(plan, dryRun, secondConfirmation) {
+    const progressView = renderFixProgress(plan);
     setBusy(true, "Applying fix...", false);
     const started = Date.now();
     try {
@@ -929,7 +1105,11 @@
       });
       state.jobId = response.job_id;
       syncCancelState();
-      const job = await followJob(state.jobId);
+      const job = await followJob(state.jobId, {
+        onEvent(payload) {
+          if (payload.type === "fix_progress") updateFixProgress(progressView, payload);
+        }
+      });
       const outcome = job.result || { error: job.error || job.status };
       renderFixOutcome(outcome, Date.now() - started);
       if (outcome.status === "resolved") toast(`${outcome.fix_id || "Fix"} resolved the problem`, "success");
@@ -1132,7 +1312,7 @@
     logs.type = "button";
     logs.append(svgIcon("M4 5h16M4 12h16M4 19h10", 12), element("span", "btn-label", "View logs"));
     logs.addEventListener("click", async () => {
-      try { showOutput("RECENT LOGS", await api("/api/logs?tail=100")); }
+      try { renderLogs(await api("/api/logs?tail=100")); }
       catch (error) { showOutput("LOG ERROR", { error: error.message }); }
     });
     const report = element("button", "ghost-button");
@@ -1154,15 +1334,7 @@
     history.addEventListener("click", async () => {
       try {
         const data = await api("/api/fix/history");
-        showOutput("FIX HISTORY", data);
-        const historyList = element("div", "engine-fix-actions");
-        (data.history || []).forEach((item) => {
-          const rollback = element("button", "ghost-button", `Roll back ${item.fix_id}: ${item.name}`);
-          rollback.type = "button";
-          rollback.dataset.rollbackId = item.fix_id;
-          historyList.append(rollback);
-        });
-        if (historyList.childElementCount) $("diag-stage").append(historyList);
+        renderFixHistory(data.history || []);
       } catch (error) { showOutput("FIX HISTORY ERROR", { error: error.message }); }
     });
     actions.append(info, logs, report, history);

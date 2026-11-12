@@ -28,7 +28,7 @@ hooks, and the shared design system already agreed in Session 41.
 | `web/templates/_page_header.html` | Reusable page header (eyebrow/title/subtitle + status block). |
 | `web/templates/_status.html` | Reusable live-status block (`#top-status`, `#last-updated`, pulse). |
 | `web/templates/_toast.html` | Reusable aria-live toast region (`#toast-region`). |
-| `web/static/css/web-overrides.css` | Engine-view components layered after `style.css`: layers, evidence, output cards, fix facts, dialogs, tool panel, admin control, Repair Library, structured fix/unresolved results, info tables, toasts. |
+| `web/static/css/web-overrides.css` | Engine-view components layered after `style.css`: layers, evidence, output cards, fix facts, dialogs, tool panel, admin control, Repair Library, structured fix/unresolved results, info tables, fix history, recent-log rows, live fix progress, toasts. |
 | `web/static/js/engine-ui.js` | Engine-backed Troubleshoot/Repair Library wiring. |
 | `web/static/js/job-stream.js` | SSE follow + polling fallback. |
 | `web/static/js/web-init.js` | Session bootstrap, heartbeat, drawer, Toast API. |
@@ -91,4 +91,10 @@ Build features intentionally not placed as new navigation:
   asset rules, unsafe DOM sinks, design tokens/breakpoints, shared stylesheet
   identity, and this changelog's required files.
 - `node --check` passes for all `web/static/js` files.
+- Fix History and Recent Logs render as readable rows (localized time, fix/level
+  badges, compact field summaries) instead of raw JSON; rollback is offered only
+  for the newest snapshot per fix, and older snapshots are labelled. Live fix
+  progress is streamed as `fix_progress` SSE events from
+  `FixExecutor.run(progress=...)` through the job queue, rendering a progress
+  bar and per-step running/verifying/done states before the structured outcome.
 - Browser end-to-end flows remain the last Phase C verification item.

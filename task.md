@@ -1093,3 +1093,23 @@ Session 42 (Phase C: reusable shell blocks, structured results, audit tests):
 - Remaining Phase C: browser end-to-end flows and screenshot/computed-style
   verification. No Chromium/Edge is installed on this host, so that check is
   recorded as an open test item rather than claimed.
+
+Session 42b (readable history/logs + live fix progress):
+- `FixExecutor.run` gained an optional `progress` callback. It emits
+  best-effort events for the pre-fix snapshot, each ladder step
+  (`index`/`total`/`name`/`description`), verification, and unresolved
+  guidance; callback failures are swallowed so progress can never break a fix.
+- `/api/fix/execute` forwards those events into the job queue as
+  `{"type": "fix_progress", ...}`; the web UI consumes them over the existing
+  job SSE/polling stream. The Troubleshoot stage now shows an APPLYING FIX card
+  with a progress bar and per-step running/verifying/done chips before the
+  structured outcome replaces it.
+- Fix History no longer dumps raw JSON: rows show localized time, fix badge,
+  name, and rollback availability. Rollback is offered only for the newest
+  snapshot per fix (rollback restores the latest), older rows say
+  "older snapshot", and an empty state is shown. Recent Logs likewise renders
+  localized time, level badge, event/logger, and a compact field summary.
+- Tests: executor progress events + callback-failure safety in
+  `tests/test_fixes.py`; web forwarding test in `tests/test_web_api.py`; design
+  tests now require the new render helpers/selectors. Full suite: 229 passed
+  (2026-11-12); `node --check` clean for all web JS.

@@ -16,7 +16,7 @@ engine and two front ends (CLI + GUI). Work phase by phase; update this file and
 - This checkout originally had **no `.venv`**. A venv now exists (Python 3.14.7).
   Recreate with `py -m venv .venv`, then
   `.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt`.
-- Run tests: `.\.venv\Scripts\python.exe -m pytest` (latest full run: 226 passed, 2026-11-12).
+- Run tests: `.\.venv\Scripts\python.exe -m pytest` (latest full run: 229 passed, 2026-11-12).
 - Run the CLI: `.\.venv\Scripts\python.exe netscope.py --help`
   (or `python -m cli`). `netscope.py diagnose --json` is the machine interface.
 - Run the web UI: `netscope gui` launches the localhost interface; use
@@ -324,6 +324,15 @@ raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
   design tokens/breakpoints, shared-CSS identity, and changelog coverage;
   autoescape tests live in `tests/test_web_api.py`. Browser E2E/design
   screenshots remain open (no browser on this host).
+- Phase C session 42b: `FixExecutor.run(progress=...)` emits best-effort
+  snapshot/step/verify/guidance events (swallows callback errors);
+  `/api/fix/execute` forwards them as `fix_progress` job events, and the web
+  Troubleshoot stage renders an APPLYING FIX progress bar with per-step
+  running/verifying/done chips before the structured outcome. Fix History and
+  Recent Logs render readable rows (localized time, badges, compact field
+  summaries) instead of raw JSON; rollback appears only on the newest snapshot
+  per fix, older snapshots are labelled. Tests cover executor progress events,
+  callback-failure safety, and web forwarding; full suite 229 passed.
 
 ## Logging
 - JSON-lines file at `%LOCALAPPDATA%\NetScope\logs\netscope.log`, rotating
