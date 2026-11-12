@@ -71,6 +71,49 @@ def test_engine_runs_selected_layers_and_reports_progress(monkeypatch, snapshot_
     assert payload["mode"] == "cli"
 
 
+def test_engine_runs_only_selected_check_ids(monkeypatch, snapshot_factory, healthy_probe):
+    import core.engine as engine_module
+
+    probe, hosts = healthy_probe
+    snapshot = snapshot_factory()
+
+    class FakeModule:
+        def run(self, ctx):
+            return [
+                CheckResult(id="ADP-01", layer=Layer.ADAPTER, status=Status.PASS, title="Adapter enabled", message="ok"),
+                CheckResult(id="ADP-04", layer=Layer.ADAPTER, status=Status.PASS, title="Driver health", message="ok"),
+            ]
+
+    monkeypatch.setitem(engine_module.CHECK_MODULES, Layer.ADAPTER, (FakeModule(),))
+
+    engine = DiagnosticEngine(runner=FakeRunner(), probe=probe, hosts_path=hosts)
+    report = engine.diagnose(["adapter"], snapshot=snapshot, check_ids=["ADP-04"])
+
+    assert [result.id for result in report.results] == ["ADP-04"]
+
+
+def test_engine_selected_check_matches_expanded_result_ids(monkeypatch, snapshot_factory, healthy_probe):
+    import core.engine as engine_module
+
+    probe, hosts = healthy_probe
+    snapshot = snapshot_factory()
+
+    class FakeModule:
+        def run(self, ctx):
+            return [
+                CheckResult(id="SVC-04-NlaSvc", layer=Layer.SERVICES, status=Status.PASS, title="NLA", message="ok"),
+                CheckResult(id="SVC-04-netprofm", layer=Layer.SERVICES, status=Status.PASS, title="NLM", message="ok"),
+                CheckResult(id="SVC-06", layer=Layer.SERVICES, status=Status.PASS, title="Sharing", message="ok"),
+            ]
+
+    monkeypatch.setitem(engine_module.CHECK_MODULES, Layer.SERVICES, (FakeModule(),))
+
+    engine = DiagnosticEngine(runner=FakeRunner(), probe=probe, hosts_path=hosts)
+    report = engine.diagnose(["services"], snapshot=snapshot, check_ids=["SVC-04"])
+
+    assert [result.id for result in report.results] == ["SVC-04-NlaSvc", "SVC-04-netprofm"]
+
+
 def test_engine_captures_check_exception(monkeypatch, snapshot_factory, healthy_probe):
     import core.engine as engine_module
 

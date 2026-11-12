@@ -7,6 +7,7 @@ from typing import Any, Callable, Sequence
 
 from core.checks import adapter, dns, gateway, internet, ip, lan, services, stack
 from core.checks.context import CheckContext
+from core.checks.descriptors import CHECK_DESCRIPTORS
 from core.models import (
     LAYER_ORDER,
     CheckResult,
@@ -33,6 +34,13 @@ CHECK_MODULES = {
 
 ProgressCallback = Callable[[Layer, list[CheckResult]], None]
 CheckCallback = Callable[[CheckResult], None]
+
+CHECK_LAYERS = {descriptor.id: descriptor.layer for descriptor in CHECK_DESCRIPTORS}
+
+
+def _matches_check(result_id: str, check_ids: Sequence[str]) -> bool:
+    """A check id can expand into several results (e.g. SVC-04-NlaSvc)."""
+    return any(result_id == check_id or result_id.startswith(f"{check_id}-") for check_id in check_ids)
 
 
 def resolve_layers(layers: Sequence[str | Layer] | None) -> list[Layer]:
@@ -84,8 +92,14 @@ class DiagnosticEngine:
         progress: ProgressCallback | None = None,
         on_check: CheckCallback | None = None,
         mode: str = "cli",
+        check_ids: Sequence[str] | None = None,
     ) -> DiagnosticReport:
         selected = resolve_layers(layers)
+        selected_checks = [str(item) for item in check_ids] if check_ids else None
+        if selected_checks and not layers:
+            inferred = {CHECK_LAYERS[item] for item in selected_checks if item in CHECK_LAYERS}
+            if inferred:
+                selected = [layer for layer in LAYER_ORDER if layer in inferred]
         session_id = getattr(self.logger, "session_id", None) or new_session_id()
         report = DiagnosticReport.create(session_id=session_id, mode=mode)
 
@@ -118,9 +132,17 @@ class DiagnosticEngine:
                         self.logger.event("interrupted", phase=layer.value)
                     raise
                 except Exception as exc:  # a broken check must not kill the run
+                    error_ids = (
+                        [
+                            check_id
+                            for check_id in selected_checks or []
+                            if CHECK_LAYERS.get(check_id, layer) == layer
+                        ]
+                        or [f"{layer.value.upper()}-ERROR"]
+                    )
                     produced = [
                         CheckResult(
-                            id=f"{layer.value.upper()}-ERROR",
+                            id=error_id,
                             layer=layer,
                             status=Status.ERROR,
                             title="Check failed to run",
@@ -128,6 +150,7 @@ class DiagnosticEngine:
                             cause="Internal error in this check; other checks still ran.",
                             evidence={"traceback": traceback.format_exc()[-2000:]},
                         )
+                        for error_id in error_ids
                     ]
                     if self.logger is not None:
                         self.logger.error(
@@ -135,6 +158,8 @@ class DiagnosticEngine:
                         )
 
                 for result in produced or []:
+                    if selected_checks and not _matches_check(result.id, selected_checks):
+                        continue
                     report.add(result)
                     layer_results.append(result)
                     if self.logger is not None:

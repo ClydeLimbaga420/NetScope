@@ -1,6 +1,6 @@
 (function () {
   const $ = (id) => document.getElementById(id);
-  const state = { checks: [], fixes: [], selectedId: null, report: null, jobId: null, busy: false, admin: null, libraryId: null, detail: null, adminNotice: "", checksLoaded: false, repairQuery: "" };
+  const state = { checks: [], fixes: [], selectedId: null, report: null, jobId: null, busy: false, admin: null, libraryId: null, detail: null, adminNotice: "", checksLoaded: false, repairQuery: "", singleCheckId: null };
   const layers = ["adapter", "services", "ip", "gateway", "lan", "dns", "internet", "stack"];
   const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -159,6 +159,10 @@
 
   function resultTitle(check) {
     return check.title || check.id || "Diagnostic check";
+  }
+
+  function idMatches(resultId, checkId) {
+    return resultId === checkId || String(resultId).startsWith(`${checkId}-`);
   }
 
   function renderRail(container, items, kind) {
@@ -491,22 +495,35 @@
 
   function receiveCheck(result) {
     const incoming = Object.assign({ kind: "check", status: "skip", fix_ids: [] }, result);
+    const singleId = state.singleCheckId;
     const index = state.checks.findIndex((item) => item.id === incoming.id);
     if (index >= 0) {
       // Results stream without the descriptor text, so keep the planned
       // description available for the detail pane.
       if (!incoming.description) incoming.description = state.checks[index].description || "";
       state.checks[index] = incoming;
+    } else if (singleId && idMatches(incoming.id, singleId)) {
+      // A single run may expand one planned check into several results
+      // (e.g. SVC-04 -> SVC-04-NlaSvc + SVC-04-netprofm). Replace the planned
+      // row with the first result, then append the extras.
+      const placeholder = state.checks.findIndex((item) => item.id === singleId);
+      if (placeholder >= 0) state.checks[placeholder] = incoming;
+      else state.checks.push(incoming);
     } else {
       state.checks.push(incoming);
     }
-    // Keep the checklist visible while checks resolve, and drop only stale
-    // pending placeholders from the same layer after real results arrive.
-    const hasResultsForLayer = state.checks.some((item) => item.layer === incoming.layer && !item.pending);
-    if (hasResultsForLayer) {
-      state.checks = state.checks.filter((item) => !(item.pending && item.layer === incoming.layer));
+    if (singleId) {
+      // Running one check must not discard the other planned rows.
+      if (idMatches(incoming.id, singleId)) state.selectedId = incoming.id;
+    } else {
+      // Keep the checklist visible while checks resolve, and drop only stale
+      // pending placeholders from the same layer after real results arrive.
+      const hasResultsForLayer = state.checks.some((item) => item.layer === incoming.layer && !item.pending);
+      if (hasResultsForLayer) {
+        state.checks = state.checks.filter((item) => !(item.pending && item.layer === incoming.layer));
+      }
+      if (!state.selectedId) state.selectedId = incoming.id;
     }
-    if (!state.selectedId) state.selectedId = incoming.id;
     render();
   }
 
@@ -595,15 +612,16 @@
       }
     }
     state.checks = state.checks.map((entry) => (
-      entry.layer === layer
+      entry.id === item.id
         ? { ...entry, status: "running", pending: true, message: "", cause: null, evidence: {}, fix_ids: [] }
         : entry
     ));
     state.selectedId = item.id;
+    state.singleCheckId = item.id;
     state.report = null;
     setBusy(true, "Running check...");
     try {
-      const started = await api("/api/diagnose", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ layers: [layer] }) });
+      const started = await api("/api/diagnose", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ layers: [layer], checks: [item.id] }) });
       state.jobId = started.job_id;
       setBusy(true, "Running diagnostics...");
       const job = await followJob(state.jobId);
@@ -611,7 +629,7 @@
       if (job.status === "cancelled") state.checks.forEach((entry) => { if (entry.status === "running") entry.status = "skip"; });
     } catch (error) {
       state.checks = state.checks.map((entry) => (
-        entry.layer === layer && entry.status === "running"
+        entry.id === item.id && entry.status === "running"
           ? { ...entry, status: "error", message: error.message || "This check could not run." }
           : entry
       ));
@@ -620,6 +638,7 @@
       if (stage) stage.append(element("p", "step-reason error", error.message));
     } finally {
       state.jobId = null;
+      state.singleCheckId = null;
       setBusy(false);
     }
   }

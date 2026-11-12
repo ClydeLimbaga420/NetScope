@@ -49,7 +49,7 @@ class DummyEngine:
     def collect_snapshot(self):
         return DummySnap()
 
-    def diagnose(self, layers=None, snapshot=None, on_check=None, mode="cli"):
+    def diagnose(self, layers=None, snapshot=None, on_check=None, mode="cli", check_ids=None):
         if on_check:
             on_check(DummyResult("fail", "ip", "IP-01"))
         return DummyReport()

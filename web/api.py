@@ -154,18 +154,23 @@ def api_diagnose():  # type: ignore[no-untyped-def]
     layers = body.get("layers")
     if layers is not None and (not isinstance(layers, list) or not all(isinstance(x, str) for x in layers)):
         return _err("invalid_layers", "layers must be a list of layer names", 400)
-    job = st.jobs.create("diagnose", meta={"layers": layers})
+    checks = body.get("checks")
+    if checks is not None and (not isinstance(checks, list) or not all(isinstance(x, str) for x in checks)):
+        return _err("invalid_checks", "checks must be a list of check ids", 400)
+    job = st.jobs.create("diagnose", meta={"layers": layers, "checks": checks})
     runtime = st.runtime
 
     def work(job_obj):  # type: ignore[no-untyped-def]
-        st.logger.action("web", "diagnose_start", layers=layers)
+        st.logger.action("web", "diagnose_start", layers=layers, checks=checks)
         snap = runtime.engine.collect_snapshot()
         st.last_snapshot = snap
 
         def on_check(result):  # type: ignore[no-untyped-def]
             job_obj.events.put({"type": "check", "result": result.to_dict()})
 
-        report = runtime.engine.diagnose(layers=layers, snapshot=snap, on_check=on_check, mode="web")
+        report = runtime.engine.diagnose(
+            layers=layers, snapshot=snap, on_check=on_check, mode="web", check_ids=checks
+        )
         st.last_report = report
         st.logger.action("web", "diagnose_complete", overall_status=report.overall_status.value, exit_code=report.exit_code)
         return report.to_dict(include_snapshot=False)
