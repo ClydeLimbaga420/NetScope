@@ -15,6 +15,7 @@ import config
 from core.models import utc_now
 from core.native import PingResult, parse_default_gateway, parse_ping, ping_args
 from core.runner import CommandRunner
+from core.subnets import remote_lan_routes
 from powershell import scripts
 from powershell.runner import PowerShellLayer, as_list
 
@@ -150,6 +151,12 @@ def collect_snapshot(
         hosts = list(config.INTERNET_PING_HOSTS)
         if snapshot.gateway and snapshot.gateway not in hosts:
             hosts.insert(0, snapshot.gateway)
+        for remote in remote_lan_routes(
+            snapshot.data.get("ip_addresses", []),
+            snapshot.data.get("routes", []),
+        )[:8]:
+            if remote.next_hop and remote.next_hop not in hosts:
+                hosts.append(remote.next_hop)
         for host in hosts:
             snapshot.pings[host] = _ping(runner, host, ping_timeout)
 

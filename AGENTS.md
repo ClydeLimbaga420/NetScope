@@ -16,7 +16,7 @@ engine and two front ends (CLI + GUI). Work phase by phase; update this file and
 - This checkout originally had **no `.venv`**. A venv now exists (Python 3.14.7).
   Recreate with `py -m venv .venv`, then
   `.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt`.
-- Run tests: `.\.venv\Scripts\python.exe -m pytest` (latest full run: 229 passed, 2026-11-12).
+- Run tests: `.\.venv\Scripts\python.exe -m pytest` (latest full run: 234 passed, 2026-11-12).
 - Run the CLI: `.\.venv\Scripts\python.exe netscope.py --help`
   (or `python -m cli`). `netscope.py diagnose --json` is the machine interface.
 - Run the web UI: `netscope gui` launches the localhost interface; use
@@ -52,6 +52,12 @@ engine and two front ends (CLI + GUI). Work phase by phase; update this file and
   routes, ARP, DNS, proxy, VPN, Wi-Fi, MTU, admin status is added by the CLI).
 - `core/checks/` — one module per layer (`adapter`, `services`, `ip`, `gateway`,
   `lan`, `dns`, `internet`, `stack`); each exposes `run(ctx) -> list[CheckResult]`.
+- `core/subnets.py` — finds private remote LAN subnets from the routing table
+  (excluding local/virtual/loopback/link-local ranges) and picks their lowest-
+  metric next hop. `collect_snapshot` pings up to 8 of those next hops, and the
+  `LAN-03` check reports cross-subnet LAN reachability (route present but next
+  hop silent / no next hop / not tested). It is block-level only: NetScope
+  probes the next-hop router, not arbitrary hosts behind it.
 - `core/probes.py` — pure-Python socket/DNS/HTTP probes (`NetworkProbe`,
   `FakeProbe`) with timeouts.
 - `core/engine.py` — `DiagnosticEngine.diagnose(layers=None, snapshot=None,

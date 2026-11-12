@@ -49,6 +49,7 @@ CHECK_DESCRIPTORS: tuple[CheckDescriptor, ...] = (
     CheckDescriptor("IP-06", Layer.IP, "Overlapping routes", "Checks for duplicate route entries that confuse traffic."),
     CheckDescriptor("IP-07", Layer.IP, "Virtual network overlap", "Checks if virtual adapters clash with the real network."),
     CheckDescriptor("GW-01", Layer.GATEWAY, "Gateway reachability", "Checks that the router answers when pinged."),
+    CheckDescriptor("LAN-03", Layer.LAN, "Cross-subnet LAN reachability", "Checks other private LAN subnets in the routing table and whether their next hop answers."),
     CheckDescriptor("LAN-04", Layer.LAN, "Network profile", "Checks whether the network is set to Public or Private."),
     CheckDescriptor("LAN-05", Layer.LAN, "Discovery / sharing firewall rules", "Checks firewall rules that allow seeing other devices."),
     CheckDescriptor("LAN-08", Layer.LAN, "SMB2/3 client", "Checks the Windows file-sharing protocol version."),

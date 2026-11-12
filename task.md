@@ -1113,3 +1113,18 @@ Session 42b (readable history/logs + live fix progress):
   `tests/test_fixes.py`; web forwarding test in `tests/test_web_api.py`; design
   tests now require the new render helpers/selectors. Full suite: 229 passed
   (2026-11-12); `node --check` clean for all web JS.
+
+Session 43 (cross-subnet LAN checks + single-check runs):
+- Running one check from the Troubleshoot rail now posts {layers:[layer],
+  checks:[check_id]}; DiagnosticEngine.diagnose(check_ids=...) filters the
+  produced results (including expanded ids like SVC-04-NlaSvc), so only the
+  selected check updates instead of every check in its layer. The web rail
+  keeps the other planned rows pending during a single run.
+- Added core/subnets.py (remote private LAN routes, lowest-metric next hop,
+  virtual/local/link-local exclusion). collect_snapshot pings up to 8 remote
+  next hops and the new LAN-03 check reports cross-subnet LAN reachability
+  (reachable / unreachable / no next hop / not tested), with the existing
+  detect-only LAN-03 catalog guidance on failure. This is next-hop/router
+  level, not arbitrary host probing across the routed subnet.
+- Tests: 3 LAN-03 cases in 	ests/test_checks.py and 2 single-check engine
+  cases in 	ests/test_engine.py. Full suite: 234 passed (2026-11-12).

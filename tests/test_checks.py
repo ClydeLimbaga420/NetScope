@@ -257,6 +257,82 @@ def test_lan_public_profile(snapshot_factory, healthy_probe):
     assert result.fix_ids == ["LAN-04"]
 
 
+def test_lan_cross_subnet_warns_when_next_hop_is_unreachable(snapshot_factory, healthy_probe):
+    from core.native import PingResult
+
+    probe, hosts = healthy_probe
+    snapshot = snapshot_factory(
+        data={
+            "routes": [
+                {
+                    "DestinationPrefix": "0.0.0.0/0",
+                    "NextHop": "192.168.1.1",
+                    "InterfaceAlias": "Ethernet",
+                    "InterfaceMetric": 25,
+                    "RouteMetric": 0,
+                },
+                {
+                    "DestinationPrefix": "10.20.0.0/24",
+                    "NextHop": "192.168.1.2",
+                    "InterfaceAlias": "Ethernet",
+                    "InterfaceMetric": 25,
+                    "RouteMetric": 5,
+                },
+            ]
+        },
+        pings={
+            "192.168.1.1": PingResult("192.168.1.1", True, 1.0),
+            "192.168.1.2": PingResult("192.168.1.2", False, error="timeout"),
+        },
+    )
+
+    result = by_id(lan.run(ctx(snapshot, probe, hosts)), "LAN-03")
+
+    assert result.status.value == "warn"
+    assert result.fix_ids == ["LAN-03"]
+    assert result.evidence["subnets"][0]["network"] == "10.20.0.0/24"
+    assert result.evidence["subnets"][0]["next_hop"] == "192.168.1.2"
+    assert result.evidence["subnets"][0]["status"] == "unreachable"
+
+
+def test_lan_cross_subnet_passes_when_next_hop_answers(snapshot_factory, healthy_probe):
+    from core.native import PingResult
+
+    probe, hosts = healthy_probe
+    snapshot = snapshot_factory(
+        data={
+            "routes": [
+                {
+                    "DestinationPrefix": "10.20.0.0/24",
+                    "NextHop": "192.168.1.2",
+                    "InterfaceAlias": "Ethernet",
+                    "InterfaceMetric": 25,
+                    "RouteMetric": 5,
+                }
+            ]
+        },
+        pings={
+            "192.168.1.1": PingResult("192.168.1.1", True, 1.0),
+            "192.168.1.2": PingResult("192.168.1.2", True, 2.0),
+        },
+    )
+
+    result = by_id(lan.run(ctx(snapshot, probe, hosts)), "LAN-03")
+
+    assert result.status.value == "pass"
+    assert result.fix_ids == []
+    assert result.evidence["subnets"][0]["status"] == "reachable"
+
+
+def test_lan_cross_subnet_skips_without_remote_routes(snapshot_factory, healthy_probe):
+    probe, hosts = healthy_probe
+    snapshot = snapshot_factory()
+
+    result = by_id(lan.run(ctx(snapshot, probe, hosts)), "LAN-03")
+
+    assert result.status.value == "skip"
+
+
 def test_stack_third_party_lsp(snapshot_factory, healthy_probe):
     probe, hosts = healthy_probe
     from core.runner import CommandResult
