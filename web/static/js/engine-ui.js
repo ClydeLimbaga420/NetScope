@@ -55,6 +55,12 @@
     target.append(facts);
   }
 
+  function visibleText(value) {
+    if (value === null || value === undefined || value === false) return "";
+    const text = Array.isArray(value) ? value.join(", ") : String(value);
+    return text.trim() ? text : "";
+  }
+
   function setButtonLabel(button, text) {
     const label = button.querySelector(".btn-label");
     if (label) label.textContent = text;
@@ -616,7 +622,8 @@
     header.append(title);
     target.append(header);
 
-    if (entry.explanation) target.append(element("p", "step-reason", entry.explanation));
+    const explanation = visibleText(entry.explanation);
+    if (explanation) target.append(element("p", "step-reason", explanation));
     if (entry.detection_only) {
       target.append(element("p", "step-reason", "This finding is detection-only. NetScope reports it but does not change the system automatically."));
     }
@@ -775,17 +782,20 @@
     tags.append(element("span", `step-kind ${check ? "check" : "repair"}`, check ? String(item.layer || "check").toUpperCase() : String(item.risk || "fix").toUpperCase()));
     if (item.admin) tags.append(element("span", "admin-tag", "ADMIN"));
     title.append(tags, element("h3", "", resultTitle(item)));
+    const message = visibleText(item.message);
+    const explanation = visibleText(item.explanation);
     const descText = check
-      ? (item.description || (item.pending ? "This check has not run yet. Select layers and run a diagnosis." : (item.message || "No additional detail.")))
-      : (item.symptom || item.explanation || "Catalog fix");
+      ? (item.description || (item.pending ? "This check has not run yet. Select layers and run a diagnosis." : (message || "No additional detail.")))
+      : (item.symptom || explanation || "Catalog fix");
     title.append(element("p", "diag-desc", descText));
     header.append(title, element("span", `step-status ${statusClass(item.status)}`, item.status || "ready"));
     detail.append(header);
 
-    if (check && !item.pending && item.message) detail.append(element("p", "step-reason", item.message));
-    if (check && item.cause && !item.pending) detail.append(element("p", "step-reason", item.cause));
+    if (check && !item.pending && message) detail.append(element("p", "step-reason", message));
+    const cause = visibleText(item.cause);
+    if (check && !item.pending && cause) detail.append(element("p", "step-reason", cause));
     if (fix) {
-      detail.append(element("p", "step-reason", item.explanation));
+      if (explanation) detail.append(element("p", "step-reason", explanation));
       renderFixFacts(detail, fix.admin, fix.risk, fix.reboot);
       const procedure = element("button", "ghost-button", "View full procedure");
       procedure.type = "button";

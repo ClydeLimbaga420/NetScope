@@ -1128,3 +1128,16 @@ Session 43 (cross-subnet LAN checks + single-check runs):
   level, not arbitrary host probing across the routed subnet.
 - Tests: 3 LAN-03 cases in 	ests/test_checks.py and 2 single-check engine
   cases in 	ests/test_engine.py. Full suite: 234 passed (2026-11-12).
+
+Session 44 (browser verification + blank amber fix):
+- Installed no new dependencies in the repo; used a throwaway headless-Edge CDP
+  harness under %TEMP% to drive the real web UI. Confirmed the reported "orange
+  blob" was an empty <p class="step-reason"> in the Troubleshoot detail pane.
+- web/static/js/engine-ui.js now normalizes optional detail text with
+  isibleText() and only renders .step-reason paragraphs for non-empty
+  message/cause/explanation values. Empty arrays, whitespace, null and
+  undefined no longer produce blank amber boxes in check or repair details.
+- Verified in the real UI: running a single check yields 0 blank .step-reason
+  elements (two amber boxes with real message/cause text remain). Full suite:
+  234 passed (2026-11-12); 
+ode --check clean.

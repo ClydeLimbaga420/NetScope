@@ -5,7 +5,7 @@ dashboard into a universal Windows network troubleshooting tool with one shared
 engine and two front ends (CLI + GUI). Work phase by phase; update this file and
 `task.md` Notes at the end of every phase.
 
-**Current status: Phase 4 complete; Phase 6 Phase B complete and Phase C in progress.** Phase 5 packaging is pending. The web UI has its localhost server/API/job/security foundation, local assets, engine-backed Troubleshoot/Repair Library integration, reusable shell partials/toasts, structured fix/unresolved/network-info output, and Phase C audit/changelog docs. Remaining Phase C work is browser E2E and screenshot/computed-style design verification (no browser is installed on this host).
+**Current status: Phase 4 complete; Phase 6 Phase B complete and Phase C in progress.** Phase 5 packaging is pending. The web UI has its localhost server/API/job/security foundation, local assets, engine-backed Troubleshoot/Repair Library integration, reusable shell partials/toasts, structured fix/unresolved/network-info output, and Phase C audit/changelog docs. Remaining Phase C work is broad browser E2E and screenshot/computed-style design verification; headless Edge + CDP is available on this host and has been used for spot checks (Troubleshoot single-check flow, blank amber `.step-reason` fix).
 
 ## Run / environment
 - The Flask dashboard still works: `python app.py` → http://127.0.0.1:5000
