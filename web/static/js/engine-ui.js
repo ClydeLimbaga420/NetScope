@@ -1272,9 +1272,35 @@
     stage.replaceChildren();
     const text = JSON.stringify(value, null, 2);
     const card = element("div", "engine-output");
-    card.append(cardHead(title, text), element("pre", "engine-evidence", text));
+    card.append(cardHead(title, text));
+    if (title === "SPEED TEST RESULT") {
+      card.append(createSpeedTestMetrics(value));
+      card.append(element(
+        "p",
+        "speed-test-details",
+        `${value.server} · ${(value.download_bytes / 1048576).toFixed(1)} MiB downloaded · ${(value.upload_bytes / 1048576).toFixed(1)} MiB uploaded`
+      ));
+    } else {
+      card.append(element("pre", "engine-evidence", text));
+    }
     stage.append(card);
     renderToolPanel(stage);
+  }
+
+  function createSpeedTestMetrics(value) {
+    const results = element("div", "speed-test-results");
+    [
+      ["Latency", value.latency_ms, "ms", "latency"],
+      ["Download", value.download_mbps, "Mbps", "download"],
+      ["Upload", value.upload_mbps, "Mbps", "upload"],
+    ].forEach(([label, number, unit, kind]) => {
+      const metric = element("div", `speed-test-metric ${kind}`);
+      const reading = element("strong", "", String(number));
+      reading.append(element("small", "", unit));
+      metric.append(element("span", "", label), reading);
+      results.append(metric);
+    });
+    return results;
   }
 
   async function runTool(name, inputElement, ports, button) {
@@ -1283,6 +1309,7 @@
     if (["ping", "trace", "mtu", "ports"].includes(name)) params.host = input;
     if (name === "dns") params.name = input;
     if (name === "ports") params.ports = ports;
+    if (name === "speedtest" && !window.confirm("This test contacts speed.cloudflare.com and transfers up to 10 MiB down and 2 MiB up. Continue?")) return;
     if (name === "ping" && !input || name === "trace" && !input || name === "mtu" && !input || name === "ports" && (!input || !ports) || name === "dns" && !input) {
       inputElement.focus();
       return;
@@ -1296,7 +1323,7 @@
       syncCancelState();
       const job = await followJob(state.jobId);
       if (job.status === "error") throw new Error(job.error || "Utility failed.");
-      showOutput(`${name.toUpperCase()} RESULT`, job.result);
+      showOutput(name === "speedtest" ? "SPEED TEST RESULT" : `${name.toUpperCase()} RESULT`, job.result);
     } catch (error) {
       showOutput("UTILITY ERROR", { error: error.message });
       toast(error.message, "error");
@@ -1308,13 +1335,58 @@
     }
   }
 
+  async function runSpeedTest(button) {
+    const status = $("speed-test-status");
+    const results = $("speed-test-results");
+    const details = $("speed-test-details");
+    if (!status || !results || !details || state.busy || button.disabled) return;
+    if (!window.confirm("This test contacts speed.cloudflare.com and transfers up to 10 MiB down and 2 MiB up. Continue?")) return;
+
+    button.disabled = true;
+    setButtonLabel(button, "Testing...");
+    status.classList.remove("is-error");
+    status.textContent = "Measuring latency, download, and upload...";
+    results.hidden = true;
+    details.hidden = true;
+    try {
+      const started = await api("/api/tools/speedtest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      state.jobId = started.job_id;
+      const job = await followJob(state.jobId);
+      if (job.status !== "done" || !job.result) {
+        throw new Error(job.error || "Speed test did not complete.");
+      }
+      const value = job.result;
+      $("speed-test-latency").textContent = Number(value.latency_ms).toFixed(1);
+      $("speed-test-download").textContent = Number(value.download_mbps).toFixed(2);
+      $("speed-test-upload").textContent = Number(value.upload_mbps).toFixed(2);
+      results.hidden = false;
+      details.textContent =
+        `${value.server} · ${(value.download_bytes / 1048576).toFixed(1)} MiB downloaded · ${(value.upload_bytes / 1048576).toFixed(1)} MiB uploaded`;
+      details.hidden = false;
+      status.textContent = "Test complete";
+      toast("Speed test complete", "success");
+    } catch (error) {
+      status.textContent = `Speed test failed: ${error.message}`;
+      status.classList.add("is-error");
+      toast(error.message, "error");
+    } finally {
+      state.jobId = null;
+      button.disabled = false;
+      setButtonLabel(button, "Run speed test");
+    }
+  }
+
   function renderToolPanel(stage) {
     const panel = element("div", "engine-tools");
     panel.append(element("p", "diag-command-label", "TOOLS"));
     const controls = element("div", "engine-tool-controls");
     const select = document.createElement("select");
     select.setAttribute("aria-label", "Network tool");
-    [["ping", "Ping"], ["trace", "Trace route"], ["dns", "DNS lookup"], ["arp", "ARP table"], ["routes", "Routes"], ["ports", "Port check"], ["mtu", "Path MTU"]].forEach(([value, label]) => {
+    [["ping", "Ping"], ["trace", "Trace route"], ["dns", "DNS lookup"], ["arp", "ARP table"], ["routes", "Routes"], ["ports", "Port check"], ["mtu", "Path MTU"], ["speedtest", "Speed test"]].forEach(([value, label]) => {
       const option = element("option", "", label);
       option.value = value;
       select.append(option);
@@ -1329,7 +1401,7 @@
     ports.setAttribute("aria-label", "Ports");
     ports.hidden = true;
     select.addEventListener("change", () => {
-      input.hidden = ["arp", "routes"].includes(select.value);
+      input.hidden = ["arp", "routes", "speedtest"].includes(select.value);
       ports.hidden = select.value !== "ports";
     });
     const run = element("button", "ghost-button");
@@ -1338,6 +1410,7 @@
     run.addEventListener("click", () => runTool(select.value, input, ports.value.trim(), run));
     controls.append(select, input, ports, run);
     panel.append(controls);
+    panel.append(element("p", "engine-tool-note", "Speed test transfers up to 10 MiB down and 2 MiB up to speed.cloudflare.com."));
 
     const actions = element("div", "engine-tool-actions");
     const info = element("button", "ghost-button");
@@ -1439,6 +1512,9 @@
   }
 
   function initialize() {
+    const speedTest = $("run-speed-test");
+    if (speedTest) speedTest.addEventListener("click", () => runSpeedTest(speedTest));
+
     // Adopt the shared troubleshoot content: replacing each node with a
     // listener-free clone drops the legacy dashboard handlers that were
     // registered first (registration order at the target beats capture), so a

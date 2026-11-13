@@ -340,6 +340,43 @@
 
         </section>
 
+        <section class="panel speed-test-panel" aria-labelledby="speed-test-title">
+            <div class="speed-test-head">
+                <div>
+                    <p class="eyebrow">On-demand test</p>
+                    <h2 id="speed-test-title">Internet speed test</h2>
+                    <p class="muted">Measure your connection's latency, download, and upload speeds.</p>
+                </div>
+                <button id="run-speed-test" class="btn" type="button">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="1.8" stroke-linecap="round"
+                         stroke-linejoin="round" aria-hidden="true">
+                        <path d="M4.9 19a9 9 0 1 1 14.2 0"></path>
+                        <path d="m12 13 4-4"></path>
+                        <circle cx="12" cy="13" r="1"></circle>
+                    </svg>
+                    <span class="btn-label">Run speed test</span>
+                </button>
+            </div>
+            <p id="speed-test-status" class="speed-test-status" role="status"
+               aria-live="polite">Transfers up to 10 MiB down and 2 MiB up to speed.cloudflare.com.</p>
+            <div id="speed-test-results" class="speed-test-results" hidden>
+                <div class="speed-test-metric latency">
+                    <span>Latency</span>
+                    <strong><span id="speed-test-latency">&mdash;</span><small>ms</small></strong>
+                </div>
+                <div class="speed-test-metric download">
+                    <span>Download</span>
+                    <strong><span id="speed-test-download">&mdash;</span><small>Mbps</small></strong>
+                </div>
+                <div class="speed-test-metric upload">
+                    <span>Upload</span>
+                    <strong><span id="speed-test-upload">&mdash;</span><small>Mbps</small></strong>
+                </div>
+            </div>
+            <p id="speed-test-details" class="speed-test-details" hidden></p>
+        </section>
+
 
         <!-- CONTENT GRID -->
         <section class="content-grid">

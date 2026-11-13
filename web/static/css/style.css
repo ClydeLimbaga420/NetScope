@@ -1216,6 +1216,104 @@ body.nav-open .nav-toggle .icon-close {
     letter-spacing: -0.25px;
 }
 
+.speed-test-panel {
+    margin-bottom: 16px;
+}
+
+.speed-test-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+}
+
+.speed-test-head .eyebrow {
+    margin-bottom: 6px;
+}
+
+.speed-test-head h2 {
+    margin-bottom: 5px;
+}
+
+.speed-test-head .muted {
+    margin: 0;
+}
+
+.speed-test-head .btn {
+    flex-shrink: 0;
+}
+
+.speed-test-status,
+.speed-test-details {
+    margin: 16px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.speed-test-status.is-error {
+    color: var(--red);
+}
+
+.speed-test-results {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 18px;
+}
+
+.speed-test-results[hidden],
+.speed-test-details[hidden] {
+    display: none;
+}
+
+.speed-test-metric {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md, 14px);
+    background: rgba(255, 255, 255, 0.025);
+}
+
+.speed-test-metric > span {
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.speed-test-metric strong {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    color: var(--text-strong);
+    font-size: clamp(22px, 3vw, 30px);
+    font-weight: 700;
+    letter-spacing: -0.8px;
+    font-variant-numeric: tabular-nums;
+}
+
+.speed-test-metric small {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0;
+}
+
+.speed-test-metric.download {
+    border-color: rgba(98, 167, 255, 0.22);
+}
+
+.speed-test-metric.upload {
+    border-color: rgba(57, 214, 160, 0.22);
+}
+
+.speed-test-metric.latency {
+    border-color: rgba(255, 190, 92, 0.22);
+}
+
 .live-tag {
     display: inline-flex;
     align-items: center;
@@ -2973,6 +3071,15 @@ footer .footer-meta {
         grid-template-columns: repeat(2, minmax(0, 1fr));
 
         gap: 10px;
+    }
+
+    .speed-test-head {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .speed-test-results {
+        grid-template-columns: 1fr;
     }
 
     .card {

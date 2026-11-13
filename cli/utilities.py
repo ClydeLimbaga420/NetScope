@@ -202,3 +202,6 @@ class UtilityRunner:
             "payload": best,
             "tested": tested,
         }
+
+    def speed_test(self) -> dict[str, Any]:
+        return self.ctx.probe.speed_test()

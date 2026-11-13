@@ -260,7 +260,9 @@ raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
   `FixExecutor`, `UtilityRunner`, report builder, and structured logger. Do not
   add diagnostic or fix business logic to the web layer. `/api/logs/stream`
   emits keep-alives when idle and stops on `shutdown_event`; fix execution does
-  not pass the stale `snapshot=` kwarg to `FixExecutor.run()`.
+  not pass the stale `snapshot=` kwarg to `FixExecutor.run()`. The Troubleshoot
+  network tools include a user-confirmed speed test against
+  `speed.cloudflare.com` (10 MiB download, 2 MiB upload).
 - The overview card is a combined Connectivity card showing both Internet and
   Gateway status (`#internet-dot`/`#gateway-dot`), fed by `/api/status`
   `internet_ping` and `gateway_ping`.

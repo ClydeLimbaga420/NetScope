@@ -64,7 +64,8 @@ Mapped into main's existing regions:
   dry-run, high-risk typed confirmation, live fix outcome with steps,
   durations, re-check and rollback, unresolved isolation question with ranked
   causes/next checks/evidence, utility jobs (ping/trace/dns/arp/routes/ports/
-  mtu), network info tables with copy/refresh, logs, report export, fix history.
+  mtu and a confirmed Cloudflare speed test capped at 10 MiB download / 2 MiB
+  upload), network info tables with copy/refresh, logs, report export, fix history.
 - Repair Library: full catalog list, search, procedure (steps, exact commands,
   verification, rollback, if-unresolved), link from Troubleshoot.
 - Admin: status badge, non-admin hint, UAC restart; admin-only repairs labelled.

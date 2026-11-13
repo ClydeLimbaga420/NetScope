@@ -294,6 +294,66 @@ try { chart = new Chart(
 // STATUS INDICATOR
 // =====================================
 
+async function runSpeedTest() {
+
+    const button = $("run-speed-test");
+    const status = $("speed-test-status");
+    const results = $("speed-test-results");
+    const details = $("speed-test-details");
+
+    if (!button || !status || !results || !details || button.disabled) {
+        return;
+    }
+
+    if (!window.confirm(
+        "This test contacts speed.cloudflare.com and transfers up to " +
+        "10 MiB down and 2 MiB up. Continue?"
+    )) {
+        return;
+    }
+
+    const label = button.querySelector(".btn-label");
+    button.disabled = true;
+    if (label) {
+        label.textContent = "Testing...";
+    }
+    status.classList.remove("is-error");
+    status.textContent = "Measuring latency, download, and upload...";
+    results.hidden = true;
+    details.hidden = true;
+
+    try {
+        const response = await fetch("/api/speed-test", { method: "POST" });
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "Speed test failed.");
+        }
+
+        $("speed-test-latency").textContent = Number(data.latency_ms).toFixed(1);
+        $("speed-test-download").textContent = Number(data.download_mbps).toFixed(2);
+        $("speed-test-upload").textContent = Number(data.upload_mbps).toFixed(2);
+        results.hidden = false;
+        details.textContent =
+            `${data.server} \u00b7 ${(data.download_bytes / 1048576).toFixed(1)} MiB downloaded \u00b7 ${(data.upload_bytes / 1048576).toFixed(1)} MiB uploaded`;
+        details.hidden = false;
+        status.textContent = "Test complete";
+    }
+    catch (error) {
+        status.textContent = `Speed test failed: ${error.message}`;
+        status.classList.add("is-error");
+        console.error(error);
+    }
+    finally {
+        button.disabled = false;
+        if (label) {
+            label.textContent = "Run speed test";
+        }
+    }
+
+}
+
+
 function setStatus(element, online) {
 
     $(element).className =
@@ -2028,6 +2088,10 @@ refreshDevices();
 
 refreshPacketLoss();
 
+const speedTestButton = $("run-speed-test");
+if (speedTestButton) {
+    speedTestButton.addEventListener("click", runSpeedTest);
+}
 
 loadDiagnostics();
 

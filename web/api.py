@@ -273,7 +273,7 @@ def api_info():  # type: ignore[no-untyped-def]
 def api_tools(name: str):  # type: ignore[no-untyped-def]
     st = _state()
     body = _json_body()
-    allowed = {"ping", "trace", "dns", "arp", "routes", "ports", "mtu"}
+    allowed = {"ping", "trace", "dns", "arp", "routes", "ports", "mtu", "speedtest"}
     if name not in allowed:
         return _err("unknown_tool", f"Unknown tool: {name}", 404)
     job = st.jobs.create("tool", meta={"tool": name, "params": body})
@@ -309,6 +309,8 @@ def api_tools(name: str):  # type: ignore[no-untyped-def]
                 res = util.ports(str(body.get("host", "")), str(body.get("ports", "")), float(body.get("timeout", 1.0)))
             elif name == "mtu":
                 res = util.mtu(str(body.get("host", "")), float(body.get("timeout", 1.5)))
+            elif name == "speedtest":
+                res = util.speed_test()
             else:
                 raise ValueError("unknown tool")
         except Exception as exc:  # noqa: BLE001
@@ -753,4 +755,3 @@ def api_run_diagnostic(step_id: str):  # type: ignore[no-untyped-def]
         return jsonify({"error": "Unknown diagnostic step"}), 404
     except Exception as exc:  # noqa: BLE001
         return _err("diagnostic_run_failed", str(exc), 500)
-

@@ -13,6 +13,7 @@ from modules.device_scanner import get_arp_devices
 from modules.diagnostics import list_diagnostics, run_diagnostic
 from fixes.gateway_config import auto_configure_gateway
 from gui.runtime import build_runtime
+from core.probes import NetworkProbe
 
 
 def _status_problems(network, internet_ping, gateway_ping):
@@ -143,6 +144,15 @@ def api_configure_gateway():
         return jsonify({"status": "error", "message": str(exc)}), 500
 
     return jsonify(result.to_dict())
+
+
+@app.route("/api/speed-test", methods=["POST"])
+def api_speed_test():
+    try:
+        return jsonify(NetworkProbe().speed_test())
+    except Exception as exc:  # noqa: BLE001
+        app.logger.exception("Speed test failed")
+        return jsonify({"error": str(exc)}), 502
 
 
 @app.route("/api/status")

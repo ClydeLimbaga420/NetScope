@@ -433,6 +433,13 @@ def test_dashboard_template_uses_shared_shell_and_local_assets(client):
     assert 'id="gateway-dot"' in html
     assert 'id="internet-status"' in html
     assert 'id="gateway-status"' in html
+    assert 'id="run-speed-test"' in html
+    assert 'id="speed-test-status"' in html
+    assert 'id="speed-test-results"' in html
+    assert 'id="speed-test-latency"' in html
+    assert 'id="speed-test-download"' in html
+    assert 'id="speed-test-upload"' in html
+    assert html.index('id="packet-loss-card"') < html.index('id="run-speed-test"') < html.index('id="traffic"')
     assert 'id="run-as-admin"' in html
     assert 'id="repair-library"' in html
     assert 'id="repair-library-list"' in html
@@ -778,6 +785,36 @@ def test_web_utility_command_uses_shared_structured_runner(client):
         "timed_out",
     } <= set(recorder.commands[0][1])
     assert any(name == "tool_complete" for name, _fields in recorder.events)
+
+
+def test_web_speed_test_runs_as_a_tool_job(client):
+    c, st = client
+    expected = {
+        "server": "speed.cloudflare.com",
+        "latency_ms": 24.5,
+        "latency_samples_ms": [24.5, 23.8, 24.9],
+        "download_mbps": 80.0,
+        "upload_mbps": 18.0,
+        "download_bytes": 10 * 1024 * 1024,
+        "upload_bytes": 2 * 1024 * 1024,
+    }
+    st.runtime.engine.probe = types.SimpleNamespace(speed_test=lambda: expected)
+    token = _boot(c, st)
+    response = c.post(
+        "/api/tools/speedtest",
+        headers=_post_headers(st, token),
+        json={},
+    )
+
+    assert response.status_code == 200
+    job = st.jobs.get(response.get_json()["job_id"])
+    import time
+    deadline = time.monotonic() + 5
+    while job.status in {"queued", "running", "cancelling"} and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+    assert job.status == "done"
+    assert job.result == expected
 
 
 def test_fix_dry_run_flag_passed(client):

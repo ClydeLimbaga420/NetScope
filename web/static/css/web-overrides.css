@@ -408,6 +408,12 @@
     font-size: 11.5px;
 }
 
+.engine-tool-note {
+    margin: 0;
+    color: var(--muted);
+    font-size: 12px;
+}
+
 @media (max-width: 720px) {
     .engine-tool-controls > * {
         flex: 1 1 100%;

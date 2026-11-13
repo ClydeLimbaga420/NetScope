@@ -7,9 +7,11 @@ spec recommends. They are injectable so checks can be tested deterministically.
 from __future__ import annotations
 
 import socket
+import statistics
 import struct
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from email.utils import parsedate_to_datetime
@@ -89,6 +91,11 @@ def _read_name(data: bytes, offset: int) -> tuple[str, int]:
 
 class NetworkProbe:
     """Real network probes with timeouts on everything."""
+
+    SPEED_TEST_HOST = "speed.cloudflare.com"
+    SPEED_TEST_DOWNLOAD_BYTES = 10 * 1024 * 1024
+    SPEED_TEST_UPLOAD_BYTES = 2 * 1024 * 1024
+    SPEED_TEST_TIMEOUT_SECONDS = 15
 
     def __init__(self, timeout: float = 2.0):
         self.timeout = timeout
@@ -210,6 +217,96 @@ class NetworkProbe:
                 error=str(exc),
             )
 
+    def speed_test(self) -> dict[str, Any]:
+        """Measure HTTP latency and throughput against Cloudflare's test endpoint."""
+        base_url = f"https://{self.SPEED_TEST_HOST}"
+        headers = {
+            "User-Agent": "NetScope/" + config.APP_VERSION,
+            "Accept-Encoding": "identity",
+            "Cache-Control": "no-cache",
+        }
+
+        latencies: list[float] = []
+        for _ in range(3):
+            request = urllib.request.Request(
+                f"{base_url}/__down?bytes=1",
+                headers=headers,
+            )
+            started = time.monotonic()
+            self._read_speed_test_response(request, expected_bytes=1)
+            latencies.append((time.monotonic() - started) * 1000)
+
+        download_request = urllib.request.Request(
+            f"{base_url}/__down?bytes={self.SPEED_TEST_DOWNLOAD_BYTES}",
+            headers=headers,
+        )
+        started = time.monotonic()
+        downloaded = self._read_speed_test_response(
+            download_request,
+            expected_bytes=self.SPEED_TEST_DOWNLOAD_BYTES,
+        )
+        download_seconds = time.monotonic() - started
+
+        upload_data = b"\0" * self.SPEED_TEST_UPLOAD_BYTES
+        upload_request = urllib.request.Request(
+            f"{base_url}/__up",
+            data=upload_data,
+            headers={**headers, "Content-Type": "application/octet-stream"},
+            method="POST",
+        )
+        started = time.monotonic()
+        self._read_speed_test_response(upload_request, max_bytes=65536)
+        upload_seconds = time.monotonic() - started
+
+        return {
+            "server": self.SPEED_TEST_HOST,
+            "latency_ms": round(statistics.median(latencies), 1),
+            "latency_samples_ms": [round(value, 1) for value in latencies],
+            "download_mbps": round(len(downloaded) * 8 / max(download_seconds, 1e-9) / 1_000_000, 2),
+            "upload_mbps": round(self.SPEED_TEST_UPLOAD_BYTES * 8 / max(upload_seconds, 1e-9) / 1_000_000, 2),
+            "download_bytes": len(downloaded),
+            "upload_bytes": self.SPEED_TEST_UPLOAD_BYTES,
+        }
+
+    def _read_speed_test_response(
+        self,
+        request: urllib.request.Request,
+        *,
+        expected_bytes: int | None = None,
+        max_bytes: int | None = None,
+    ) -> bytes:
+        limit = max_bytes if max_bytes is not None else expected_bytes
+        if limit is None:
+            raise ValueError("a response size limit is required")
+        try:
+            with urllib.request.urlopen(
+                request, timeout=self.SPEED_TEST_TIMEOUT_SECONDS
+            ) as response:
+                final_url = urllib.parse.urlsplit(response.geturl())
+                if (
+                    final_url.scheme != "https"
+                    or final_url.hostname != self.SPEED_TEST_HOST
+                    or final_url.port not in (None, 443)
+                ):
+                    raise RuntimeError("Speed test endpoint redirected to an unexpected host.")
+                if response.status != 200:
+                    raise RuntimeError(
+                        f"Speed test endpoint returned HTTP {response.status}."
+                    )
+                body = response.read(limit + 1)
+        except urllib.error.HTTPError as exc:
+            raise RuntimeError(
+                f"Speed test endpoint returned HTTP {exc.code}."
+            ) from exc
+
+        if len(body) > limit:
+            raise RuntimeError("Speed test endpoint returned more data than requested.")
+        if expected_bytes is not None and len(body) != expected_bytes:
+            raise RuntimeError(
+                f"Speed test received {len(body)} of {expected_bytes} requested bytes."
+            )
+        return body
+
 
 def _parse_http_date(value: str | None) -> datetime | None:
     if not value:
@@ -232,12 +329,14 @@ class FakeProbe(NetworkProbe):
         http: dict[str, HttpResult] | None = None,
         tcp: dict[tuple[str, int], bool] | None = None,
         default_dns: DnsAnswer | None = None,
+        speed_test_result: dict[str, Any] | None = None,
     ):
         super().__init__(timeout=0.01)
         self.dns = dns or {}
         self.http = http or {}
         self.tcp = tcp or {}
         self.default_dns = default_dns
+        self.speed_test_result = speed_test_result
         self.calls: list[tuple[Any, ...]] = []
 
     def dns_query(self, name: str, server: str) -> DnsAnswer:
@@ -259,3 +358,9 @@ class FakeProbe(NetworkProbe):
     def tcp_connect(self, host: str, port: int, timeout: float | None = None) -> bool:
         self.calls.append(("tcp_connect", host, port))
         return bool(self.tcp.get((host, port)))
+
+    def speed_test(self) -> dict[str, Any]:
+        self.calls.append(("speed_test",))
+        if self.speed_test_result is None:
+            raise RuntimeError("fake: no speed-test result configured")
+        return dict(self.speed_test_result)
