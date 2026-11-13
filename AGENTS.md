@@ -462,6 +462,9 @@ raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
 - Troubleshoot now lists all 32 planned checks before a run (via
   `/api/checks` + `core/checks/descriptors.py`); repairs live only in the
   Repair Library. The diagnostic rail scrolls independently of the detail pane.
+- The web Troubleshoot tab shows per-layer status from streamed diagnostic check
+  results; layers are marked Not run until diagnosed and show in-progress and
+  aggregated pass/warn/fail/error/skip states during and after a run.
 ## Packaging fix (dev install root cause)
 - Bug: `netscope` command failed with `ModuleNotFoundError: No module named 'config'`
   because flat imports (`import config`, `from modules...`) assume the project

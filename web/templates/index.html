@@ -413,6 +413,26 @@
 
         <div class="page-view" id="view-troubleshoot" data-view="troubleshoot">
 
+        <section class="panel layer-status-panel" aria-labelledby="layer-status-title">
+            <div class="layer-status-head">
+                <div>
+                    <p class="eyebrow">Diagnostics</p>
+                    <h2 id="layer-status-title">Layer status</h2>
+                    <p class="muted">Health summary from the most recent diagnosis.</p>
+                </div>
+            </div>
+            <div id="layer-status-grid" class="layer-status-grid" role="list">
+                <div class="layer-status-row" role="listitem" data-layer-status="adapter"><span class="layer-status-name">Adapter</span><span class="layer-status-value idle">Not run</span></div>
+                <div class="layer-status-row" role="listitem" data-layer-status="services"><span class="layer-status-name">Network services</span><span class="layer-status-value idle">Not run</span></div>
+                <div class="layer-status-row" role="listitem" data-layer-status="ip"><span class="layer-status-name">IP configuration</span><span class="layer-status-value idle">Not run</span></div>
+                <div class="layer-status-row" role="listitem" data-layer-status="gateway"><span class="layer-status-name">Gateway</span><span class="layer-status-value idle">Not run</span></div>
+                <div class="layer-status-row" role="listitem" data-layer-status="lan"><span class="layer-status-name">Local network</span><span class="layer-status-value idle">Not run</span></div>
+                <div class="layer-status-row" role="listitem" data-layer-status="dns"><span class="layer-status-name">DNS</span><span class="layer-status-value idle">Not run</span></div>
+                <div class="layer-status-row" role="listitem" data-layer-status="internet"><span class="layer-status-name">Internet</span><span class="layer-status-value idle">Not run</span></div>
+                <div class="layer-status-row" role="listitem" data-layer-status="stack"><span class="layer-status-name">TCP/IP stack</span><span class="layer-status-value idle">Not run</span></div>
+            </div>
+        </section>
+
         <!-- TROUBLESHOOTING -->
         <section class="panel troubleshoot-panel" id="troubleshoot">
 

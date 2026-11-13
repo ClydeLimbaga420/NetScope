@@ -82,6 +82,8 @@ def test_new_engine_components_stay_in_overrides_not_shared_stylesheet():
         ".engine-history-row",
         ".engine-log-row",
         ".engine-progress-track",
+        ".layer-status-grid",
+        ".layer-status-value",
     ):
         assert selector not in shared, selector
         assert selector in overrides, selector
@@ -103,6 +105,9 @@ def test_engine_ui_renders_structured_results_safely():
         "function renderLogs",
         "function renderFixProgress",
         "function showInfo",
+        "function renderLayerStatus",
+        "layer-status-grid",
+        "state.activeLayers.includes(layer)",
         "SPEED TEST RESULT",
         "function runSpeedTest",
         "createSpeedTestMetrics",

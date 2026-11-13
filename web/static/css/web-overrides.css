@@ -58,6 +58,141 @@
     cursor: pointer;
 }
 
+.layer-status-panel {
+    margin-bottom: 16px;
+}
+
+.layer-status-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.layer-status-head .eyebrow {
+    margin-bottom: 6px;
+}
+
+.layer-status-head h2 {
+    margin-bottom: 5px;
+}
+
+.layer-status-head .muted {
+    margin: 0;
+}
+
+.layer-status-head .ghost-button {
+    flex-shrink: 0;
+    text-decoration: none;
+}
+
+.layer-status-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 9px;
+}
+
+.layer-status-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 11px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm, 10px);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.layer-status-name {
+    overflow: hidden;
+    color: var(--text-2);
+    font-size: 12px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.layer-status-value {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--muted);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.55px;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.layer-status-value::before {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    content: "";
+}
+
+.layer-status-value.pass {
+    border-color: var(--green-border);
+    background: var(--green-soft);
+    color: var(--green);
+}
+
+.layer-status-value.warn {
+    border-color: var(--amber-border);
+    background: var(--amber-soft);
+    color: var(--amber);
+}
+
+.layer-status-value.fail,
+.layer-status-value.error {
+    border-color: var(--red-border);
+    background: var(--red-soft);
+    color: var(--red);
+}
+
+.layer-status-value.running {
+    border-color: var(--accent-border);
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.layer-status-value.running::before {
+    animation: pulseBeat 1.2s ease-in-out infinite;
+}
+
+.layer-status-name[data-detail]:not([data-detail="Not run"])::after {
+    display: block;
+    overflow: hidden;
+    color: var(--muted);
+    content: attr(data-detail);
+    font-size: 10px;
+    font-weight: 400;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+    .layer-status-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 520px) {
+    .layer-status-head {
+        flex-direction: column;
+    }
+
+    .layer-status-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 
 /* ---------- Evidence / code blocks ---------- */
 

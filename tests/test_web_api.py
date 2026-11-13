@@ -440,6 +440,10 @@ def test_dashboard_template_uses_shared_shell_and_local_assets(client):
     assert 'id="speed-test-download"' in html
     assert 'id="speed-test-upload"' in html
     assert html.index('id="packet-loss-card"') < html.index('id="run-speed-test"') < html.index('id="traffic"')
+    assert 'id="layer-status-grid"' in html
+    assert html.index('id="view-troubleshoot"') < html.index('id="layer-status-grid"') < html.index('id="troubleshoot"')
+    for layer in ("adapter", "services", "ip", "gateway", "lan", "dns", "internet", "stack"):
+        assert f'data-layer-status="{layer}"' in html
     assert 'id="run-as-admin"' in html
     assert 'id="repair-library"' in html
     assert 'id="repair-library-list"' in html

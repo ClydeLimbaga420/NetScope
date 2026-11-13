@@ -14,7 +14,7 @@ hooks, and the shared design system already agreed in Session 41.
 | File | What changed | Why |
 | --- | --- | --- |
 | `web/templates/base.html` | Split shell into sidebar + main + footer; added skip link, mobile topbar/drawer, SVG nav icons, admin-control slot, footer version/time, and includes for `_toast.html`; loads only local CSS/JS. | Reusable shell for the web UI; offline/CSP safe; no external URL. |
-| `web/templates/index.html` | Page views for Monitoring, Troubleshoot and Repair Library; connection/stat cards; devices panel; engine-backed troubleshoot rail/stage; repair library list/detail. Header now uses `{% include "_page_header.html" %}`. | Keep main's layout/components while giving every build feature a home in existing regions. |
+| `web/templates/index.html` | Page views for Monitoring, Troubleshoot and Repair Library; connection/stat cards; layer-status summary; speed-test panel; devices panel; engine-backed troubleshoot rail/stage; repair library list/detail. Header now uses `{% include "_page_header.html" %}`. | Keep main's layout/components while giving every build feature a home in existing regions. |
 | `web/static/css/style.css` | Shared design-system stylesheet (tokens, cards, conn-grid, buttons, tables, drawer, breakpoints, reduced motion). Byte-identical to the legacy copy in `static/css/style.css`. | Single source of truth for main's visual language. |
 | `web/static/js/dashboard.js` | Safe-DOM status/devices rendering, adapter pills, `data-live`, local Chart.js init, drawer heartbeat, null guards. | Preserve main's monitoring behavior using dynamic data without unsafe HTML sinks. |
 | `templates/index.html` (legacy Flask) | Rewritten to the same shell markup (drawer, conn-grid, troubleshoot rail incl. `#repair-steps`, elevation badge, footer). | Keep the still-supported legacy dashboard visually aligned. |
@@ -28,7 +28,7 @@ hooks, and the shared design system already agreed in Session 41.
 | `web/templates/_page_header.html` | Reusable page header (eyebrow/title/subtitle + status block). |
 | `web/templates/_status.html` | Reusable live-status block (`#top-status`, `#last-updated`, pulse). |
 | `web/templates/_toast.html` | Reusable aria-live toast region (`#toast-region`). |
-| `web/static/css/web-overrides.css` | Engine-view components layered after `style.css`: layers, evidence, output cards, fix facts, dialogs, tool panel, admin control, Repair Library, structured fix/unresolved results, info tables, fix history, recent-log rows, live fix progress, toasts. |
+| `web/static/css/web-overrides.css` | Engine-view components layered after `style.css`: layer selection and layer-status summary, evidence, output cards, fix facts, dialogs, tool panel, admin control, Repair Library, structured fix/unresolved results, info tables, fix history, recent-log rows, live fix progress, toasts. |
 | `web/static/js/engine-ui.js` | Engine-backed Troubleshoot/Repair Library wiring. |
 | `web/static/js/job-stream.js` | SSE follow + polling fallback. |
 | `web/static/js/web-init.js` | Session bootstrap, heartbeat, drawer, Toast API. |
@@ -60,7 +60,8 @@ Mapped into main's existing regions:
 - Monitoring: `/api/status`, `/api/devices`, packet-loss polling, connectivity
   dots, adapter list, traffic chart (legacy main behavior kept).
 - Troubleshoot: layer selection, `/api/checks` planned list, engine diagnosis
-  with per-check SSE/polling fallback, findings/evidence, fix planning,
+  with per-check SSE/polling fallback, per-layer status summary,
+  findings/evidence, fix planning,
   dry-run, high-risk typed confirmation, live fix outcome with steps,
   durations, re-check and rollback, unresolved isolation question with ranked
   causes/next checks/evidence, utility jobs (ping/trace/dns/arp/routes/ports/

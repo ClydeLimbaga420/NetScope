@@ -1,7 +1,17 @@
 (function () {
   const $ = (id) => document.getElementById(id);
-  const state = { checks: [], fixes: [], selectedId: null, report: null, jobId: null, busy: false, admin: null, libraryId: null, detail: null, adminNotice: "", checksLoaded: false, repairQuery: "", singleCheckId: null };
+  const state = { checks: [], fixes: [], selectedId: null, report: null, jobId: null, busy: false, admin: null, libraryId: null, detail: null, adminNotice: "", checksLoaded: false, repairQuery: "", singleCheckId: null, activeLayers: [] };
   const layers = ["adapter", "services", "ip", "gateway", "lan", "dns", "internet", "stack"];
+  const layerLabels = {
+    adapter: "Adapter",
+    services: "Network services",
+    ip: "IP configuration",
+    gateway: "Gateway",
+    lan: "Local network",
+    dns: "DNS",
+    internet: "Internet",
+    stack: "TCP/IP stack",
+  };
   const SVG_NS = "http://www.w3.org/2000/svg";
 
   function element(tag, className, text) {
@@ -820,9 +830,60 @@
     return { total, completed, passed, failed, running };
   }
 
+  function renderLayerStatus() {
+    const grid = $("layer-status-grid");
+    if (!grid) return;
+    layers.forEach((layer) => {
+      const row = grid.querySelector(`[data-layer-status="${layer}"]`);
+      if (!row) return;
+      const value = row.querySelector(".layer-status-value");
+      if (!value) return;
+
+      const results = state.checks.filter((item) => item.layer === layer && !item.pending);
+      const counts = { pass: 0, warn: 0, fail: 0, error: 0, skip: 0 };
+      results.forEach((item) => {
+        const status = String(item.status || "skip").toLowerCase();
+        if (Object.prototype.hasOwnProperty.call(counts, status)) counts[status] += 1;
+      });
+
+      let status;
+      let detail;
+      if (state.activeLayers.includes(layer)) {
+        status = "running";
+        const reported = results.length;
+        detail = reported ? `${reported} check${reported === 1 ? "" : "s"} reported` : "Checking";
+      } else if (!results.length) {
+        status = "idle";
+        detail = "Not run";
+      } else {
+        status = counts.fail ? "fail"
+          : counts.error ? "error"
+            : counts.warn ? "warn"
+              : counts.pass ? "pass"
+                : "skip";
+        detail = [
+          counts.pass && `${counts.pass} pass`,
+          counts.warn && `${counts.warn} warn`,
+          counts.fail && `${counts.fail} fail`,
+          counts.error && `${counts.error} error`,
+          counts.skip && `${counts.skip} skip`,
+        ].filter(Boolean).join(" · ") || `${results.length} check${results.length === 1 ? "" : "s"}`;
+      }
+
+      row.className = `layer-status-row ${status}`;
+      value.className = `layer-status-value ${status}`;
+      value.textContent = status === "idle" ? detail : status.toUpperCase();
+      row.setAttribute("aria-label", `${layerLabels[layer]}: ${status === "idle" ? detail : `${status}, ${detail}`}`);
+      row.dataset.detail = detail;
+      const name = row.querySelector(".layer-status-name");
+      if (name) name.dataset.detail = detail;
+    });
+  }
+
   function render() {
     const checks = $("check-steps");
     if (!checks) return;
+    renderLayerStatus();
     renderRail(checks, state.checks, "check");
     renderDetail();
     const stats = getProgressStats();
@@ -920,7 +981,6 @@
     setBusy(true, "Starting diagnosis...");
     if (!state.checks.length) {
       state.checks = [];
-      const selectedLayers = Array.from(document.querySelectorAll("input[data-engine-layer]:checked"), (input) => input.dataset.engineLayer);
       try {
         const catalog = await api("/api/fixes");
         state.fixes = catalog.fixes || [];
@@ -949,6 +1009,8 @@
     state.selectedId = null;
     state.report = null;
     const selectedLayers = Array.from(document.querySelectorAll("input[data-engine-layer]:checked"), (input) => input.dataset.engineLayer);
+    state.activeLayers = selectedLayers;
+    renderLayerStatus();
     try {
       const started = await api("/api/diagnose", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ layers: selectedLayers }) });
       state.jobId = started.job_id;
@@ -963,6 +1025,7 @@
       }
     } finally {
       state.jobId = null;
+      state.activeLayers = [];
       setBusy(false);
     }
   }
@@ -985,6 +1048,7 @@
     ));
     state.selectedId = item.id;
     state.singleCheckId = item.id;
+    state.activeLayers = [layer];
     state.report = null;
     setBusy(true, "Running check...");
     try {
@@ -1006,6 +1070,7 @@
     } finally {
       state.jobId = null;
       state.singleCheckId = null;
+      state.activeLayers = [];
       setBusy(false);
     }
   }
@@ -1515,7 +1580,7 @@
     const speedTest = $("run-speed-test");
     if (speedTest) speedTest.addEventListener("click", () => runSpeedTest(speedTest));
 
-    // Adopt the shared troubleshoot content: replacing each node with a
+    // Adopt the shared Troubleshoot content: replacing each node with a
     // listener-free clone drops the legacy dashboard handlers that were
     // registered first (registration order at the target beats capture), so a
     // click cannot run both the legacy registry checks and the engine
