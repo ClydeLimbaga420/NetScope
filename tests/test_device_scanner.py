@@ -134,6 +134,71 @@ def test_parse_route_gateway_returns_none_without_default_route():
     assert scanner._parse_route_gateway("no routes here") is None
 
 
+def test_probe_host_uses_bounded_windows_ping(monkeypatch):
+    calls = []
+
+    class Result:
+        returncode = 0
+
+    monkeypatch.setattr(scanner.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(
+        scanner.subprocess,
+        "run",
+        lambda args, **kwargs: calls.append((args, kwargs)) or Result()
+    )
+
+    assert scanner._probe_host("192.168.1.25") is True
+    assert calls[0][0] == [
+        "ping", "-n", "1", "-w",
+        str(scanner.SCAN_PING_TIMEOUT_MS), "192.168.1.25"
+    ]
+    assert calls[0][1]["timeout"] == scanner.SCAN_PROBE_TIMEOUT_SECONDS
+    assert calls[0][1]["creationflags"] == scanner._creation_flags()
+
+
+def test_warm_arp_cache_uses_udp_and_ping_for_local_subnet(monkeypatch):
+    targets = ["192.168.1.20", "192.168.1.21"]
+    udp_probed = []
+    probed = []
+    monkeypatch.setattr(scanner, "LAST_SCAN", -scanner.SCAN_CACHE_SECONDS)
+    monkeypatch.setattr(scanner, "_local_ipv4_targets", lambda: targets)
+    monkeypatch.setattr(scanner.shutil, "which", lambda _: "ping")
+    monkeypatch.setattr(
+        scanner,
+        "_warm_arp_cache_with_udp",
+        lambda hosts: udp_probed.extend(hosts)
+    )
+    monkeypatch.setattr(
+        scanner,
+        "_probe_local_hosts",
+        lambda hosts: probed.extend(hosts)
+    )
+    monkeypatch.setattr(scanner.time, "sleep", lambda _: None)
+
+    scanner._warm_arp_cache()
+
+    assert udp_probed == targets
+    assert probed == targets
+
+
+def test_warm_arp_cache_falls_back_to_udp_without_ping(monkeypatch):
+    targets = ["192.168.1.20"]
+    probed = []
+    monkeypatch.setattr(scanner, "LAST_SCAN", -scanner.SCAN_CACHE_SECONDS)
+    monkeypatch.setattr(scanner, "_local_ipv4_targets", lambda: targets)
+    monkeypatch.setattr(scanner.shutil, "which", lambda _: None)
+    monkeypatch.setattr(
+        scanner,
+        "_warm_arp_cache_with_udp",
+        lambda hosts: probed.extend(hosts)
+    )
+    monkeypatch.setattr(scanner.time, "sleep", lambda _: None)
+
+    scanner._warm_arp_cache()
+
+    assert probed == targets
+
+
 def test_add_local_devices_exposes_hardware_mac():
     context = _context(
         interfaces={"192.168.1.10": {"name": "Wi-Fi", "wireless": True}},

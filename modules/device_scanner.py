@@ -2,6 +2,7 @@ import ipaddress
 import json
 import platform
 import re
+import shutil
 import socket
 import struct
 import subprocess
@@ -24,6 +25,9 @@ MISSING = object()
 
 SCAN_CACHE_SECONDS = 15
 SCAN_MAX_HOSTS = 1024
+SCAN_MAX_WORKERS = 64
+SCAN_PING_TIMEOUT_MS = 500
+SCAN_PROBE_TIMEOUT_SECONDS = 1.5
 SCAN_PORT = 33434
 SCAN_SETTLE_SECONDS = 0.5
 SCAN_LOCK = threading.Lock()
@@ -399,6 +403,56 @@ def _local_ipv4_targets():
     return targets
 
 
+def _probe_host(ip):
+    if platform.system().lower() == "windows":
+        args = [
+            "ping",
+            "-n",
+            "1",
+            "-w",
+            str(SCAN_PING_TIMEOUT_MS),
+            ip
+        ]
+    else:
+        args = ["ping", "-c", "1", "-W", "1", ip]
+
+    try:
+        result = subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            timeout=SCAN_PROBE_TIMEOUT_SECONDS,
+            creationflags=_creation_flags()
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+    return result.returncode == 0
+
+
+def _probe_local_hosts(targets):
+    with ThreadPoolExecutor(
+        max_workers=min(SCAN_MAX_WORKERS, len(targets))
+    ) as executor:
+        list(executor.map(_probe_host, targets))
+
+
+def _warm_arp_cache_with_udp(targets):
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    except OSError:
+        return
+
+    try:
+        for ip in targets:
+            try:
+                sock.sendto(b"", (ip, SCAN_PORT))
+            except OSError:
+                pass
+    finally:
+        sock.close()
+
+
 def _warm_arp_cache():
     global LAST_SCAN
 
@@ -415,19 +469,10 @@ def _warm_arp_cache():
         if not targets:
             return
 
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        except OSError:
-            return
+        _warm_arp_cache_with_udp(targets)
 
-        try:
-            for ip in targets:
-                try:
-                    sock.sendto(b"", (ip, SCAN_PORT))
-                except OSError:
-                    pass
-        finally:
-            sock.close()
+        if shutil.which("ping"):
+            _probe_local_hosts(targets)
 
         time.sleep(SCAN_SETTLE_SECONDS)
 

@@ -1141,3 +1141,14 @@ Session 44 (browser verification + blank amber fix):
   elements (two amber boxes with real message/cause text remain). Full suite:
   234 passed (2026-11-12); 
 ode --check clean.
+Session 45 (LAN device discovery):
+- `/api/devices` now actively probes the local private IPv4 subnets with
+  bounded concurrent `ping` requests before reading the ARP table, so online
+  LAN peers can be discovered even when they were not previously in the cache.
+  The existing 1024-target cap, 64-worker limit, 15-second scan cache, and
+  UDP ARP-cache warmup (including for devices that ignore ICMP) remain in
+  place. Local machine check: its active Ethernet is 192.168.3.86/24, so a
+  phone at 192.168.254.130 is outside its directly connected LAN.
+- Added scanner tests for Windows ping arguments, LAN target probing, and UDP
+  ARP-cache warmup. Targeted tests: 19 passed before UDP warmup was combined
+  with ping; re-run after the follow-up.

@@ -393,11 +393,12 @@ raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
   is regex-parsed per OS. `modules/network_info.get_default_gateway()` uses
   `_windows_default_gateway()` to handle `ipconfig` output where an IPv6
   gateway line is followed by the IPv4 gateway on a continuation line.
-- Device discovery warms the ARP cache (private subnets, max 1024 hosts, 15 s
-  cache) then parses `arp -a`, filtering multicast/broadcast entries; it never
-  scans public/routed networks. Names via NetBIOS UDP 137 then reverse DNS
-  (1.5 s budget, 300 s/60 s caches). The dashboard retries `/api/devices`
-  after 6 s.
+- Device discovery uses UDP ARP-cache warming plus concurrent pings to local
+  private-subnet hosts (max 1024 targets, 64 workers, 15 s cache) before
+  parsing `arp -a`; UDP remains effective for devices that ignore ICMP. It
+  filters multicast/broadcast entries and never scans public/routed networks.
+  Names via NetBIOS UDP 137 then reverse DNS (1.5 s budget, 300 s/60 s caches).
+  The dashboard retries `/api/devices` after 6 s.
 - Brands come from the offline OUI map in `modules/oui_vendors.py`
   (common-prefix subset generated from Wireshark's `manuf` data at
   `https://www.wireshark.org/download/automated/data/manuf`); locally
