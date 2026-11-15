@@ -320,6 +320,13 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Clean
 python scripts\frozen_smoke.py --exe dist\NetScope.exe
 ```
 
+To put the executable in the repository root instead of `dist\`, use
+`-DistPath .`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Clean -DistPath .
+```
+
 `scripts\build.ps1` uses `.venv\Scripts\python.exe` when present and requires
 PyInstaller (`pip install pyinstaller`). The current build is about 13.8 MB on
 Python 3.14.7 / PyInstaller 6.22.3. `NetScope.spec` excludes tkinter and unused
@@ -422,9 +429,9 @@ Use [docs/manual-test-checklist.md](docs/manual-test-checklist.md) for failure
 simulation: disable the adapter, unplug the cable, use a wrong static IP, stop
 Dnscache, blackhole DNS, block the gateway, and trigger an unfixable upstream
 outage to exercise the unresolved panel. CI runs the same suite on
-`windows-latest` for Python 3.11 and 3.14, runs a Playwright headless-browser
-smoke test (skipped if no Chromium/Edge is available), builds the exe, and runs
-the frozen smoke test.
+`windows-latest` only when `main` is updated (push or merge), runs a Playwright
+headless-browser smoke test (skipped if no Chromium/Edge is available), builds
+the exe, and runs the frozen smoke test.
 
 The Phase D/E packaging, installer, and CI report is in
 [docs/phaseDE-report.md](docs/phaseDE-report.md); the close-out artifact index

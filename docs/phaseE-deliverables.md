@@ -111,9 +111,9 @@ shared design. `git diff --stat main -- web/templates web/static` is empty on
 - Installer/launch: 24 passed. Frozen smoke: 9 checks. Frozen pytest: 2 passed.
 - Browser smoke: passed, with screenshots.
 - `node --check` clean for all web JS.
-- CI: `.github/workflows/ci.yml` (tests on 3.11/3.14, coverage gate, Playwright
-  browser job + screenshots artifact, PyInstaller build + frozen smoke +
-  uploaded exe).
+- CI: `.github/workflows/ci.yml` (runs only on pushes/merges to `main`; tests on
+  3.11/3.14, coverage gate, Playwright browser job + screenshots artifact,
+  PyInstaller build + frozen smoke + uploaded exe).
 
 ## 8. Build / launch / installer updates
 

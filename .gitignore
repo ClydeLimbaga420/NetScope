@@ -31,6 +31,7 @@ prompt.txt
 
 build/
 dist/
+/NetScope.exe
 artifacts/
 
 netscope.egg-info/

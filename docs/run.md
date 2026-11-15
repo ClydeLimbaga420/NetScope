@@ -12,3 +12,7 @@ Cloudflare's public test endpoint. Each run transfers up to 10 MiB down and
 2 MiB up; the GUI asks before starting. An internet connection is required.
 
 add speed test
+
+
+# build the .exe
+powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Clean -DistPath .

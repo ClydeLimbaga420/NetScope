@@ -115,7 +115,8 @@ uninstall preservation, purge, missing source, and CLI confirmation/JSON paths
 
 ## CI
 
-`.github/workflows/ci.yml` runs on `windows-latest`:
+`.github/workflows/ci.yml` runs on `windows-latest` when `main` is updated
+(push or merge); it does not run on pull requests or feature-branch pushes:
 
 - Tests on Python 3.11 and 3.14 with `pytest`, coverage over `core`, `fixes`,
   and `powershell`, `--cov-fail-under=80`, and a coverage XML artifact.

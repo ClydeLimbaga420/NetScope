@@ -13,10 +13,15 @@
 
 .PARAMETER Clean
     Remove the PyInstaller build cache before building.
+
+.PARAMETER DistPath
+    Output directory for NetScope.exe. Defaults to dist. Use "." to place the
+    executable in the repository root.
 #>
 param(
     [string]$Python,
-    [switch]$Clean
+    [switch]$Clean,
+    [string]$DistPath = "dist"
 )
 
 $ErrorActionPreference = "Stop"
@@ -37,9 +42,17 @@ try {
         throw "PyInstaller is not installed. Run: $Python -m pip install pyinstaller"
     }
 
-    $arguments = @("-m", "PyInstaller", "--noconfirm", "NetScope.spec")
+    $arguments = @(
+        "-m", "PyInstaller", "--noconfirm",
+        "--distpath", $DistPath,
+        "NetScope.spec"
+    )
     if ($Clean) {
-        $arguments = @("-m", "PyInstaller", "--noconfirm", "--clean", "NetScope.spec")
+        $arguments = @(
+            "-m", "PyInstaller", "--noconfirm", "--clean",
+            "--distpath", $DistPath,
+            "NetScope.spec"
+        )
     }
 
     & $Python @arguments
@@ -47,12 +60,12 @@ try {
         throw "PyInstaller failed with exit code $LASTEXITCODE"
     }
 
-    $exe = Join-Path $root "dist\NetScope.exe"
+    $exe = Join-Path $DistPath "NetScope.exe"
     if (-not (Test-Path -LiteralPath $exe)) {
         throw "Build finished but $exe is missing"
     }
     $size = (Get-Item -LiteralPath $exe).Length
-    Write-Host ("Built {0} ({1:N1} MB)" -f $exe, ($size / 1MB))
+    Write-Host ("Built {0} ({1:N1} MB)" -f (Resolve-Path $exe), ($size / 1MB))
 } finally {
     Pop-Location
 }

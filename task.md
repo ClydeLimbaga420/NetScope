@@ -1169,9 +1169,10 @@ Session 46 (Phase 5 + Phase 6 D/E close-out):
   (24 installer+launch tests pass; fixed `result.path_changed`).
 - Rewrote `tests/test_probes.py` to lift coverage to 82% over
   `core`/`fixes`/`powershell`; full suite 259 passed, 2 skipped (2026-11-15).
-- Added `.github/workflows/ci.yml`: test matrix (3.11/3.14, coverage gate),
-  Playwright browser job with screenshot artifact, and a PyInstaller build job
-  running frozen smoke + frozen pytest and uploading the exe.
+- Added `.github/workflows/ci.yml` (runs only when `main` is pushed/merged):
+  test matrix (3.11/3.14, coverage gate), Playwright browser job with screenshot
+  artifact, and a PyInstaller build job running frozen smoke + frozen pytest and
+  uploading the exe.
 - Installed Playwright Chromium locally; `scripts/browser_smoke.py` passes
   (shell/session/CSS, stat-card layout, mobile drawer, Troubleshoot, shutdown)
   and captures dashboard/mobile/Troubleshoot screenshots in

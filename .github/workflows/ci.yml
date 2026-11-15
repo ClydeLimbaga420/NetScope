@@ -2,9 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, phasec]
-  pull_request:
-  workflow_dispatch:
+    branches: [main]
 
 permissions:
   contents: read

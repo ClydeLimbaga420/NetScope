@@ -458,7 +458,8 @@ runtime = build_runtime()  # same engine/catalog as the CLI, web-mode logging
   PATH (user), App Paths, Start Menu shortcut, marker file; supports
   `--dry-run`, `--json`, `--purge`. It never needs admin and never touches
   machine-wide keys.
-- `.github/workflows/ci.yml` (windows-latest): `test` matrix on Python 3.11 and
+- `.github/workflows/ci.yml` (windows-latest, triggered only by pushes/merges to
+  `main`; no PR or feature-branch runs): `test` matrix on Python 3.11 and
   3.14 with coverage over `core`/`fixes`/`powershell` (`--cov-fail-under=80`),
   a `browser` job installing Playwright Chromium and uploading
   `artifacts/browser-smoke` screenshots, and a `build` job that runs the
