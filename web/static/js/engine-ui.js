@@ -129,11 +129,19 @@
     const libraryBadge = $("repair-elevation-badge");
     const libraryButton = $("repair-run-as-admin");
     if (runAsAdmin) runAsAdmin.hidden = state.admin !== false;
-    if (badge) badge.hidden = !elevated;
+    if (badge) {
+      badge.hidden = false;
+      badge.textContent = elevated ? "Administrator" : "User only";
+      badge.classList.toggle("elevated", elevated);
+      badge.title = elevated
+        ? "NetScope is running with administrator rights"
+        : "NetScope is running as a standard user";
+    }
     if (hint) hint.hidden = state.admin !== false;
     if (libraryBadge) {
-      libraryBadge.hidden = !elevated;
-      libraryBadge.textContent = elevated ? "ADMINISTRATOR" : "";
+      libraryBadge.hidden = false;
+      libraryBadge.textContent = elevated ? "ADMINISTRATOR" : "USER ONLY";
+      libraryBadge.classList.toggle("elevated", elevated);
     }
     if (libraryButton) libraryButton.hidden = state.admin !== false;
     if (notice) {

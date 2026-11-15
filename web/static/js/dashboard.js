@@ -1452,8 +1452,8 @@ async function loadDiagnostics() {
         if (badge) {
 
             badge.textContent = diagnosticElevated
-                ? "ADMIN MODE"
-                : "STANDARD USER";
+                ? "ADMINISTRATOR"
+                : "USER ONLY";
 
             badge.className = diagnosticElevated
                 ? "elevation-badge elevated"

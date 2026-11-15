@@ -189,7 +189,7 @@ class NetScopeGui:
     def _refresh_admin_label(self) -> None:
         elevated = bool(self.runtime.admin_check())
         self.admin_label.configure(
-            text=("Administrator" if elevated else "Standard user"),
+            text=("Administrator" if elevated else "User only"),
             foreground=("#0a6b2d" if elevated else "#555"),
         )
 
