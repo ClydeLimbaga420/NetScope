@@ -123,43 +123,6 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
-/* subtle blueprint grid behind the app */
-body::before {
-    content: "";
-
-    position: fixed;
-    inset: 0;
-
-    z-index: 0;
-
-    pointer-events: none;
-
-    background-image:
-        linear-gradient(
-            rgba(255, 255, 255, 0.02) 1px,
-            transparent 1px
-        ),
-        linear-gradient(
-            90deg,
-            rgba(255, 255, 255, 0.02) 1px,
-            transparent 1px
-        );
-
-    background-size: 54px 54px;
-
-    -webkit-mask-image: radial-gradient(
-        circle at 45% 0%,
-        black 0%,
-        transparent 68%
-    );
-
-    mask-image: radial-gradient(
-        circle at 45% 0%,
-        black 0%,
-        transparent 68%
-    );
-}
-
 ::selection {
     background: rgba(98, 167, 255, 0.32);
 }
@@ -536,11 +499,7 @@ h1 {
 
     padding: 24px 14px 18px;
 
-    background: linear-gradient(
-        180deg,
-        rgba(11, 18, 33, 0.96),
-        rgba(7, 12, 24, 0.88)
-    );
+    background: rgba(9, 15, 29, 0.94);
 
     border-right: 1px solid var(--border);
 
@@ -562,25 +521,6 @@ h1 {
     font-size: 21px;
     font-weight: 800;
     letter-spacing: -0.6px;
-}
-
-/* gradient wordmark: carries the brand colours on its own */
-@supports ((-webkit-background-clip: text) or (background-clip: text)) {
-    .brand h2,
-    .mobile-brand {
-        background: linear-gradient(
-            100deg,
-            #eaf1ff 0%,
-            #9fc2ff 45%,
-            #8f9dff 72%,
-            #6fe0b2 100%
-        );
-
-        -webkit-background-clip: text;
-        background-clip: text;
-
-        -webkit-text-fill-color: transparent;
-    }
 }
 
 .brand small {
@@ -665,15 +605,9 @@ h1 {
 .nav-item.active {
     color: #ffffff;
 
-    background: linear-gradient(
-        90deg,
-        rgba(98, 167, 255, 0.22),
-        rgba(98, 167, 255, 0.05)
-    );
+    background: rgba(98, 167, 255, 0.12);
 
     border-color: rgba(98, 167, 255, 0.26);
-
-    box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .nav-item.active svg {
@@ -922,11 +856,7 @@ body.nav-open .nav-toggle .icon-close {
 
     overflow: hidden;
 
-    background: linear-gradient(
-        150deg,
-        rgba(23, 37, 64, 0.88),
-        rgba(11, 19, 36, 0.82)
-    );
+    background: var(--panel);
 
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
@@ -1927,14 +1857,7 @@ details.note > *:not(summary) {
     border: 1px solid var(--border);
     border-radius: 14px;
 
-    background:
-        linear-gradient(
-            135deg,
-            rgba(98, 167, 255, 0.08),
-            rgba(139, 124, 255, 0.04) 55%,
-            transparent
-        ),
-        rgba(255, 255, 255, 0.018);
+    background: rgba(98, 167, 255, 0.05);
 }
 
 .diag-progress-head {
@@ -1984,11 +1907,7 @@ details.note > *:not(summary) {
 
     border-radius: inherit;
 
-    background: linear-gradient(
-        90deg,
-        var(--accent),
-        var(--green)
-    );
+    background: var(--accent);
 
     transition: width 0.45s var(--ease);
 }
@@ -2159,26 +2078,7 @@ details.note > *:not(summary) {
 }
 
 .diag-row.running .diag-item {
-    background: linear-gradient(
-        90deg,
-        rgba(98, 167, 255, 0.05),
-        rgba(98, 167, 255, 0.12),
-        rgba(98, 167, 255, 0.05)
-    );
-
-    background-size: 200% 100%;
-
-    animation: diagShimmer 1.2s linear infinite;
-}
-
-@keyframes diagShimmer {
-    0% {
-        background-position: 200% 0;
-    }
-
-    100% {
-        background-position: -200% 0;
-    }
+    background: rgba(98, 167, 255, 0.09);
 }
 
 .diag-item {
@@ -2229,11 +2129,7 @@ details.note > *:not(summary) {
 }
 
 .diag-item.selected {
-    background: linear-gradient(
-        90deg,
-        rgba(98, 167, 255, 0.18),
-        rgba(98, 167, 255, 0.04)
-    );
+    background: rgba(98, 167, 255, 0.13);
 
     border-color: rgba(98, 167, 255, 0.28);
 
@@ -2362,11 +2258,7 @@ details.note > *:not(summary) {
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
 
-    background: linear-gradient(
-        150deg,
-        rgba(22, 36, 63, 0.85),
-        rgba(10, 18, 34, 0.88)
-    );
+    background: rgba(15, 26, 48, 0.86);
 
     box-shadow: var(--shadow-sm);
 
@@ -2474,11 +2366,7 @@ details.note > *:not(summary) {
     border: 1px solid rgba(126, 164, 228, 0.12);
     border-radius: var(--radius-md);
 
-    background: linear-gradient(
-        145deg,
-        rgba(4, 8, 18, 0.7),
-        rgba(8, 14, 27, 0.55)
-    );
+    background: rgba(5, 10, 20, 0.65);
 }
 
 .diag-command-label {
@@ -2698,11 +2586,7 @@ details.note > *:not(summary) {
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
 
-    background: linear-gradient(
-        160deg,
-        rgba(7, 12, 24, 0.92),
-        rgba(9, 15, 29, 0.85)
-    );
+    background: rgba(8, 13, 25, 0.9);
 }
 
 .console-head {
@@ -2999,11 +2883,7 @@ footer .footer-meta {
 
         box-shadow: 0 24px 60px rgba(2, 6, 16, 0.6);
 
-        background: linear-gradient(
-            180deg,
-            rgba(12, 19, 36, 0.98),
-            rgba(8, 13, 26, 0.96)
-        );
+        background: rgba(9, 15, 29, 0.98);
     }
 
     .sidebar.open {

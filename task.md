@@ -1018,9 +1018,9 @@ Session 41 (Phase C UI overhaul, design pass):
   repairs live only in the Repair Library) and `setRefreshDevicesBusy()`
   disables the Refresh devices button while scanning.
 - Brand change (user request): removed the "N" tile logo everywhere; NetScope
-  carries as a gradient wordmark (`@supports` background-clip text) in the
+  carries as a solid-colour wordmark (gradients removed) in the
   sidebar, mobile topbar and footer; favicon is a non-letterform signal/radar
-  glyph on a gradient tile.
+  glyph on a solid tile.
 - Legacy dashboard synced to the same design: `templates/index.html` rewritten
   with the same shell/markup (drawer, conn-grid, troubleshoot rail incl.
   `#repair-steps`, `#elevation-badge`, `#auto-configure-gateway` with icon +

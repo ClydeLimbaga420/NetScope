@@ -309,8 +309,8 @@ raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
   `#repair-steps` (web template has none — repairs live in the Repair Library)
   and disables the Refresh devices button via `setRefreshDevicesBusy`. Brand:
   the "N" tile logo is gone everywhere (no `.brand-icon`); NetScope carries as
-  a gradient wordmark (`@supports` background-clip text) and the favicon is a
-  non-letterform signal glyph. The legacy dashboard was synced to the same
+  a solid-colour wordmark (no gradients) and the favicon is a non-letterform
+  signal glyph on a solid tile. The legacy dashboard was synced to the same
   design: `templates/index.html` rewritten (drawer markup, conn-grid,
   troubleshoot rail incl. `#repair-steps`, `#elevation-badge`, footer), its
   `static/css/style.css` is a copy of the web stylesheet, and

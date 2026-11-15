@@ -41,26 +41,9 @@ function formatSpeed(value) {
 }
 
 
-function areaGradient(context, color) {
+function areaFill(context, color) {
 
-    const { chartArea, ctx } = context.chart;
-
-    if (!chartArea) {
-        return "transparent";
-    }
-
-    const gradient = ctx.createLinearGradient(
-        0,
-        chartArea.top,
-        0,
-        chartArea.bottom
-    );
-
-    gradient.addColorStop(0, `${color}59`);
-    gradient.addColorStop(0.55, `${color}14`);
-    gradient.addColorStop(1, `${color}00`);
-
-    return gradient;
+    return `${color}26`;
 
 }
 
@@ -89,7 +72,7 @@ try { chart = new Chart(
                     borderColor: "#62a7ff",
 
                     backgroundColor: context =>
-                        areaGradient(context, "#62a7ff"),
+                        areaFill(context, "#62a7ff"),
 
                     fill: true,
 
@@ -122,7 +105,7 @@ try { chart = new Chart(
                     borderColor: "#39d6a0",
 
                     backgroundColor: context =>
-                        areaGradient(context, "#39d6a0"),
+                        areaFill(context, "#39d6a0"),
 
                     fill: true,
 

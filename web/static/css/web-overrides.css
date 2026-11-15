@@ -584,11 +584,7 @@
     border: 1px solid rgba(98, 167, 255, 0.5);
     border-radius: var(--radius-btn, 10px);
 
-    background: linear-gradient(
-        135deg,
-        rgba(98, 167, 255, 0.24),
-        rgba(139, 124, 255, 0.14)
-    );
+    background: rgba(98, 167, 255, 0.18);
 
     color: #e7efff;
 
@@ -776,11 +772,7 @@
 }
 
 .repair-row.selected {
-    background: linear-gradient(
-        90deg,
-        rgba(98, 167, 255, 0.18),
-        rgba(98, 167, 255, 0.04)
-    );
+    background: rgba(98, 167, 255, 0.13);
 
     border-color: rgba(98, 167, 255, 0.28);
 
@@ -855,11 +847,7 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-md, 12px);
 
-    background: linear-gradient(
-        150deg,
-        rgba(22, 36, 63, 0.66),
-        rgba(10, 18, 34, 0.74)
-    );
+    background: rgba(15, 26, 48, 0.7);
 }
 
 .repair-section {
@@ -1441,7 +1429,7 @@
 
     border-radius: inherit;
 
-    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    background: var(--accent);
 
     transition: width 240ms var(--ease);
 }
