@@ -605,6 +605,8 @@ const DEVICE_VISIBLE_ROWS = 8;
 
 let deviceNameRetryTimer = null;
 
+let devicesLoading = false;
+
 
 function applyDeviceScrollHeight() {
 
@@ -768,6 +770,8 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
 
     let missingNames = false;
 
+    devicesLoading = true;
+
     setRefreshDevicesBusy(true);
 
     if (!silent) {
@@ -795,6 +799,7 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
             tr.appendChild(td);
             body.appendChild(tr);
             updateDeviceCount(null);
+            cancelPendingSectionAlign();
             setRefreshDevicesBusy(false);
             return;
         }
@@ -898,6 +903,8 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
 
         applyDeviceScrollHeight();
 
+        alignPendingSection();
+
         setRefreshDevicesBusy(false);
 
         if (retry && missingNames) {
@@ -918,8 +925,13 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
 
         updateDeviceCount(null);
         applyDeviceScrollHeight();
+        alignPendingSection();
         setRefreshDevicesBusy(false);
         console.error(error);
+    }
+
+    finally {
+        devicesLoading = false;
     }
 
 }
@@ -1613,16 +1625,94 @@ $("device-rows").addEventListener(
 // PAGE NAVIGATION
 // =====================================
 
+let uiSettled = false;
+
+function settleUi() {
+
+    if (uiSettled) {
+        return;
+    }
+
+    uiSettled = true;
+
+    document.body.classList.add('ui-settled');
+
+}
+
+let pendingSectionAlign = null;
+
+function cancelPendingSectionAlign() {
+
+    pendingSectionAlign = null;
+
+}
+
+function alignPendingSection() {
+
+    const section = pendingSectionAlign;
+
+    pendingSectionAlign = null;
+
+    if (!section) {
+        return;
+    }
+
+    const target = document.getElementById(section);
+    const item = document.querySelector(
+        `.nav-item[data-view="main"][data-scroll="${section}"]`
+    );
+
+    if (!target || !item || !item.classList.contains("active")) {
+        return;
+    }
+
+    target.scrollIntoView({ behavior: "instant", block: "start" });
+
+}
+
+["wheel", "touchstart", "pointerdown", "keydown"].forEach(eventName => {
+
+    window.addEventListener(
+        eventName,
+        cancelPendingSectionAlign,
+        { passive: true }
+    );
+
+});
+
 function showView(viewName, options = {}) {
 
     const { updateHash = true, scrollToId = null } = options;
+
+    const mainSection = viewName === 'main'
+        ? (scrollToId === 'devices' || scrollToId === 'traffic'
+            ? scrollToId
+            : 'overview-top')
+        : null;
+
+    pendingSectionAlign = (
+        viewName === 'main' &&
+        mainSection === 'devices' &&
+        devicesLoading
+    )
+        ? 'devices'
+        : null;
 
     document.querySelectorAll('.page-view[data-view]').forEach(page => {
         page.classList.toggle('active', page.dataset.view === viewName);
     });
 
     document.querySelectorAll('.nav-item[data-view]').forEach(item => {
-        item.classList.toggle('active', item.dataset.view === viewName);
+        const itemSection = item.dataset.scroll || 'overview-top';
+        const active = item.dataset.view === viewName &&
+            (viewName !== 'main' || itemSection === mainSection);
+        item.classList.toggle('active', active);
+        if (active) {
+            item.setAttribute('aria-current', 'page');
+        }
+        else {
+            item.removeAttribute('aria-current');
+        }
     });
 
     if (updateHash) {
@@ -1630,7 +1720,11 @@ function showView(viewName, options = {}) {
             ? '#troubleshoot'
             : viewName === 'repairs'
                 ? '#repairs'
-                : '#overview';
+                : mainSection === 'devices'
+                    ? '#devices'
+                    : mainSection === 'traffic'
+                        ? '#traffic'
+                        : '#overview';
         if (window.location.hash !== hash) {
             window.history.replaceState(null, '', hash);
         }
@@ -1644,30 +1738,25 @@ function showView(viewName, options = {}) {
                 if (chart) chart.update();
             }
         });
-        if (scrollToId) {
-            window.requestAnimationFrame(() => {
-                const target = document.getElementById(scrollToId);
+        window.requestAnimationFrame(() => {
+            if (mainSection !== 'overview-top') {
+                const target = document.getElementById(mainSection);
                 if (target) {
-                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    target.scrollIntoView({ behavior: 'instant', block: 'start' });
+                    return;
                 }
-                else {
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                }
+            }
+            window.scrollTo({ top: 0, behavior: 'instant' });
+        });
+    }
+    else {
+        window.scrollTo({ top: 0, behavior: 'instant' });
+        if (viewName === 'troubleshoot') {
+            window.requestAnimationFrame(() => {
+                renderDiagnostics();
+                updateDiagnosticsSummary();
             });
         }
-        else {
-            window.scrollTo({ top: 0, behavior: 'auto' });
-        }
-    }
-    else if (viewName === 'troubleshoot') {
-        window.requestAnimationFrame(() => {
-            renderDiagnostics();
-            updateDiagnosticsSummary();
-        });
-        window.scrollTo({ top: 0, behavior: 'auto' });
-    }
-    else if (viewName === 'repairs') {
-        window.scrollTo({ top: 0, behavior: 'auto' });
     }
 
 }
@@ -1678,6 +1767,7 @@ document.querySelectorAll('.nav-item[data-view]').forEach(item => {
         event.preventDefault();
         const view = item.dataset.view;
         const scrollToId = item.dataset.scroll || null;
+        settleUi();
         showView(view, { scrollToId });
     });
 
@@ -1781,6 +1871,8 @@ else if (initialHash === "devices" || initialHash === "traffic") {
 else {
     showView("main", { scrollToId: "overview-top" });
 }
+
+window.setTimeout(settleUi, 900);
 
 refreshStatus();
 

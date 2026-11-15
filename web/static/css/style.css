@@ -492,6 +492,10 @@ h1 {
     width: var(--sidebar-w);
     height: 100vh;
 
+    overflow-y: auto;
+
+    overscroll-behavior: contain;
+
     flex-shrink: 0;
 
     display: flex;
@@ -753,6 +757,8 @@ body.nav-open .nav-toggle .icon-close {
     z-index: 1;
 
     width: min(var(--main-max), 100%);
+
+    min-width: 0;
 
     margin: 0 auto;
     padding: 34px 40px 20px;
@@ -1129,6 +1135,11 @@ body.nav-open .nav-toggle .icon-close {
 
 .panel:hover {
     border-color: var(--border-strong);
+}
+
+body.ui-settled .card,
+body.ui-settled .panel {
+    animation: none;
 }
 
 .panel-head {
@@ -2862,6 +2873,12 @@ footer .footer-meta {
 
     body {
         display: block;
+    }
+
+    #overview-top,
+    #devices,
+    #traffic {
+        scroll-margin-top: 72px;
     }
 
     /* sidebar becomes an overlay drawer */
