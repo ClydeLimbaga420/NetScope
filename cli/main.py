@@ -1,4 +1,4 @@
-﻿"""CLI entry point. Keeps terminal concerns out of the diagnostic engine."""
+"""CLI entry point. Keeps terminal concerns out of the diagnostic engine."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from cli.parser import apply_defaults, build_parser
 from cli.shell import run_shell
 from core.logging_config import flush_logging
 from core.models import new_session_id
-from gui.launch import GUI_INTERNAL, detach_console, launch_detached_gui, owns_console
+from cli.launch import GUI_INTERNAL, detach_console, launch_detached_gui, owns_console
 
 
 def main(argv: Sequence[str] | None = None) -> int:

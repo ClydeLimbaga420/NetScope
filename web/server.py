@@ -1,4 +1,4 @@
-﻿"""Flask app factory and server lifecycle for the NetScope web UI."""
+"""Flask app factory and server lifecycle for the NetScope web UI."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from core.logging_config import setup_logging
 from core.probes import NetworkProbe
 from core.runner import SubprocessRunner
 from fixes.catalog import load_catalog
-from gui.runtime import GuiRuntime, empty_catalog
+from web.runtime import AppRuntime, empty_catalog
 from powershell.runner import PowerShellLayer
 from web.api import api_bp
 from web.jobs import JobManager
@@ -71,7 +71,7 @@ class WebState:
         self.last_snapshot: Any = None
         self.last_report: Any = None
 
-    def _build_runtime(self) -> GuiRuntime:
+    def _build_runtime(self) -> AppRuntime:
         runner = SubprocessRunner(self.logger)
         ps = PowerShellLayer(runner, self.logger)
         engine = DiagnosticEngine(runner=runner, ps=ps, logger=self.logger, probe=NetworkProbe())
@@ -80,7 +80,7 @@ class WebState:
         except Exception as exc:
             self.logger.warning("fix_catalog_unavailable", source="web", error=str(exc))
             catalog = empty_catalog()
-        return GuiRuntime(
+        return AppRuntime(
             engine=engine,
             catalog=catalog,
             runner=runner,

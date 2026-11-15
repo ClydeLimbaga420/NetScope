@@ -1,4 +1,4 @@
-﻿"""JSON API routes calling the existing engine/fixes/CLI utilities."""
+"""JSON API routes calling the existing engine/fixes/CLI utilities."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from fixes.catalog import CatalogError, load_catalog
 from fixes.executor import FixExecutor
 from fixes.gateway_config import auto_configure_gateway
 from fixes.if_unresolved import build_unresolved_sections, unresolved_section
-from gui.launch import gui_relaunch_argv
+from cli.launch import gui_relaunch_argv
 from core.checks.descriptors import CHECK_DESCRIPTORS
 from core.models import Layer
 

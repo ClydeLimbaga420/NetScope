@@ -1,4 +1,4 @@
-"""Dual-mode launch helpers: console detection, detach, detached GUI spawn.
+"""Console/launch helpers shared by the CLI and the web UI.
 
 Windows console rules used here:
 
@@ -6,7 +6,7 @@ Windows console rules used here:
   console. ``1`` means this process owns the console (double-click / Win+R),
   ``>= 2`` means it is shared with a terminal, ``0`` means there is none.
 - ``FreeConsole`` detaches this process so an owned console window disappears.
-- ``DETACHED_PROCESS`` spawns a child with no console of its own, so the GUI
+- ``DETACHED_PROCESS`` spawns a child with no console of its own, so the web UI
   never flashes a console window.
 """
 
@@ -24,9 +24,9 @@ _ENTRY_POINT = _PROJECT_ROOT / "netscope.py"
 
 
 def gui_relaunch_argv() -> list[str]:
-    """Arguments (without the interpreter) that reopen the GUI in a new process.
+    """Arguments (without the interpreter) that reopen the UI in a new process.
 
-    Used both to spawn the detached GUI and for elevated relaunches
+    Used both to spawn the detached UI and for elevated relaunches
     (:func:`cli.admin.relaunch_elevated` prepends ``sys.executable`` itself).
     """
 
@@ -63,7 +63,7 @@ def detach_console() -> bool:
 
 
 def launch_detached_gui() -> bool:
-    """Spawn the GUI as a detached process with no console of its own."""
+    """Spawn the UI as a detached process with no console of its own."""
 
     argv = [sys.executable, *gui_relaunch_argv()]
     popen_kwargs: dict[str, Any] = {}

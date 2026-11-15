@@ -686,7 +686,7 @@ def cmd_report(args: Any, ctx: CliContext) -> int:
 
 
 def cmd_gui(args: Any, ctx: CliContext) -> int:
-    """Launch the local web UI (replaces tkinter front end)."""
+    """Launch the local web UI."""
     no_browser = bool(getattr(args, "no_browser", False))
     port = getattr(args, "port", None)
     try:
@@ -756,13 +756,86 @@ def cmd_gui(args: Any, ctx: CliContext) -> int:
 
 
 def cmd_install(args: Any, ctx: CliContext) -> int:
-    ctx.err("The installer ships in Phase 5.")
-    return exit_codes.FIX_FAILED
+    from cli.installer import InstallerError, install
+
+    source = getattr(args, "source", None)
+    directory = getattr(args, "install_dir", None)
+    dry_run = bool(getattr(args, "dry_run", False))
+    try:
+        source_path = Path(validate_path(source)) if source else None
+        install_path = Path(validate_path(directory)) if directory else None
+    except ValidationError as exc:
+        return _failure(ctx, str(exc))
+
+    if not dry_run and not args.yes:
+        if not _stdin_is_tty(ctx):
+            return _failure(
+                ctx,
+                "confirmation is required; rerun with --yes for non-interactive use",
+            )
+        if not _confirm(ctx, "Install NetScope for the current user? [y/N] "):
+            ctx.err("Install cancelled.")
+            return exit_codes.FIX_FAILED
+
+    try:
+        result = install(
+            source_exe=source_path,
+            install_dir=install_path,
+            dry_run=dry_run,
+            create_start_menu=not getattr(args, "no_shortcut", False),
+        )
+    except InstallerError as exc:
+        ctx.logger.error("install_failed", error=str(exc))
+        return _failure(ctx, str(exc), exit_codes.FAILURES)
+
+    ctx.logger.action("cli", "install", dry_run=dry_run, install_dir=result.install_dir)
+    if args.json:
+        _json_dump(ctx, result.to_dict())
+    else:
+        for line in result.messages:
+            print(line, file=ctx.stdout)
+    return exit_codes.OK
 
 
 def cmd_uninstall(args: Any, ctx: CliContext) -> int:
-    ctx.err("The uninstaller ships in Phase 5.")
-    return exit_codes.FIX_FAILED
+    from cli.installer import InstallerError, uninstall
+
+    directory = getattr(args, "install_dir", None)
+    dry_run = bool(getattr(args, "dry_run", False))
+    try:
+        install_path = Path(validate_path(directory)) if directory else None
+    except ValidationError as exc:
+        return _failure(ctx, str(exc))
+
+    if not dry_run and not args.yes:
+        if not _stdin_is_tty(ctx):
+            return _failure(
+                ctx,
+                "confirmation is required; rerun with --yes for non-interactive use",
+            )
+        if not _confirm(ctx, "Uninstall NetScope for the current user? [y/N] "):
+            ctx.err("Uninstall cancelled.")
+            return exit_codes.FIX_FAILED
+
+    try:
+        result = uninstall(
+            install_dir=install_path,
+            dry_run=dry_run,
+            purge=bool(getattr(args, "purge", False)),
+        )
+    except InstallerError as exc:
+        ctx.logger.error("uninstall_failed", error=str(exc))
+        return _failure(ctx, str(exc), exit_codes.FAILURES)
+
+    ctx.logger.action("cli", "uninstall", dry_run=dry_run, install_dir=result.install_dir)
+    if args.json:
+        _json_dump(ctx, result.to_dict())
+    else:
+        for line in result.messages:
+            print(line, file=ctx.stdout)
+        for removed in result.removed:
+            print(f"Removed {removed}", file=ctx.stdout)
+    return exit_codes.OK
 
 
 def cmd_monitor(args: Any, ctx: CliContext) -> int:

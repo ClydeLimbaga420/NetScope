@@ -197,30 +197,30 @@ Existing code that must keep working: the Flask dashboard (`app.py`,
 ## Phase 5 - Packaging, installer, CI, docs
 
 ### 5.1 Packaging
-- [ ] PyInstaller `--onefile` console-subsystem `netscope.exe` (or Nuitka if
+- [x] PyInstaller `--onefile` console-subsystem `netscope.exe` (or Nuitka if
       smaller)
-- [ ] Report final exe size
-- [ ] Verify `--version`, `diagnose --json`, `--help` from the exe
+- [x] Report final exe size
+- [x] Verify `--version`, `diagnose --json`, `--help` from the exe
 
 ### 5.2 Installer
-- [ ] `netscope install`: copy to `%LOCALAPPDATA%\Programs\NetScope`, add to
+- [x] `netscope install`: copy to `%LOCALAPPDATA%\Programs\NetScope`, add to
       user PATH, App Paths registry key, Start Menu shortcut, WM_SETTINGCHANGE
-- [ ] `netscope uninstall`: remove all of the above safely
-- [ ] Installer tests with mocked/temporary registry + PATH
+- [x] `netscope uninstall`: remove all of the above safely
+- [x] Installer tests with mocked/temporary registry + PATH
 
 ### 5.3 CI
-- [ ] GitHub Actions `windows-latest`: tests, coverage (80%+ core/fixes/
+- [x] GitHub Actions `windows-latest`: tests, coverage (80%+ core/fixes/
       PowerShell), build exe, run build tests
 
 ### 5.4 Documentation
-- [ ] README: build, CLI reference, exit codes, `[VERIFY]` list, how to add
+- [x] README: build, CLI reference, exit codes, `[VERIFY]` list, how to add
       checks/fixes/if_unresolved/subcommands, dual-mode explanation
-- [ ] Manual test checklist for Windows VM failure simulation
-- [ ] Known-unverified / Win10-vs-Win11 differences list
+- [x] Manual test checklist for Windows VM failure simulation
+- [x] Known-unverified / Win10-vs-Win11 differences list
 
 ### 5.5 Phase 5 close-out
-- [ ] Update `AGENTS.md`
-- [ ] Update Notes below
+- [x] Update `AGENTS.md`
+- [x] Update Notes below
 
 ---
 
@@ -403,49 +403,52 @@ strictly required for web (document why).
 - [x] Tests: dynamic template autoescape, offline/CSP static audit,
       design-file changelog, design-token/breakpoint regressions, shared-CSS
       identity, and engine-component isolation from main's stylesheet.
-- [ ] Tests: browser end-to-end flows and screenshot/computed-style design
-      verification (needs an installed Chromium/Edge; none is available on this
-      host, so this stays open for a machine with a browser).
+- [x] Tests: browser end-to-end flows and screenshot/computed-style design
+      verification. `scripts/browser_smoke.py` drives the real UI in headless
+      Playwright Chromium, checks the shell/session/CSS/mobile drawer/
+      Troubleshoot/shutdown flows, asserts the stat-card grid width and label
+      wrapping, and saves dashboard/mobile/Troubleshoot screenshots.
 
 ### Phase D - Launch/lifecycle, packaging, build tests
-- [ ] `netscope gui` / no-args from Win+R|Start|double-click start server+open UI;
+- [x] `netscope gui` / no-args from Win+R|Start|double-click start server+open UI;
       no-args in terminal still opens interactive CLI shell. `netscope gui
       --no-browser` and `--port N` (default random free). Open app-style window
       (Edge --app, Chrome --app, fallback default browser). Preserve hidden
       console on Win+R/Start and detach on `netscope gui`.
-- [ ] Single instance per user (lock/port file in %LOCALAPPDATA%\NetScope) opens
+- [x] Single instance per user (lock/port file in %LOCALAPPDATA%\NetScope) opens
       existing instance. Heartbeat (~few s); shutdown when no heartbeat ~20s and
       no job/fix running; "Quit NetScope" (POST /api/shutdown); Ctrl+C exits
       cleanly.
-- [ ] Elevation: Administrator status chip, non-admin banner, "Restart as
+- [x] Elevation: Administrator status chip, non-admin banner, "Restart as
       administrator" (UAC relaunch, exit old); disable/annotate admin-only
       fixes when not elevated.
-- [ ] Bundle `templates/` and `static/` into exe (PyInstaller --add-data) via
+- [x] Bundle `templates/` and `static/` into exe (PyInstaller --add-data) via
       resource-path helper; exclude unused Flask/Werkzeug/Jinja2 extras; verify
       lightweight.
-- [ ] Tests: lifecycle (heartbeat shutdown, no shutdown while job runs,
+- [x] Tests: lifecycle (heartbeat shutdown, no shutdown while job runs,
       single-instance, clean Ctrl+C, elevation/non-admin state); build tests
       (`netscope.exe gui --no-browser --port <p>` serves dashboard, a static
       CSS, `/api/status` from inside exe); report exe size (tkinter before vs
       Flask web UI after); verify frozen-mode structured log routing and quiet
-      console behavior.
+      console behavior. (No tkinter artifact existed to measure; see
+      `docs/phaseDE-report.md`.)
 
 ### Phase E - Remove tkinter, docs, CI, final reports
-- [ ] Remove tkinter from project and exe only after parity checklist passes
+- [x] Remove tkinter from project and exe only after parity checklist passes
       (all rows done/tested); delete tkinter code/imports.
-- [ ] Update README (dev run, server security, API reference, adding
+- [x] Update README (dev run, server security, API reference, adding
       page/route/static asset, exe bundling), Start Menu/shortcut behavior,
       install/uninstall steps.
-- [ ] Update GitHub Actions `windows-latest`: run all web+core+fixes tests with
+- [x] Update GitHub Actions `windows-latest`: run all web+core+fixes tests with
       coverage; include headless browser smoke (Playwright) skipped gracefully
       where unavailable.
-- [ ] Deliverables complete: branch/merge report, existing GUI+design+engine
+- [x] Deliverables complete: branch/merge report, existing GUI+design+engine
       summary & plan, exe size before/after, parity checklist (+ 2 extra
       tables), web layer/templates/CSS/JS changes file-by-file + design
       changelog + git diff --stat vs main, test suite + CI, build/launch/
-      installer updates, manual test checklist (VM scenarios incl. unfixable ?
+      installer updates, manual test checklist (VM scenarios incl. unfixable ->
       unresolved panel).
-- [ ] Final: confirm `git log main..feature/web-ui`, `git diff --stat` vs main
+- [x] Final: confirm `git log main..feature/web-ui`, `git diff --stat` vs main
       for design files, `main` has no new commits, `build` has only Step 0
       merge commit.
 
@@ -1152,3 +1155,32 @@ Session 45 (LAN device discovery):
 - Added scanner tests for Windows ping arguments, LAN target probing, and UDP
   ARP-cache warmup. Targeted tests: 19 passed before UDP warmup was combined
   with ping; re-run after the follow-up.
+
+Session 46 (Phase 5 + Phase 6 D/E close-out):
+- Built the one-file PyInstaller exe (13.8 MB, console subsystem, UPX off) that
+  bundles the web templates/static and fix catalog; `NetScope.spec` and
+  `scripts/build.ps1` reproduce it. `--version`, `--help`, and
+  `diagnose --json` work from the frozen exe.
+- Added `scripts/frozen_smoke.py` (isolated LOCALAPPDATA; boot URL, dashboard,
+  bundled CSS, `/api/status`, quiet console, `source:web` logging, shutdown,
+  clean exit, port-lock removal = 9 checks) and `tests/test_frozen.py`
+  (`NETSCOPE_EXE`-gated).
+- Confirmed `netscope install`/`uninstall` behaviour with `tests/test_installer.py`
+  (24 installer+launch tests pass; fixed `result.path_changed`).
+- Rewrote `tests/test_probes.py` to lift coverage to 82% over
+  `core`/`fixes`/`powershell`; full suite 259 passed, 2 skipped (2026-11-15).
+- Added `.github/workflows/ci.yml`: test matrix (3.11/3.14, coverage gate),
+  Playwright browser job with screenshot artifact, and a PyInstaller build job
+  running frozen smoke + frozen pytest and uploading the exe.
+- Installed Playwright Chromium locally; `scripts/browser_smoke.py` passes
+  (shell/session/CSS, stat-card layout, mobile drawer, Troubleshoot, shutdown)
+  and captures dashboard/mobile/Troubleshoot screenshots in
+  `artifacts/browser-smoke/` (gitignored).
+- Rewrote README (two front ends, prebuilt/source install, CLI + exit-code
+  reference, build/install/uninstall, dual-mode launch, web API/security,
+  extension guide, `[VERIFY]`). Added `docs/manual-test-checklist.md`,
+  `docs/known-unverified.md`, `docs/phaseDE-report.md`, and
+  `docs/phaseE-deliverables.md`.
+- Updated `AGENTS.md` for the post-tkinter architecture, packaging/installer/CI,
+  and current test counts. Remaining: real Windows 10 VM checklist run and
+  human visual review of screenshots. Nothing pushed.

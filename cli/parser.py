@@ -163,8 +163,30 @@ def build_parser() -> argparse.ArgumentParser:
     gui.add_argument("--no-browser", action="store_true", default=argparse.SUPPRESS, help="start server and print URL only")
     gui.add_argument("--port", type=int, default=argparse.SUPPRESS, metavar="N", help="bind web UI to this local port")
 
-    sub.add_parser("install", parents=[common], help="install NetScope (Phase 5)")
-    sub.add_parser("uninstall", parents=[common], help="uninstall NetScope (Phase 5)")
+    install = sub.add_parser(
+        "install",
+        parents=[common],
+        help="install NetScope for the current user",
+        description=(
+            "Copy NetScope.exe to %LOCALAPPDATA%\\Programs\\NetScope, add it to "
+            "the user PATH, register App Paths and create a Start Menu shortcut."
+        ),
+    )
+    install.add_argument("--source", metavar="FILE", help="NetScope.exe to install")
+    install.add_argument("--dir", dest="install_dir", metavar="DIR", help="install directory")
+    install.add_argument("--no-shortcut", action="store_true", help="skip the Start Menu shortcut")
+
+    uninstall = sub.add_parser(
+        "uninstall",
+        parents=[common],
+        help="remove the current-user installation",
+        description=(
+            "Remove the install directory, user PATH entry, App Paths "
+            "registration and Start Menu shortcut."
+        ),
+    )
+    uninstall.add_argument("--dir", dest="install_dir", metavar="DIR", help="install directory")
+    uninstall.add_argument("--purge", action="store_true", help="also delete logs, reports and backups")
 
     return parser
 

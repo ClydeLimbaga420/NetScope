@@ -12,7 +12,7 @@ from modules.ping_monitor import ping_host, ping_host_stats
 from modules.device_scanner import get_arp_devices
 from modules.diagnostics import list_diagnostics, run_diagnostic
 from fixes.gateway_config import auto_configure_gateway
-from gui.runtime import build_runtime
+from web.runtime import build_runtime
 from core.probes import NetworkProbe
 
 

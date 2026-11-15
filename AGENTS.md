@@ -2,10 +2,18 @@
 
 NetScope is being evolved (per `prompt.txt`, tracked in `task.md`) from a Flask
 dashboard into a universal Windows network troubleshooting tool with one shared
-engine and two front ends (CLI + GUI). Work phase by phase; update this file and
-`task.md` Notes at the end of every phase.
+engine and two front ends (CLI + localhost web UI). Work phase by phase; update
+this file and `task.md` Notes at the end of every phase.
 
-**Current status: Phase 4 complete; Phase 6 Phase B complete and Phase C in progress.** Phase 5 packaging is pending. The web UI has its localhost server/API/job/security foundation, local assets, engine-backed Troubleshoot/Repair Library integration, reusable shell partials/toasts, structured fix/unresolved/network-info output, and Phase C audit/changelog docs. Remaining Phase C work is broad browser E2E and screenshot/computed-style design verification; headless Edge + CDP is available on this host and has been used for spot checks (Troubleshoot single-check flow, blank amber `.step-reason` fix).
+**Current status: Phase 5 and Phase 6 D/E complete.** tkinter is removed;
+`dist/NetScope.exe` is a one-file console-subsystem build (13.8 MB) bundling the
+web templates/static and fix catalog; `netscope install`/`uninstall` manage a
+per-user PATH/App Paths/Start Menu install; CI covers tests on Python 3.11/3.14,
+80% coverage, Playwright browser smoke + screenshots, and the frozen exe smoke
+test. Latest local suite: 259 passed, 2 skipped (2026-11-15); coverage 82% over
+`core`/`fixes`/`powershell`. Remaining: a real Windows 10 VM run of
+`docs/manual-test-checklist.md` and human visual review of the captured UI
+screenshots. Nothing is pushed.
 
 ## Run / environment
 - The Flask dashboard still works: `python app.py` → http://127.0.0.1:5000
@@ -16,15 +24,17 @@ engine and two front ends (CLI + GUI). Work phase by phase; update this file and
 - This checkout originally had **no `.venv`**. A venv now exists (Python 3.14.7).
   Recreate with `py -m venv .venv`, then
   `.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt`.
-- Run tests: `.\.venv\Scripts\python.exe -m pytest` (latest full run: 234 passed, 2026-11-12).
+- Run tests: `.\.venv\Scripts\python.exe -m pytest` (latest full run: 259 passed,
+  2 skipped, 2026-11-15). Coverage gate:
+  `.\.venv\Scripts\python.exe -m pytest --cov=core --cov=fixes --cov=powershell --cov-fail-under=80`.
 - Run the CLI: `.\.venv\Scripts\python.exe netscope.py --help`
   (or `python -m cli`). `netscope.py diagnose --json` is the machine interface.
 - Run the web UI: `netscope gui` launches the localhost interface; use
   `netscope gui --no-browser --port N` to run it in the foreground and print
-  its boot URL. The hidden `__gui__` entry serves the UI in-process. The legacy
-  tkinter code remains until the Phase 6 parity checklist is complete.
-- Double-clicking a terminal (no args) opens the interactive shell; double-
-  clicking a launcher that owns its console detaches and opens the GUI.
+  its boot URL. The hidden `__gui__` entry serves the UI in-process. tkinter is
+  gone; `cli/launch.py` owns console detection/detach/relaunch.
+- Double-clicking `NetScope.exe` (no args, own console) detaches and opens the
+  GUI; `netscope` with no args in a shared terminal opens the shell.
 - PowerShell is required for diagnostics (Windows PowerShell 5.1).
 - Run `app.py` as a script: imports are flat/absolute (`from config ...`,
   `from modules...`, `from core...`), not a package.
@@ -153,51 +163,34 @@ engine and two front ends (CLI + GUI). Work phase by phase; update this file and
   rollback/detect-only, if_unresolved ranking/gating/wording/report, CLI
   dry-run/resolved/detect-only/unknown-id. Total 106 tests passed at Phase 3.
 
-## GUI (Phase 4)
-- `gui/` is a front end only: it calls the same `DiagnosticEngine`,
-  `FixExecutor` and catalog as the CLI and reuses `cli.render` helpers. **Never
-  put detection, fix or validation logic in `gui/`** — extend `core/` or
-  `fixes/` instead.
-- `gui/runtime.py` — `GuiRuntime` (engine/catalog/runner/ps/logger/
-  admin_check/session_id/backup_dir, `executor()` factory), `build_runtime()`
-  (fresh `gui`-mode logging + real catalog; empty catalog if it fails to load)
-  and `runtime_from_context()` (reuse a `CliContext`).
-- `gui/app.py` — `NetScopeGui`: status line, findings `Treeview` with colour
-  tags, per-finding detail (message/cause/evidence + "Proceed to Fix"),
-  preview dialog with exact commands and Admin/Risk/Reboot labels, "Still not
-  working? Likely causes" collapsible panel (from `unresolved_section`),
-  layer checkbuttons, Run diagnosis, Export report (txt/json to
-  `%LOCALAPPDATA%\NetScope\reports\`), View Logs. Workers run on daemon
-  threads and post dicts to a `queue.Queue`; `root.after(100)` polling applies
-  them on the Tk thread. `shutdown()` cancels the poll timer.
-- `gui/dialogs.py` — `DialogBridge`: worker calls `submit()` and block on an
-  `Event`; `poll()` on the Tk thread answers them. `submit()` from the Tk
-  thread itself answers inline (`answer_directly`) to avoid self-deadlock.
-- `gui/launch.py` — `GUI_INTERNAL = "__gui__"`, `owns_console()`
+## Launch / runtime after tkinter removal (Phase 6 D/E)
+- `gui/` is deleted. The web UI is the only graphical front end; it calls the
+  same `DiagnosticEngine`, `FixExecutor`, and catalog as the CLI. Never put
+  detection, fix, or validation logic in `web/` — extend `core/` or `fixes/`.
+- `cli/launch.py` — `GUI_INTERNAL = "__gui__"`, `owns_console()`
   (`GetConsoleProcessList == 1`), `detach_console()` (`FreeConsole`),
   `launch_detached_gui()` (`DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP`,
   devnull stdio, cwd = project root), `gui_relaunch_argv()` (source:
   `[netscope.py, "__gui__"]`; frozen: `["__gui__"]`).
-- `cli/main.py` intercepts `__gui__` before argparse and runs the GUI in
-  process (`_run_gui_process`). `netscope gui` (`cmd_gui`) pre-checks
-  `tkinter`, spawns the detached GUI and returns 0. No args + own console →
-  detach + GUI; no args in a shared terminal → shell; no args without a TTY →
-  help/exit 64.
-- Fix flow: `prepare()` preview → bridge confirmation → `run(assume_yes=True)`;
-  high-risk steps still trigger the executor's second confirmation (rendered as
-  a warning dialog). DETECT-ONLY findings never run the executor. `needs_admin`
-  offers `relaunch_elevated(gui_relaunch_argv())`.
-- Launcher tradeoff (document in Phase 5 README): the exe stays
-  console-subsystem, so double-clicking it briefly flashes a console; the GUI
-  child itself is detached and shows no console. A double-clicked `.py` via
-  `py.exe` shares a console, so `owns_console()` is False and it opens the
-  shell — the frozen exe behaves as specified.
-- `tests/test_gui.py` — 20 tests: launch helpers, dialog bridge
-  (round-trip/no-handler/UI-thread direct answer), runtime builders, headless-
-  safe construction (`pytest.skip` on `TclError`), rendering/detail/buttons,
-  layer selection, background diagnosis, failure surfacing, real fix flow via
-  `FixExecutor` + `FakeRunner`, declined fix, DETECT-ONLY causes panel, report
-  export, `cmd_gui`, `__gui__` token, own-console launch.
+- `web/runtime.py` — `AppRuntime` (engine/catalog/runner/ps/logger/
+  admin_check/session_id/backup_dir, `executor()` factory), `build_runtime()`
+  (fresh `web`-mode logging + real catalog; empty catalog if it fails to load)
+  and `runtime_from_context()` (reuse a `CliContext`). Moved from
+  `gui/runtime.py`; renamed from `GuiRuntime`.
+- `cli/main.py` intercepts `__gui__` before argparse and runs the web server in
+  process (`_run_gui_process`). `netscope gui` (`cmd_gui`) spawns the detached
+  server and returns 0. No args + own console → detach + GUI; no args in a
+  shared terminal → shell; no args without a TTY → help/exit 64.
+- `web/run.py` owns the single-instance lock, port file, `/health` reuse,
+  bounded boot URL, bind-failure logging, heartbeat/idle shutdown, and clean
+  `POST /api/shutdown`.
+- Launcher tradeoff: the exe stays console-subsystem, so double-clicking it
+  briefly flashes a console; the GUI child itself is detached and shows no
+  console. A double-clicked `.py` via `py.exe` shares a console, so
+  `owns_console()` is False and it opens the shell — the frozen exe behaves as
+  specified.
+- `tests/test_launch.py` covers the retained launch helpers. `tests/test_gui.py`
+  was deleted with the tkinter front end.
 
 Usage:
 ```python
@@ -223,13 +216,12 @@ print(outcome.exit_code, outcome.status, outcome.to_dict())
 ```
 
 ```python
-from gui.app import run_gui
-from gui.runtime import build_runtime
+from web.runtime import AppRuntime, build_runtime
 
-raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
+runtime = build_runtime()  # same engine/catalog as the CLI, web-mode logging
 ```
 
-## Web UI (Phase 6B complete; Phase 6C in progress)
+## Web UI (Phase 6 complete)
 - `web/run.py` serves on `127.0.0.1`, owns a per-user process lock, atomically
   publishes its port/boot token, validates existing instances with `/health`,
   and uses a bounded detached-launch URL handoff. Source startup is banner-free.
@@ -279,13 +271,15 @@ raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
   detail links to it with **View full procedure**. A sidebar **Run as
   administrator** button calls `/api/elevate`; cancellation (UAC declined) logs
   `elevate_cancelled`, returns 409 and keeps the server running.
-- Tests: latest full suite is 226 passing (2026-11-12). Session 30's live repro
-  verified the real CLI child, boot/session/CSP, local assets, 33 SSE check
-  events, findings/fixes/catalog, fix plan+dry-run, log streaming, shutdown,
-  single-instance reuse and bind-failure logging (25/25); the gateway repair
-  adds `/api/gateway/configure` and combined Internet/Gateway status. Phase C
-  still needs browser E2E and design-fidelity verification; Phase D owns
-  frozen-build launch/log checks.
+- Tests: latest full suite is 259 passed, 2 skipped (2026-11-15). Session 30's
+  live repro verified the real CLI child, boot/session/CSP, local assets, 33 SSE
+  check events, findings/fixes/catalog, fix plan+dry-run, log streaming,
+  shutdown, single-instance reuse and bind-failure logging (25/25); the gateway
+  repair adds `/api/gateway/configure` and combined Internet/Gateway status.
+  `scripts/browser_smoke.py` now drives the real UI in headless Playwright
+  Chromium: shell/session/CSS, stat-card layout, mobile drawer, Troubleshoot,
+  shutdown, plus dashboard/mobile/Troubleshoot screenshots. Frozen-build
+  launch/log checks live in `scripts/frozen_smoke.py` + `tests/test_frozen.py`.
 - UI overhaul (Session 41, Phase C design pass): `web/templates/base.html` +
   `web/templates/index.html` restructured (skip-link, mobile topbar +
   `#nav-toggle`/`aside.sidebar`/`#sidebar-backdrop` drawer, SVG nav icons,
@@ -449,16 +443,45 @@ raise SystemExit(run_gui(build_runtime()))  # same engine, Tk front end
 - Never enable SMB1, disable SMB signing, or disable NCSI active probing by
   default (DETECT-ONLY or second confirmation only).
 
-## Next phases
-- Phase 5: PyInstaller exe, installer/uninstaller (PATH/App Paths/Start Menu),
-  GitHub Actions, README/manual test checklist. Replace `install`/`uninstall`
-  stubs. Document: LAN-09 stays DETECT-ONLY (deliberate deviation from
-  `prompt.txt`'s optional registry fix) and the console-flash launcher
-  tradeoff.
+## Packaging / installer / CI (Phase 5, Phase 6 D/E)
+- `NetScope.spec` is a one-file console-subsystem PyInstaller build (UPX off)
+  bundling `web/templates`, `web/static`, and `fixes/fixes.json`; tkinter and
+  heavy optional libs are excluded. `scripts/build.ps1` builds it with the venv
+  interpreter (`-Clean` wipes `build/` + `dist/`) and reports the exe size.
+  Current artifact: 13.8 MB.
+- `scripts/frozen_smoke.py` runs the frozen exe with an isolated
+  `LOCALAPPDATA`: boot URL, dashboard, bundled CSS, `/api/status`, quiet
+  console, structured `source:web` logging, `POST /api/shutdown`, clean exit,
+  and port-lock removal (9 checks). `tests/test_frozen.py` wraps it plus
+  `--version` and is skipped unless `NETSCOPE_EXE` is set.
+- `cli/installer.py` implements per-user `netscope install`/`uninstall`:
+  PATH (user), App Paths, Start Menu shortcut, marker file; supports
+  `--dry-run`, `--json`, `--purge`. It never needs admin and never touches
+  machine-wide keys.
+- `.github/workflows/ci.yml` (windows-latest): `test` matrix on Python 3.11 and
+  3.14 with coverage over `core`/`fixes`/`powershell` (`--cov-fail-under=80`),
+  a `browser` job installing Playwright Chromium and uploading
+  `artifacts/browser-smoke` screenshots, and a `build` job that runs the
+  PyInstaller build, frozen smoke + frozen pytest, and uploads
+  `NetScope-windows-x64`.
+- Docs: `README.md` (install/build/CLI/API/extension guide),
+  `docs/manual-test-checklist.md` (Windows 10 VM checklist),
+  `docs/known-unverified.md` (`[VERIFY]` repairs + Win10/Win11 caveats),
+  `docs/phaseDE-report.md` (packaging/lifecycle/CI report),
+  `docs/phaseE-deliverables.md` (close-out index).
+- CI has not been run remotely (nothing pushed). A real Windows 10 VM run and
+  human review of the browser screenshots remain open.
+
+## Remaining work
+- Run `docs/manual-test-checklist.md` on a real Windows 10 VM, including the
+  `[VERIFY]` repairs (`IP-08`, `LAN-10`, `DNS-04`, `DNS-05`, `NET-06`, `NET-08`,
+  `NET-11`).
+- Review the Playwright screenshots visually and on a high-DPI display.
+- Keep `LAN-09` DETECT-ONLY (deliberate deviation from `prompt.txt`) and keep
+  the console-flash launcher tradeoff documented.
 ## Dev install / running
 - `pip install -e .` (after requirements) exposes the `netscope` command from any
-  shell; a `netscope.bat` wrapper is also provided in `.venv\Scripts`. Run
-  `netscope --help`, `netscope diagnose`, `netscope gui`.
+  shell. Run `netscope --help`, `netscope diagnose`, `netscope gui`.
 - Troubleshoot now lists all 32 planned checks before a run (via
   `/api/checks` + `core/checks/descriptors.py`); repairs live only in the
   Repair Library. The diagnostic rail scrolls independently of the detail pane.
