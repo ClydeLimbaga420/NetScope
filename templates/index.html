@@ -11,7 +11,10 @@
     <title>NetScope | Network Monitor</title>
 
     <link rel="icon"
-          href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%233d8bff'/%3E%3Cpath d='M8.2 13.2a10.6 10.6 0 0 1 15.6 0' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' fill='none' opacity='.6'/%3E%3Cpath d='M11.8 16.8a6 6 0 0 1 8.4 0' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' fill='none' opacity='.85'/%3E%3Ccircle cx='16' cy='21.4' r='2.6' fill='%23fff'/%3E%3C/svg%3E">
+          href="{{ url_for('static', filename='favicon.svg') }}"
+          type="image/svg+xml">
+    <link rel="apple-touch-icon"
+          href="{{ url_for('static', filename='favicon.svg') }}">
 
     <link rel="stylesheet"
           href="{{ url_for('static', filename='css/fonts.css') }}">
@@ -44,9 +47,7 @@
             </svg>
         </button>
 
-        <span class="mobile-brand">
-            NetScope
-        </span>
+        <span class="mobile-brand">NetScope</span>
 
         <span class="pulse" aria-hidden="true"></span>
     </header>

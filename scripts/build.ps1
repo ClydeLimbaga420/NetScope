@@ -42,6 +42,14 @@ try {
         throw "PyInstaller is not installed. Run: $Python -m pip install pyinstaller"
     }
 
+    $iconScript = Join-Path $root "build_icon.py"
+    if (Test-Path -LiteralPath $iconScript) {
+        & $Python $iconScript
+        if ($LASTEXITCODE -ne 0) {
+            throw "Icon generation failed with exit code $LASTEXITCODE"
+        }
+    }
+
     $arguments = @(
         "-m", "PyInstaller", "--noconfirm",
         "--distpath", $DistPath,

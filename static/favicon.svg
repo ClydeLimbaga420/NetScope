@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="NetScope icon">
+  <defs>
+    <linearGradient id="bg" x1="24" x2="236" y1="16" y2="240" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#78C7FF"/>
+      <stop offset="0.45" stop-color="#4C8DFF"/>
+      <stop offset="1" stop-color="#1E3FBF"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="64" x2="196" y1="24" y2="204" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#DFF4FF" stop-opacity="0.8"/>
+      <stop offset="1" stop-color="#DFF4FF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="14" y="14" width="228" height="228" rx="60" fill="url(#bg)"/>
+  <path d="M40 174c25-38 57-57 88-57s63 19 88 57" fill="none" stroke="rgba(255,255,255,0.92)" stroke-width="18" stroke-linecap="round"/>
+  <path d="M62 196c18-23 41-35 66-35s48 12 66 35" fill="none" stroke="rgba(255,255,255,0.78)" stroke-width="16" stroke-linecap="round"/>
+  <path d="M93 214c7-9 17-13 29-13s22 4 29 13" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="12" stroke-linecap="round"/>
+
+  <circle cx="128" cy="128" r="22" fill="rgba(255,255,255,0.98)"/>
+  <circle cx="128" cy="128" r="8" fill="#2D5BEE"/>
+  <path d="M128 40v26" stroke="rgba(255,255,255,0.8)" stroke-width="10" stroke-linecap="round"/>
+  <path d="M128 190v26" stroke="rgba(255,255,255,0.8)" stroke-width="10" stroke-linecap="round"/>
+  <path d="M40 128h26" stroke="rgba(255,255,255,0.8)" stroke-width="10" stroke-linecap="round"/>
+  <path d="M190 128h26" stroke="rgba(255,255,255,0.8)" stroke-width="10" stroke-linecap="round"/>
+
+  <circle cx="128" cy="128" r="88" fill="none" stroke="rgba(255,255,255,0.09)" stroke-width="12"/>
+  <path d="M30 50c32-26 84-32 132-12" fill="none" stroke="url(#shine)" stroke-width="20" stroke-linecap="round" opacity="0.85"/>
+</svg>

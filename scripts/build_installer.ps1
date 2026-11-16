@@ -62,6 +62,18 @@ try {
         throw "Inno Setup (ISCC.exe) not found. Install Inno Setup 6 or 7."
     }
 
+    $icon = Join-Path $root "assets\netscope.ico"
+    $iconScript = Join-Path $root "build_icon.py"
+    if (-not (Test-Path -LiteralPath $icon) -and (Test-Path -LiteralPath $iconScript)) {
+        & $Python $iconScript
+        if ($LASTEXITCODE -ne 0) {
+            throw "Icon generation failed with exit code $LASTEXITCODE"
+        }
+    }
+    if (-not (Test-Path -LiteralPath $icon)) {
+        throw "Icon not found: $icon (run build_icon.py)"
+    }
+
     $script = Join-Path $root "installer\NetScope.iss"
     if (-not (Test-Path -LiteralPath $script)) {
         throw "Installer script not found: $script"

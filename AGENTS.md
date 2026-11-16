@@ -360,9 +360,10 @@ runtime = build_runtime()  # same engine/catalog as the CLI, web-mode logging
   `data-live` (success/catch/401), uses `\u2715` error markers, null-guards
   `#repair-steps` (web template has none â€” repairs live in the Repair Library)
   and disables the Refresh devices button via `setRefreshDevicesBusy`. Brand:
-  the "N" tile logo is gone everywhere (no `.brand-icon`); NetScope carries as
-  a solid-colour wordmark (no gradients) and the favicon is a non-letterform
-  signal glyph on a solid tile. The legacy dashboard was synced to the same
+  NetScope carries as a solid-colour wordmark (no gradients) in the sidebar and
+  mobile topbar. The Wi-Fi signal glyph is the favicon and the
+  `assets/netscope.ico` exe/installer icon (`NetScope.spec`,
+  `installer/NetScope.iss`). The legacy dashboard was synced to the same
   design: `templates/index.html` rewritten (drawer markup, conn-grid,
   troubleshoot rail incl. `#repair-steps`, `#elevation-badge`, footer), its
   `static/css/style.css` is a copy of the web stylesheet, and

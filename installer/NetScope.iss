@@ -25,6 +25,7 @@ ChangesEnvironment=yes
 CloseApplications=yes
 UninstallDisplayIcon={app}\NetScope.exe
 UninstallDisplayName=NetScope
+SetupIconFile=..\assets\netscope.ico
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

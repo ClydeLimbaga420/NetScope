@@ -11,7 +11,10 @@
     <title>NetScope | Network Monitor</title>
 
     <link rel="icon"
-          href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%233d8bff'/%3E%3Cpath d='M8.2 13.2a10.6 10.6 0 0 1 15.6 0' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' fill='none' opacity='.6'/%3E%3Cpath d='M11.8 16.8a6 6 0 0 1 8.4 0' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' fill='none' opacity='.85'/%3E%3Ccircle cx='16' cy='21.4' r='2.6' fill='%23fff'/%3E%3C/svg%3E">
+          href="{{ url_for('static', filename='favicon.svg') }}"
+          type="image/svg+xml">
+    <link rel="apple-touch-icon"
+          href="{{ url_for('static', filename='favicon.svg') }}">
 
     <link rel="stylesheet"
           href="{{ url_for('static', filename='css/fonts.css') }}">
@@ -47,9 +50,25 @@
             </svg>
         </button>
 
-        <span class="mobile-brand">
-            NetScope
-        </span>
+        <div class="mobile-brand-wrap">
+            <span class="brand-mark mini" aria-hidden="true">
+                <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="2" y="2" width="36" height="36" rx="11" fill="url(#brand-gradient-mini)"/>
+                    <path d="M11 17.5C15.15 13.98 19.82 12.5 20 12.5C20.18 12.5 24.85 13.98 29 17.5" stroke="white" stroke-width="2.2" stroke-linecap="round"/>
+                    <path d="M14 22.35C17.03 19.9 19.11 19 20 19C20.89 19 22.97 19.9 26 22.35" stroke="white" stroke-width="2.2" stroke-linecap="round" opacity="0.9"/>
+                    <circle cx="20" cy="26.55" r="2.2" fill="white"/>
+                    <path d="M20 12.75V8" stroke="rgba(255,255,255,0.75)" stroke-width="1.8" stroke-linecap="round"/>
+                    <defs>
+                        <linearGradient id="brand-gradient-mini" x1="5" y1="4" x2="35" y2="36" gradientUnits="userSpaceOnUse">
+                            <stop stop-color="#75B7FF"/>
+                            <stop offset="0.5" stop-color="#4C8DFF"/>
+                            <stop offset="1" stop-color="#2F5AE5"/>
+                        </linearGradient>
+                    </defs>
+                </svg>
+            </span>
+            <span class="mobile-brand">NetScope</span>
+        </div>
 
         <span class="pulse" aria-hidden="true"></span>
     </header>
@@ -63,7 +82,7 @@
             <h2>NetScope</h2>
             <small>Network Monitor</small>
         </div>
-
+        
         <div class="admin-control">
             <button id="run-as-admin" class="admin-button" type="button" hidden
                     title="Restart NetScope with administrator rights">

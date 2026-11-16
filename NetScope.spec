@@ -94,6 +94,7 @@ exe = EXE(
     a.datas,
     [],
     name="NetScope",
+    icon=str(project_root / "assets" / "netscope.ico"),
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
