@@ -89,6 +89,61 @@
 
 
 (function () {
+  var storageKey = 'netscope-theme';
+
+  function preferredTheme() {
+    try {
+      var saved = localStorage.getItem(storageKey);
+      if (saved === 'light' || saved === 'dark') return saved;
+    } catch (e) { }
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  }
+
+  function applyTheme(theme, persist) {
+    var light = theme === 'light';
+    document.documentElement.setAttribute('data-theme', light ? 'light' : 'dark');
+    var meta = document.querySelector('meta[name="color-scheme"]');
+    if (meta) meta.setAttribute('content', light ? 'light dark' : 'dark light');
+    var button = document.getElementById('theme-toggle');
+    if (button) {
+      var label = light ? 'Switch to dark mode' : 'Switch to light mode';
+      button.setAttribute('aria-label', label);
+      button.setAttribute('title', label);
+      var text = button.querySelector('.theme-toggle-label');
+      if (text) text.textContent = light ? 'Dark mode' : 'Light mode';
+    }
+    if (persist) {
+      try { localStorage.setItem(storageKey, light ? 'light' : 'dark'); } catch (e) { }
+    }
+  }
+
+  applyTheme(preferredTheme(), false);
+
+  function bindThemeToggle() {
+    var button = document.getElementById('theme-toggle');
+    if (!button || button.dataset.bound) return;
+    button.addEventListener('click', function () {
+      var current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+      applyTheme(current === 'light' ? 'dark' : 'light', true);
+      if (window.NetScope && typeof window.NetScope.refreshChartTheme === 'function') {
+        window.NetScope.refreshChartTheme();
+      }
+    });
+    button.dataset.bound = '1';
+    applyTheme(document.documentElement.getAttribute('data-theme') || 'dark', false);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindThemeToggle, { once: true });
+  else bindThemeToggle();
+
+  window.NetScope = window.NetScope || {};
+  window.NetScope.applyTheme = applyTheme;
+  window.NetScope.currentTheme = function () {
+    return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  };
+})();
+
+(function () {
   // Reusable toast notifications. Text is always inserted as textContent so
   // dynamic values from the API can never become markup.
   function region() {

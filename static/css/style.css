@@ -90,6 +90,46 @@
     --main-max: 1500px;
 }
 
+[data-theme="light"] {
+    --bg: #f3f6fb;
+    --bg-2: #e9eef8;
+    --sidebar: rgba(255, 255, 255, 0.82);
+    --panel: rgba(255, 255, 255, 0.92);
+    --panel2: #f7f9fd;
+    --panel-solid: #ffffff;
+
+    --border: rgba(32, 56, 96, 0.12);
+    --border-strong: rgba(32, 56, 96, 0.22);
+
+    --text: #17233b;
+    --text-strong: #0d1628;
+    --text-2: #2b3d5c;
+    --muted: #5b6f92;
+    --muted-2: #7487a8;
+
+    --accent: #2f6fd6;
+    --accent-2: #6b5ce7;
+    --green: #1f9d68;
+    --red: #d6455d;
+    --amber: #b7791f;
+
+    --accent-soft: rgba(47, 111, 214, 0.10);
+    --accent-border: rgba(47, 111, 214, 0.28);
+    --green-soft: rgba(31, 157, 104, 0.10);
+    --green-border: rgba(31, 157, 104, 0.28);
+    --red-soft: rgba(214, 69, 93, 0.10);
+    --red-border: rgba(214, 69, 93, 0.28);
+    --amber-soft: rgba(183, 121, 31, 0.12);
+    --amber-border: rgba(183, 121, 31, 0.28);
+
+    --btn-primary: #2f6fd6;
+    --btn-primary-hover: #2762bf;
+    --btn-primary-active: #2256a8;
+
+    --shadow: 0 18px 50px rgba(30, 53, 94, 0.12);
+    --shadow-sm: 0 8px 24px rgba(30, 53, 94, 0.10);
+}
+
 
 /* ---------- 2. Base ---------- */
 
@@ -118,9 +158,19 @@ body {
     font-size: 13.5px;
     line-height: 1.55;
 
-    background: var(--bg);
+    background:
+        radial-gradient(1200px 600px at -10% -10%, rgba(98, 167, 255, 0.08), transparent 45%),
+        radial-gradient(900px 500px at 110% 0%, rgba(139, 124, 255, 0.06), transparent 40%),
+        var(--bg);
 
     -webkit-font-smoothing: antialiased;
+}
+
+[data-theme="light"] body {
+    background:
+        radial-gradient(1200px 600px at -10% -10%, rgba(47, 111, 214, 0.08), transparent 45%),
+        radial-gradient(900px 500px at 110% 0%, rgba(107, 92, 231, 0.06), transparent 40%),
+        var(--bg);
 }
 
 ::selection {
@@ -246,6 +296,18 @@ h1 {
     text-transform: uppercase;
 }
 
+/* theme toggle */
+.theme-toggle {
+    width: 100%;
+    margin: 0 0 10px;
+    border: 1px solid transparent;
+    background: transparent;
+    text-align: left;
+}
+.theme-toggle .theme-icon-light { display: none; }
+[data-theme="light"] .theme-toggle .theme-icon-light { display: block; }
+[data-theme="light"] .theme-toggle .theme-icon-dark { display: none; }
+
 
 /* ---------- 4. Buttons ---------- */
 /* Primary: the main forward action (Run diagnosis, run a check,
@@ -292,6 +354,14 @@ h1 {
         transform 0.18s ease,
         color 0.18s ease,
         opacity 0.18s ease;
+}
+
+[data-theme="light"] .btn,
+[data-theme="light"] #run-engine-diagnosis,
+[data-theme="light"] .step-run {
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.2),
+        0 1px 3px rgba(30, 53, 94, 0.18);
 }
 
 .btn svg,
@@ -3069,5 +3139,113 @@ footer .footer-meta {
         transition-duration: 0.01ms !important;
 
         scroll-behavior: auto !important;
+    }
+}
+
+/* ---------- Light mode component overrides ---------- */
+[data-theme="light"] .sidebar {
+    background: rgba(255, 255, 255, 0.86);
+}
+
+[data-theme="light"] .card,
+[data-theme="light"] .panel,
+[data-theme="light"] .adapter,
+[data-theme="light"] .speed-test-metric,
+[data-theme="light"] .diag-detail,
+[data-theme="light"] .console-panel,
+[data-theme="light"] .empty-state {
+    box-shadow: var(--shadow-sm);
+}
+
+[data-theme="light"] .card,
+[data-theme="light"] .panel {
+    background: rgba(255, 255, 255, 0.9);
+}
+
+[data-theme="light"] .diag-detail,
+[data-theme="light"] .console-panel,
+[data-theme="light"] .adapter,
+[data-theme="light"] .speed-test-metric,
+[data-theme="light"] .engine-fix-facts .fix-fact {
+    background: rgba(255, 255, 255, 0.95);
+}
+
+[data-theme="light"] .diag-command,
+[data-theme="light"] .console {
+    background: #f4f7fc;
+}
+
+[data-theme="light"] .diag-command code,
+[data-theme="light"] .console-text,
+[data-theme="light"] .console-command,
+[data-theme="light"] .console-step {
+    color: #2b3d5c;
+}
+
+[data-theme="light"] .diag-command-label,
+[data-theme="light"] .console-title,
+[data-theme="light"] .console-time {
+    color: #5b6f92;
+}
+
+[data-theme="light"] .diag-item {
+    color: var(--text-2);
+}
+
+[data-theme="light"] .diag-item:hover:not(:disabled) {
+    background: rgba(47, 111, 214, 0.08);
+    border-color: rgba(47, 111, 214, 0.16);
+    color: var(--text-strong);
+}
+
+[data-theme="light"] .diag-item.selected {
+    background: rgba(47, 111, 214, 0.12);
+    border-color: rgba(47, 111, 214, 0.28);
+    color: var(--text-strong);
+}
+
+[data-theme="light"] th {
+    background: #f0f4fb;
+}
+
+[data-theme="light"] .table-wrap {
+    background: rgba(255, 255, 255, 0.75);
+}
+
+[data-theme="light"] .step-reason,
+[data-theme="light"] .diag-detail .step-reason {
+    color: #8a5a14;
+}
+
+[data-theme="light"] .step-reason.error,
+[data-theme="light"] .diag-detail .step-reason.error {
+    color: #a33043;
+}
+
+[data-theme="light"] .info-reason {
+    color: #a33043;
+}
+
+[data-theme="light"] .mobile-topbar {
+    background: rgba(255, 255, 255, 0.9);
+}
+
+[data-theme="light"] .sidebar-backdrop:not([hidden]) {
+    background: rgba(23, 35, 59, 0.25);
+}
+
+[data-theme="light"] .skip-link {
+    background: #ffffff;
+    color: var(--text-strong);
+}
+
+[data-theme="light"] .nav-item:hover,
+[data-theme="light"] .nav-item.active {
+    color: var(--text-strong);
+}
+
+@media (max-width: 650px) {
+    [data-theme="light"] .sidebar {
+        background: rgba(255, 255, 255, 0.98);
     }
 }

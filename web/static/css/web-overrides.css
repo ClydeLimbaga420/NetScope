@@ -1812,3 +1812,220 @@
         transition: none;
     }
 }
+
+/* ---------- Light mode overrides ---------- */
+[data-theme="light"] .engine-evidence {
+    border-color: rgba(47, 111, 214, 0.18);
+    background: #f4f7fc;
+    color: #2b3d5c;
+}
+
+[data-theme="light"] .engine-output {
+    background: rgba(255, 255, 255, 0.7);
+}
+
+[data-theme="light"] .engine-output-head {
+    background: rgba(47, 111, 214, 0.05);
+}
+
+[data-theme="light"] .layer-status-row {
+    background: rgba(255, 255, 255, 0.7);
+}
+
+[data-theme="light"] .engine-confirmation {
+    border-color: rgba(47, 111, 214, 0.2);
+    background:
+        radial-gradient(120% 80% at 0% 0%, rgba(47, 111, 214, 0.08), transparent 45%),
+        #ffffff;
+    box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.6) inset,
+        0 24px 60px rgba(30, 53, 94, 0.18);
+}
+
+[data-theme="light"] .engine-confirmation::backdrop {
+    background: rgba(23, 35, 59, 0.28);
+}
+
+[data-theme="light"] .engine-confirmation-panel input[type="text"],
+[data-theme="light"] .engine-tool-controls select,
+[data-theme="light"] .engine-tool-controls input {
+    background: #ffffff;
+    color: var(--text);
+    border-color: var(--border-strong);
+}
+
+[data-theme="light"] .engine-tool-controls select option {
+    color: var(--text);
+    background: #ffffff;
+}
+
+[data-theme="light"] .engine-confirm-toggle,
+[data-theme="light"] .engine-confirm-rollback {
+    background: #f7f9fd;
+}
+
+[data-theme="light"] .engine-confirm-warning {
+    background: rgba(214, 69, 93, 0.08);
+}
+
+[data-theme="light"] .engine-confirm-warning strong {
+    color: #8f2435;
+}
+
+[data-theme="light"] .engine-confirm-warning p {
+    color: #a33043;
+}
+
+[data-theme="light"] .engine-confirm-warning input[type="text"] {
+    background: #ffffff;
+}
+
+[data-theme="light"] .admin-button {
+    background: rgba(47, 111, 214, 0.1);
+    color: #1f4f9e;
+}
+
+[data-theme="light"] .repair-search {
+    background: #ffffff;
+}
+
+[data-theme="light"] .repair-row {
+    color: var(--text-2);
+}
+
+[data-theme="light"] .repair-row:hover {
+    background: rgba(47, 111, 214, 0.08);
+    border-color: rgba(47, 111, 214, 0.18);
+    color: var(--text-strong);
+}
+
+[data-theme="light"] .repair-row.selected {
+    background: rgba(47, 111, 214, 0.12);
+    border-color: rgba(47, 111, 214, 0.28);
+    color: var(--text-strong);
+}
+
+[data-theme="light"] .repair-row-symptom,
+[data-theme="light"] .repair-step-desc,
+[data-theme="light"] .repair-list-points {
+    color: var(--muted);
+}
+
+[data-theme="light"] .repair-library-detail {
+    background: rgba(255, 255, 255, 0.85);
+}
+
+[data-theme="light"] .repair-step,
+[data-theme="light"] .diag-detail,
+[data-theme="light"] .console-panel,
+[data-theme="light"] .speed-test-metric,
+[data-theme="light"] .adapter,
+[data-theme="light"] .card,
+[data-theme="light"] .panel,
+[data-theme="light"] .toast {
+    background: var(--panel-solid);
+}
+
+[data-theme="light"] .repair-step,
+[data-theme="light"] .console-panel,
+[data-theme="light"] .diag-detail {
+    background: rgba(255, 255, 255, 0.92);
+}
+
+[data-theme="light"] .repair-step-head strong,
+[data-theme="light"] .diag-detail h3,
+[data-theme="light"] .engine-step-head strong,
+[data-theme="light"] .engine-history-title strong,
+[data-theme="light"] .engine-log-event,
+[data-theme="light"] .engine-progress-text strong,
+[data-theme="light"] .device-name,
+[data-theme="light"] .adapter-body strong {
+    color: var(--text-strong);
+}
+
+[data-theme="light"] .diag-item {
+    color: var(--text-2);
+}
+
+[data-theme="light"] .diag-item:hover:not(:disabled) {
+    background: rgba(47, 111, 214, 0.08);
+    border-color: rgba(47, 111, 214, 0.16);
+    color: var(--text-strong);
+}
+
+[data-theme="light"] .diag-item.selected {
+    background: rgba(47, 111, 214, 0.12);
+    border-color: rgba(47, 111, 214, 0.28);
+    color: var(--text-strong);
+}
+
+[data-theme="light"] .diag-command,
+[data-theme="light"] .console {
+    background: #f4f7fc;
+    color: #2b3d5c;
+}
+
+[data-theme="light"] .diag-command code,
+[data-theme="light"] .console-text,
+[data-theme="light"] .console-command,
+[data-theme="light"] .console-step {
+    color: #2b3d5c;
+}
+
+[data-theme="light"] .engine-progress-track {
+    background: rgba(47, 111, 214, 0.14);
+}
+
+[data-theme="light"] th {
+    background: #f0f4fb;
+}
+
+[data-theme="light"] .table-wrap {
+    background: rgba(255, 255, 255, 0.7);
+}
+
+[data-theme="light"] .mobile-topbar {
+    background: rgba(255, 255, 255, 0.88);
+}
+
+[data-theme="light"] .sidebar-backdrop:not([hidden]) {
+    background: rgba(23, 35, 59, 0.25);
+}
+
+[data-theme="light"] .sidebar {
+    background: rgba(255, 255, 255, 0.86);
+}
+
+@media (max-width: 650px) {
+    [data-theme="light"] .sidebar {
+        background: rgba(255, 255, 255, 0.98);
+    }
+}
+
+[data-theme="light"] .skip-link {
+    background: #ffffff;
+    color: var(--text-strong);
+}
+
+[data-theme="light"] .engine-fix-facts .fix-fact {
+    background: #f7f9fd;
+}
+
+[data-theme="light"] .engine-fix-facts .fix-fact.is-danger {
+    color: #a33043;
+}
+
+[data-theme="light"] .engine-fix-facts .fix-fact.is-warn {
+    color: #8a5a14;
+}
+
+[data-theme="light"] .step-reason,
+[data-theme="light"] .diag-detail .step-reason {
+    color: #8a5a14;
+}
+
+[data-theme="light"] .step-reason.error,
+[data-theme="light"] .diag-detail .step-reason.error,
+[data-theme="light"] .engine-cause-tag.probable {
+    color: #a33043;
+}

@@ -41,11 +41,74 @@ function formatSpeed(value) {
 }
 
 
-function areaFill(context, color) {
-
-    return `${color}26`;
-
+function chartTheme() {
+    const light = document.documentElement.getAttribute("data-theme") === "light";
+    return light ? {
+        download: "#2f6fd6",
+        upload: "#1f9d68",
+        legend: "#4f6385",
+        tick: "#6b7f9e",
+        grid: "rgba(47, 79, 126, 0.12)",
+        tooltipBg: "rgba(255, 255, 255, 0.98)",
+        tooltipBorder: "rgba(47, 79, 126, 0.18)",
+        tooltipTitle: "#17233b",
+        tooltipBody: "#4f6385",
+        pointBorder: "#ffffff"
+    } : {
+        download: "#62a7ff",
+        upload: "#39d6a0",
+        legend: "#aab7ce",
+        tick: "#71819e",
+        grid: "rgba(34, 49, 77, 0.55)",
+        tooltipBg: "rgba(8, 13, 25, 0.94)",
+        tooltipBorder: "rgba(126, 164, 228, 0.22)",
+        tooltipTitle: "#eaf1ff",
+        tooltipBody: "#aab7ce",
+        pointBorder: "#0b1020"
+    };
 }
+
+function areaFill(context, color) {
+    const base = color || "#62a7ff";
+    return `${base}26`;
+}
+
+function applyChartTheme() {
+    if (!chart) return;
+    const t = chartTheme();
+    if (chart.data && chart.data.datasets && chart.data.datasets[0]) {
+        chart.data.datasets[0].borderColor = t.download;
+        chart.data.datasets[0].backgroundColor = (context) => areaFill(context, t.download);
+        chart.data.datasets[0].pointHoverBackgroundColor = t.download;
+        chart.data.datasets[0].pointHoverBorderColor = t.pointBorder;
+    }
+    if (chart.data && chart.data.datasets && chart.data.datasets[1]) {
+        chart.data.datasets[1].borderColor = t.upload;
+        chart.data.datasets[1].backgroundColor = (context) => areaFill(context, t.upload);
+        chart.data.datasets[1].pointHoverBackgroundColor = t.upload;
+        chart.data.datasets[1].pointHoverBorderColor = t.pointBorder;
+    }
+    if (chart.options && chart.options.plugins && chart.options.plugins.legend && chart.options.plugins.legend.labels) {
+        chart.options.plugins.legend.labels.color = t.legend;
+    }
+    if (chart.options && chart.options.plugins && chart.options.plugins.tooltip) {
+        chart.options.plugins.tooltip.backgroundColor = t.tooltipBg;
+        chart.options.plugins.tooltip.borderColor = t.tooltipBorder;
+        chart.options.plugins.tooltip.titleColor = t.tooltipTitle;
+        chart.options.plugins.tooltip.bodyColor = t.tooltipBody;
+    }
+    if (chart.options && chart.options.scales) {
+        if (chart.options.scales.x && chart.options.scales.x.ticks) chart.options.scales.x.ticks.color = t.tick;
+        if (chart.options.scales.y && chart.options.scales.y.ticks) chart.options.scales.y.ticks.color = t.tick;
+        if (chart.options.scales.y && chart.options.scales.y.grid) chart.options.scales.y.grid.color = t.grid;
+    }
+}
+
+window.NetScope = window.NetScope || {};
+window.NetScope.refreshChartTheme = function () {
+    applyChartTheme();
+    if (chart) chart.update("none");
+};
 
 
 
@@ -69,10 +132,10 @@ try { chart = new Chart(
 
                     data: downloads,
 
-                    borderColor: "#62a7ff",
+                    borderColor: chartTheme().download,
 
                     backgroundColor: context =>
-                        areaFill(context, "#62a7ff"),
+                        areaFill(context, chartTheme().download),
 
                     fill: true,
 
@@ -84,9 +147,9 @@ try { chart = new Chart(
 
                     pointHoverRadius: 4,
 
-                    pointHoverBackgroundColor: "#62a7ff",
+                    pointHoverBackgroundColor: chartTheme().download,
 
-                    pointHoverBorderColor: "#0b1020",
+                    pointHoverBorderColor: chartTheme().pointBorder,
 
                     pointHoverBorderWidth: 2,
 
@@ -102,10 +165,10 @@ try { chart = new Chart(
 
                     data: uploads,
 
-                    borderColor: "#39d6a0",
+                    borderColor: chartTheme().upload,
 
                     backgroundColor: context =>
-                        areaFill(context, "#39d6a0"),
+                        areaFill(context, chartTheme().upload),
 
                     fill: true,
 
@@ -117,9 +180,9 @@ try { chart = new Chart(
 
                     pointHoverRadius: 4,
 
-                    pointHoverBackgroundColor: "#39d6a0",
+                    pointHoverBackgroundColor: chartTheme().upload,
 
-                    pointHoverBorderColor: "#0b1020",
+                    pointHoverBorderColor: chartTheme().pointBorder,
 
                     pointHoverBorderWidth: 2,
 
@@ -179,7 +242,7 @@ try { chart = new Chart(
                     align: "end",
 
                     labels: {
-                        color: "#aab7ce",
+                        color: chartTheme().legend,
                         usePointStyle: true,
                         pointStyle: "circle",
                         boxWidth: 6,
@@ -196,16 +259,16 @@ try { chart = new Chart(
 
                 tooltip: {
 
-                    backgroundColor: "rgba(8, 13, 25, 0.94)",
+                    backgroundColor: chartTheme().tooltipBg,
 
-                    borderColor: "rgba(126, 164, 228, 0.22)",
+                    borderColor: chartTheme().tooltipBorder,
                     borderWidth: 1,
 
                     cornerRadius: 10,
                     padding: 11,
 
-                    titleColor: "#eaf1ff",
-                    bodyColor: "#aab7ce",
+                    titleColor: chartTheme().tooltipTitle,
+                    bodyColor: chartTheme().tooltipBody,
 
                     displayColors: true,
                     usePointStyle: true,
@@ -232,7 +295,7 @@ try { chart = new Chart(
                     },
 
                     ticks: {
-                        color: "#71819e",
+                        color: chartTheme().tick,
                         maxRotation: 0,
                         autoSkip: true,
                         maxTicksLimit: 6,
@@ -260,7 +323,7 @@ try { chart = new Chart(
 
                     ticks: {
 
-                        color: "#71819e",
+                        color: chartTheme().tick,
                         padding: 8,
 
                         font: {
@@ -272,7 +335,7 @@ try { chart = new Chart(
                     },
 
                     grid: {
-                        color: "rgba(34, 49, 77, 0.55)",
+                        color: chartTheme().grid,
                         drawTicks: false
                     }
 
@@ -284,6 +347,8 @@ try { chart = new Chart(
 
     }
 ); } catch (e) { console.error('chart init failed', e); chart = null; }
+
+if (chart) applyChartTheme();
 
 
 // =====================================
@@ -1901,3 +1966,4 @@ loadDiagnostics();
 
 setInterval(refreshStatus, 2000);
 setInterval(refreshPacketLoss, 30000);
+
