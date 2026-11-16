@@ -176,3 +176,135 @@
   window.NetScope = window.NetScope || {};
   window.NetScope.toast = toast;
 })();
+
+(function () {
+  function makeDialog(title, eyebrow) {
+    var dialog = document.createElement('dialog');
+    dialog.className = 'engine-confirmation';
+    var panel = document.createElement('div');
+    panel.className = 'engine-confirmation-panel';
+    var head = document.createElement('div');
+    head.className = 'engine-confirm-head-text';
+    if (eyebrow) {
+      var eyebrowEl = document.createElement('p');
+      eyebrowEl.className = 'eyebrow';
+      eyebrowEl.textContent = eyebrow;
+      head.appendChild(eyebrowEl);
+    }
+    var h2 = document.createElement('h2');
+    h2.textContent = title || 'Confirm';
+    head.appendChild(h2);
+    panel.appendChild(head);
+    dialog.appendChild(panel);
+    return { dialog: dialog, panel: panel };
+  }
+
+  function addActions(panel, cancelLabel, confirmLabel, danger) {
+    var actions = document.createElement('div');
+    actions.className = 'engine-dialog-actions';
+    var cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'ghost-button';
+    cancel.textContent = cancelLabel || 'Cancel';
+    var confirm = document.createElement('button');
+    confirm.type = 'button';
+    confirm.className = danger ? 'step-run' : 'step-run';
+    confirm.textContent = confirmLabel || 'Continue';
+    actions.appendChild(cancel);
+    actions.appendChild(confirm);
+    panel.appendChild(actions);
+    return { actions: actions, cancel: cancel, confirm: confirm };
+  }
+
+  function confirmDialog(options) {
+    options = options || {};
+    return new Promise(function (resolve) {
+      var parts = makeDialog(options.title || 'Confirm', options.eyebrow || 'NOTICE');
+      var dialog = parts.dialog;
+      var panel = parts.panel;
+      if (options.message) {
+        var msg = document.createElement('p');
+        msg.className = 'diag-desc engine-confirm-intro';
+        msg.textContent = String(options.message);
+        panel.appendChild(msg);
+      }
+      var buttons = addActions(panel, options.cancelLabel || 'Cancel', options.confirmLabel || 'Continue', options.danger);
+      var done = false;
+      function finish(value) {
+        if (done) return;
+        done = true;
+        dialog.close();
+        dialog.remove();
+        resolve(value);
+      }
+      buttons.cancel.addEventListener('click', function () { finish(false); });
+      buttons.confirm.addEventListener('click', function () { finish(true); });
+      dialog.addEventListener('cancel', function (event) {
+        event.preventDefault();
+        finish(false);
+      });
+      dialog.addEventListener('close', function () { if (!done) { done = true; resolve(false); } dialog.remove(); }, { once: true });
+      document.body.appendChild(dialog);
+      dialog.showModal();
+      buttons.confirm.focus();
+    });
+  }
+
+  function promptDialog(options) {
+    options = options || {};
+    return new Promise(function (resolve) {
+      var parts = makeDialog(options.title || 'Input', options.eyebrow || 'EDIT');
+      var dialog = parts.dialog;
+      var panel = parts.panel;
+      if (options.message) {
+        var msg = document.createElement('p');
+        msg.className = 'diag-desc engine-confirm-intro';
+        msg.textContent = String(options.message);
+        panel.appendChild(msg);
+      }
+      var label = document.createElement('label');
+      label.className = 'engine-confirm-section';
+      var labelText = document.createElement('span');
+      labelText.className = 'diag-command-label';
+      labelText.textContent = options.label || 'Value';
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.value = options.value || '';
+      if (options.placeholder) input.placeholder = options.placeholder;
+      input.autocomplete = 'off';
+      label.appendChild(labelText);
+      label.appendChild(input);
+      panel.appendChild(label);
+      var buttons = addActions(panel, options.cancelLabel || 'Cancel', options.confirmLabel || 'Save', false);
+      var done = false;
+      function finish(value) {
+        if (done) return;
+        done = true;
+        dialog.close();
+        dialog.remove();
+        resolve(value);
+      }
+      buttons.cancel.addEventListener('click', function () { finish(null); });
+      buttons.confirm.addEventListener('click', function () { finish(input.value); });
+      input.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          finish(input.value);
+        }
+      });
+      dialog.addEventListener('cancel', function (event) {
+        event.preventDefault();
+        finish(null);
+      });
+      dialog.addEventListener('close', function () { if (!done) { done = true; resolve(null); } dialog.remove(); }, { once: true });
+      document.body.appendChild(dialog);
+      dialog.showModal();
+      input.focus();
+      input.select();
+    });
+  }
+
+  window.NetScope = window.NetScope || {};
+  window.NetScope.confirmDialog = confirmDialog;
+  window.NetScope.promptDialog = promptDialog;
+})();

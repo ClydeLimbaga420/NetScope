@@ -1452,7 +1452,16 @@
   }
 
   async function rollbackFix(fixId) {
-    if (!window.confirm(`Restore the saved system state for ${fixId}?`)) return;
+    if (window.NetScope && window.NetScope.confirmDialog) {
+      const ok = await window.NetScope.confirmDialog({
+        title: "Roll back fix",
+        eyebrow: "CONFIRM",
+        message: `Restore the saved system state for ${fixId}?`,
+        confirmLabel: "Roll back",
+        cancelLabel: "Cancel"
+      });
+      if (!ok) return;
+    }
     setBusy(true, "Rolling back...", false);
     try {
       const started = await api("/api/fix/rollback", {
@@ -1548,7 +1557,18 @@
     if (["ping", "trace", "mtu", "ports"].includes(name)) params.host = input;
     if (name === "dns") params.name = input;
     if (name === "ports") params.ports = ports;
-    if (name === "speedtest" && !window.confirm("This test contacts speed.cloudflare.com and transfers up to 10 MiB down and 2 MiB up. Continue?")) return;
+    if (name === "speedtest") {
+      const ok = window.NetScope && window.NetScope.confirmDialog
+        ? await window.NetScope.confirmDialog({
+            title: "Run speed test",
+            eyebrow: "NETWORK TEST",
+            message: "This test contacts speed.cloudflare.com and transfers up to 10 MiB down and 2 MiB up. Continue?",
+            confirmLabel: "Run test",
+            cancelLabel: "Cancel"
+          })
+        : false;
+      if (!ok) return;
+    }
     if (name === "ping" && !input || name === "trace" && !input || name === "mtu" && !input || name === "ports" && (!input || !ports) || name === "dns" && !input) {
       inputElement.focus();
       return;
@@ -1579,7 +1599,16 @@
     const results = $("speed-test-results");
     const details = $("speed-test-details");
     if (!status || !results || !details || state.busy || button.disabled) return;
-    if (!window.confirm("This test contacts speed.cloudflare.com and transfers up to 10 MiB down and 2 MiB up. Continue?")) return;
+    const confirmed = window.NetScope && window.NetScope.confirmDialog
+      ? await window.NetScope.confirmDialog({
+          title: "Run speed test",
+          eyebrow: "NETWORK TEST",
+          message: "This test contacts speed.cloudflare.com and transfers up to 10 MiB down and 2 MiB up. Continue?",
+          confirmLabel: "Run test",
+          cancelLabel: "Cancel"
+        })
+      : false;
+    if (!confirmed) return;
 
     button.disabled = true;
     setButtonLabel(button, "Testing...");

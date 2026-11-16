@@ -1427,16 +1427,21 @@ async function runDiagnostic(step) {
         const adminWarning =
             step.requires_admin && !diagnosticElevated
 
-                ? "NetScope is not running as administrator, " +
-                  "so this repair may fail.\n\n"
+                ? "NetScope is not running as administrator, so this repair may fail.\n\n"
 
                 : "";
 
-        const confirmed = window.confirm(
-            adminWarning +
-            `${step.title} will change this computer's ` +
-            "network settings.\n\nContinue?"
-        );
+        const confirmed = window.NetScope && window.NetScope.confirmDialog
+            ? await window.NetScope.confirmDialog({
+                title: step.title || "Run repair",
+                eyebrow: "CONFIRM REPAIR",
+                message:
+                    adminWarning +
+                    `${step.title} will change this computer's network settings.\n\nContinue?`,
+                confirmLabel: "Continue",
+                cancelLabel: "Cancel"
+            })
+            : false;
 
         if (!confirmed) {
             return;
@@ -1667,7 +1672,7 @@ if (diagStageEl) diagStageEl.addEventListener(
 
 $("device-rows").addEventListener(
     "dblclick",
-    event => {
+    async (event) => {
 
         const cell = event.target.closest(".device-name");
 
@@ -1685,7 +1690,18 @@ $("device-rows").addEventListener(
             aliases[mac] ||
             (displayed === "Unnamed device" ? "" : displayed);
 
-        const name = window.prompt("Device name", current);
+        const name = window.NetScope && window.NetScope.promptDialog
+            ? await window.NetScope.promptDialog({
+                title: "Rename device",
+                eyebrow: "DEVICE",
+                label: "Device name",
+                message: "Set a friendly name for this device (saved in this browser).",
+                value: current,
+                placeholder: "Device name",
+                confirmLabel: "Save",
+                cancelLabel: "Cancel"
+            })
+            : null;
 
         if (name === null) {
             return;
