@@ -96,7 +96,7 @@
       var saved = localStorage.getItem(storageKey);
       if (saved === 'light' || saved === 'dark') return saved;
     } catch (e) { }
-    return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    return 'dark';
   }
 
   function applyTheme(theme, persist) {
