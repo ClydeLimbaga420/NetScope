@@ -5,20 +5,22 @@ dashboard into a universal Windows network troubleshooting tool with one shared
 engine and two front ends (CLI + localhost web UI). Work phase by phase; update
 this file and `task.md` Notes at the end of every phase.
 
-**Current status: Phase 5, Phase 6 D/E, and the Phase 7 desktop-installer
-follow-up are complete.** tkinter is removed. `dist/NetScope.exe` is a one-file
-console-subsystem build (16.1 MB) bundling web templates/static, the fix
+**Current status: Phase 5, Phase 6 D/E, the Phase 7 desktop-installer follow-up,
+and the single-executable GUI-launch/window-fit follow-up are complete.**
+tkinter is removed. `dist/NetScope.exe` is a one-file
+console-subsystem build (20.0 MB) bundling web templates/static, the fix
 catalog, pywebview/WebView2 and pythonnet; `dist/installer/NetScope-Setup.exe`
-(17.8 MB, Inno Setup 6.7.3) is a per-user installer with PATH/App Paths/Start
+(21.6 MB, Inno Setup 6.7.3) is a per-user installer with PATH/App Paths/Start
 Menu/desktop shortcuts, uninstaller, WebView2 handling, and a `.netscope-inno`
 marker. `netscope install`/`uninstall` still manage portable installs and refuse
 installer-managed copies. CI covers tests on Python 3.11/3.14, 80% coverage,
 Playwright browser smoke + screenshots, frozen exe smoke, and an Inno
-install/uninstall smoke. Latest local suite: 280 passed, 2 skipped (2026-11-16);
+install/uninstall smoke. Latest local suite: 290 passed, 2 skipped (2026-11-16);
 coverage 82% over `core`/`fixes`/`powershell`. Manual validation (Windows 10
 VM checklist, window/UAC/installer cases, and human screenshot review) is
 deferred for now by request; it is a release-confidence item, not a code or
-test blocker. The Phase 7 changes are uncommitted; nothing is pushed.
+test blocker. Phase 7 and GUI launch follow-up changes are uncommitted; nothing
+is pushed.
 
 ## Run / environment
 - The Flask dashboard still works: `python app.py` â†’ http://127.0.0.1:5000
@@ -40,8 +42,10 @@ test blocker. The Phase 7 changes are uncommitted; nothing is pushed.
   The hidden `__gui__` entry serves the UI in-process. tkinter is gone;
   `cli/launch.py` owns console detection/detach/relaunch and `web/window.py`
   owns WebView2 detection/window hosting.
-- Double-clicking `NetScope.exe` (no args, own console) detaches and opens the
-  GUI; `netscope` with no args in a shared terminal opens the shell.
+- Double-clicking `NetScope.exe` (no args, own console) hides that console with
+  `ShowWindow(SW_HIDE)`, detaches, and opens the GUI; Windows may show a brief
+  console flash before Python starts. `netscope` with no args in a shared
+  terminal opens the shell.
 - PowerShell is required for diagnostics (Windows PowerShell 5.1).
 - Run `app.py` as a script: imports are flat/absolute (`from config ...`,
   `from modules...`, `from core...`), not a package.
@@ -175,7 +179,9 @@ test blocker. The Phase 7 changes are uncommitted; nothing is pushed.
   same `DiagnosticEngine`, `FixExecutor`, and catalog as the CLI. Never put
   detection, fix, or validation logic in `web/` â€” extend `core/` or `fixes/`.
 - `cli/launch.py` â€” `GUI_INTERNAL = "__gui__"`, `owns_console()`
-  (`GetConsoleProcessList == 1`), `detach_console()` (`FreeConsole`),
+  (`GetConsoleProcessList == 1`, or 2 for the frozen one-file
+  bootloader parent/child pair), `detach_console()` (`ShowWindow(SW_HIDE)`
+  followed by `FreeConsole`),
   `launch_detached_gui()` (`DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP`,
   devnull stdio, cwd = project root), `gui_relaunch_argv()` (source:
   `[netscope.py, "__gui__"]`; frozen: `["__gui__"]`).
@@ -185,15 +191,16 @@ test blocker. The Phase 7 changes are uncommitted; nothing is pushed.
   and `runtime_from_context()` (reuse a `CliContext`). Moved from
   `gui/runtime.py`; renamed from `GuiRuntime`.
 - `cli/main.py` intercepts `__gui__` before argparse and runs the web server in
-  process (`_run_gui_process`). `netscope gui` (`cmd_gui`) spawns the detached
+  process (`_run_gui_process`). No arguments + owned console routes to GUI
+  before argparse setup; `netscope gui` (`cmd_gui`) spawns the detached
   server and returns 0. No args + own console â†’ detach + GUI; no args in a
   shared terminal â†’ shell; no args without a TTY â†’ help/exit 64.
 - `web/run.py` owns the single-instance lock, port file, `/health` reuse,
   bounded boot URL, bind-failure logging, heartbeat/idle shutdown, and clean
   `POST /api/shutdown`.
-- Launcher tradeoff: the exe stays console-subsystem, so double-clicking it
-  briefly flashes a console; the GUI child itself is detached and shows no
-  console. A double-clicked `.py` via `py.exe` shares a console, so
+- Launcher tradeoff: the exe stays console-subsystem, so Windows may briefly
+  flash a console before app code hides it; the GUI process itself is detached
+  and shows no console. A double-clicked `.py` via `py.exe` shares a console, so
   `owns_console()` is False and it opens the shell â€” the frozen exe behaves as
   specified.
 - `tests/test_launch.py` covers the retained launch helpers. `tests/test_gui.py`
@@ -203,8 +210,10 @@ test blocker. The Phase 7 changes are uncommitted; nothing is pushed.
 - `web/window.py` â€” `WEBVIEW2_CLIENT_ID`, `_webview2_version()` (HKCU/HKLM/
   WOW6432Node EdgeUpdate `pv`), `webview2_available()` (requires a non-zero
   four-part version), and `run_native_window(boot_url)` (pywebview
-  `edgechromium`, 1280x860, min 900x600, blocks until close). Failures return
-  `False`; `web/run.py` logs `webview_unavailable` and falls back to the browser.
+  `edgechromium`, centered in the primary work area, max 1280x860 with
+  24-pixel margins, minimum clamped from 900x600, blocks until close). Failures
+  return `False`; `web/run.py` logs `webview_unavailable` and falls back to the
+  browser.
 - `web/run.py` launch modes: `window` (default), `browser`, `no_browser`.
   `_acquire_lock_with_wait()` waits up to 10s for a new owner after `--replace`;
   `_show_existing()` verifies `/health` and reopens the shared server;

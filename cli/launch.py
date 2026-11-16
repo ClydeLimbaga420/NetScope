@@ -3,9 +3,10 @@
 Windows console rules used here:
 
 - ``GetConsoleProcessList`` returns the number of processes attached to this
-  console. ``1`` means this process owns the console (double-click / Win+R),
-  ``>= 2`` means it is shared with a terminal, ``0`` means there is none.
-- ``FreeConsole`` detaches this process so an owned console window disappears.
+  console. A frozen one-file build has a bootloader parent and child, so its
+  owned console has a count of 2; an additional process means it is shared.
+- ``ShowWindow(SW_HIDE)`` hides an owned console promptly; ``FreeConsole``
+  then detaches this process.
 - ``DETACHED_PROCESS`` spawns a child with no console of its own, so the web UI
   never flashes a console window.
 """
@@ -47,21 +48,36 @@ def owns_console() -> bool:
     try:
         import ctypes
 
-        count = ctypes.windll.kernel32.GetConsoleProcessList(None, 0)
-        return count == 1
+        import ctypes.wintypes
+
+        process_ids = (ctypes.wintypes.DWORD * 64)()
+        count = ctypes.windll.kernel32.GetConsoleProcessList(process_ids, len(process_ids))
+        return count == 1 or (getattr(sys, "frozen", False) and count == 2)
     except Exception:
         return False
 
 
 def detach_console() -> bool:
-    """Detach this process from its console so the window disappears."""
+    """Hide an owned console window, then detach this process from it."""
 
     if os.name != "nt":
         return False
     try:
         import ctypes
+        import ctypes.wintypes
 
-        return bool(ctypes.windll.kernel32.FreeConsole())
+        kernel32 = ctypes.windll.kernel32
+        get_console_window = kernel32.GetConsoleWindow
+        get_console_window.restype = ctypes.wintypes.HWND
+        hwnd = get_console_window()
+        if hwnd:
+            show_window = ctypes.windll.user32.ShowWindow
+            show_window.argtypes = (ctypes.wintypes.HWND, ctypes.wintypes.INT)
+            show_window.restype = ctypes.wintypes.BOOL
+            show_window(hwnd, 0)
+        free_console = kernel32.FreeConsole
+        free_console.restype = ctypes.wintypes.BOOL
+        return bool(free_console())
     except Exception:
         return False
 

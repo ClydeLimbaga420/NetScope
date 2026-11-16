@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import ctypes
+import ctypes.wintypes
 import io
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+import cli.launch as launch
 from cli import exit_codes
 from cli.admin import format_admin_command
 from cli.colors import Colorizer
@@ -32,6 +36,31 @@ class RecordingLogger:
         return record
 
 
+class FakeWinApiFunction:
+    def __init__(self, callback):
+        self.callback = callback
+        self.argtypes = None
+        self.restype = None
+
+    def __call__(self, *args):
+        return self.callback(*args)
+
+
+def mock_console_process_count(monkeypatch, count: int) -> None:
+    def get_console_process_list(process_ids, capacity):
+        assert process_ids is not None
+        assert capacity > 0
+        return count
+
+    kernel32 = SimpleNamespace(GetConsoleProcessList=get_console_process_list)
+    monkeypatch.setattr(
+        ctypes,
+        "windll",
+        SimpleNamespace(kernel32=kernel32),
+        raising=False,
+    )
+
+
 def make_cli_ctx() -> CliContext:
     return CliContext(
         logger=RecordingLogger(),
@@ -50,6 +79,73 @@ def make_cli_ctx() -> CliContext:
 
 def test_owns_console_returns_bool():
     assert isinstance(owns_console(), bool)
+
+
+def test_frozen_onefile_bootloader_pair_still_owns_its_console(monkeypatch):
+    monkeypatch.setattr(launch.os, "name", "nt")
+    monkeypatch.setattr(launch.sys, "frozen", True, raising=False)
+    mock_console_process_count(monkeypatch, 2)
+
+    assert owns_console() is True
+
+
+def test_frozen_app_in_shared_terminal_does_not_own_console(monkeypatch):
+    monkeypatch.setattr(launch.os, "name", "nt")
+    monkeypatch.setattr(launch.sys, "frozen", True, raising=False)
+    mock_console_process_count(monkeypatch, 3)
+
+    assert owns_console() is False
+
+
+def test_detach_console_hides_window_before_freeing_console(monkeypatch):
+    calls = []
+    get_console_window = FakeWinApiFunction(lambda: calls.append("get") or 123)
+    show_window = FakeWinApiFunction(
+        lambda hwnd, command: calls.append((hwnd, command))
+    )
+    free_console = FakeWinApiFunction(lambda: calls.append("free") or 1)
+    monkeypatch.setattr(launch.os, "name", "nt")
+    monkeypatch.setattr(
+        ctypes,
+        "windll",
+        SimpleNamespace(
+            kernel32=SimpleNamespace(
+                GetConsoleWindow=get_console_window,
+                FreeConsole=free_console,
+            ),
+            user32=SimpleNamespace(ShowWindow=show_window),
+        ),
+        raising=False,
+    )
+
+    assert launch.detach_console() is True
+    assert get_console_window.restype is ctypes.wintypes.HWND
+    assert show_window.argtypes == (ctypes.wintypes.HWND, ctypes.wintypes.INT)
+    assert show_window.restype is ctypes.wintypes.BOOL
+    assert calls == ["get", (123, 0), "free"]
+
+
+def test_detach_console_frees_console_when_window_handle_is_missing(monkeypatch):
+    calls = []
+    get_console_window = FakeWinApiFunction(lambda: 0)
+    show_window = FakeWinApiFunction(lambda *_args: calls.append("hide"))
+    free_console = FakeWinApiFunction(lambda: calls.append("free") or 1)
+    monkeypatch.setattr(launch.os, "name", "nt")
+    monkeypatch.setattr(
+        ctypes,
+        "windll",
+        SimpleNamespace(
+            kernel32=SimpleNamespace(
+                GetConsoleWindow=get_console_window,
+                FreeConsole=free_console,
+            ),
+            user32=SimpleNamespace(ShowWindow=show_window),
+        ),
+        raising=False,
+    )
+
+    assert launch.detach_console() is True
+    assert calls == ["free"]
 
 
 def test_gui_relaunch_argv_targets_internal_token():
@@ -160,10 +256,42 @@ def test_main_hidden_gui_token_runs_gui(monkeypatch):
 def test_main_no_args_with_owned_console_launches_gui(monkeypatch):
     monkeypatch.setattr("cli.main.owns_console", lambda: True)
     monkeypatch.setattr("cli.main.detach_console", lambda: True)
+    monkeypatch.setattr(
+        "cli.main.build_parser",
+        lambda: pytest.fail("owned-console GUI launch should bypass argparse"),
+    )
     calls = []
     monkeypatch.setattr("web.run.run_web_ui", lambda **kwargs: calls.append(kwargs) or 0)
     assert main([]) == exit_codes.OK
     assert calls == [{}]
+
+
+def test_main_no_args_from_frozen_onefile_launches_gui(monkeypatch):
+    monkeypatch.setattr(launch.os, "name", "nt")
+    monkeypatch.setattr(launch.sys, "frozen", True, raising=False)
+    mock_console_process_count(monkeypatch, 2)
+    monkeypatch.setattr("cli.main.detach_console", lambda: True)
+    calls = []
+    monkeypatch.setattr("web.run.run_web_ui", lambda **kwargs: calls.append(kwargs) or 0)
+
+    assert main([]) == exit_codes.OK
+    assert calls == [{}]
+
+
+def test_main_no_args_in_shared_terminal_keeps_interactive_shell(monkeypatch):
+    ctx = make_cli_ctx()
+    shell_calls = []
+    monkeypatch.setattr("cli.main.owns_console", lambda: False)
+    monkeypatch.setattr("cli.main._stdin_is_tty", lambda: True)
+    monkeypatch.setattr("cli.main.create_context", lambda *_args, **_kwargs: ctx)
+    monkeypatch.setattr(
+        "cli.main.run_shell",
+        lambda parser, shell_ctx: shell_calls.append((parser, shell_ctx)) or 0,
+    )
+
+    assert main([]) == exit_codes.OK
+    assert len(shell_calls) == 1
+    assert shell_calls[0][1] is ctx
 
 
 def test_gui_relaunch_argv_can_request_replace():

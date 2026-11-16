@@ -336,6 +336,9 @@ never prompts: pass `--yes` where confirmation is needed.
 
 ## Building the executable
 
+See [docs/build.md](docs/build.md) for Git Bash requirements, environment
+overrides, output paths, and post-build verification.
+
 The one-file, console-subsystem build bundles the web templates/static files,
 the fix catalog, pywebview, pythonnet, and the CLR loader:
 
@@ -343,6 +346,14 @@ the fix catalog, pywebview, pythonnet, and the CLR loader:
 powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Clean
 python scripts\frozen_smoke.py --exe dist\NetScope.exe
 ```
+
+To build the complete installer from Git Bash, run `bash build.sh`. It installs
+the runtime requirements and PyInstaller into the selected Python environment,
+builds `dist\NetScope.exe`, then invokes the Inno Setup builder to produce
+`dist\installer\NetScope-Setup.exe`. Inno Setup 6 or 7 must already be installed.
+The script uses the Windows `py -3` launcher when available; set `PYTHON` to
+override the Python executable. This `.sh` script requires Bash and does not run
+directly in PowerShell or Command Prompt.
 
 To put the executable in the repository root instead of `dist\`, use
 `-DistPath .`:
@@ -376,9 +387,11 @@ unused GUI/scientific packages, collects the pywebview/pythonnet runtime files,
 and `web/paths.py` resolves bundled assets through `sys._MEIPASS`.
 
 The exe intentionally stays console-subsystem so the CLI works from any
-terminal. Double-clicking it briefly flashes a console before the GUI child
-detaches; `netscope gui` from a terminal detaches immediately and returns the
-prompt. A terminal with no arguments still opens the `netscope>` shell.
+terminal. On double-click, the app hides its owned console as soon as startup
+code runs, then detaches before starting the GUI; Windows may still show a brief
+console flash before Python starts. `netscope gui` from a terminal detaches
+immediately and returns the prompt. A terminal with no arguments still opens
+the `netscope>` shell.
 
 ## Install and uninstall
 
@@ -411,6 +424,10 @@ stdin is not a terminal. Both CLI commands refuse installer-managed copies
 | `netscope gui --no-browser --port N` | Run in the foreground and print the boot URL |
 | `netscope` / `NetScope.exe` with no args in a terminal | Interactive `netscope>` shell |
 | `netscope diagnose`, `fix`, `info`, ... | Normal CLI output |
+
+The resizable WebView2 window opens centered within the primary monitor's work
+area (excluding the taskbar). Its initial size is capped at 1280x860 with
+24-pixel margins; the 900x600 minimum is reduced as needed on smaller displays.
 
 Only one web UI runs per user. A second launch waits for the owner to publish
 its endpoint, verifies `/health`, and reopens the existing instance. Closing one

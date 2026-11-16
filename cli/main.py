@@ -19,6 +19,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args_in = list(sys.argv[1:] if argv is None else argv)
     if args_in and args_in[0] == GUI_INTERNAL:
         return _run_gui_process(args_in[1:])
+    if not args_in and owns_console():
+        return _open_gui_from_owned_console()
+
     parser = build_parser()
     try:
         args = parser.parse_args(args_in)

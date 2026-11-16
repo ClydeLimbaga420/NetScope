@@ -25,6 +25,26 @@ def test_run_native_window_skips_without_runtime(monkeypatch):
     assert window.run_native_window("http://127.0.0.1:1/__boot__") is False
 
 
+def test_window_geometry_centers_capped_window_in_large_work_area():
+    assert window._window_geometry((100, 50, 2020, 1130)) == (
+        420,
+        160,
+        1280,
+        860,
+        (900, 600),
+    )
+
+
+def test_window_geometry_clamps_dimensions_to_small_work_area():
+    assert window._window_geometry((0, 0, 800, 550)) == (
+        24,
+        24,
+        752,
+        502,
+        (752, 502),
+    )
+
+
 def test_run_native_window_configures_edgechromium(monkeypatch):
     url = "http://127.0.0.1:54321/__boot__?token=t"
     calls = {}
@@ -34,12 +54,41 @@ def test_run_native_window_configures_edgechromium(monkeypatch):
     )
     monkeypatch.setitem(sys.modules, "webview", fake)
     monkeypatch.setattr(window, "webview2_available", lambda: True)
+    monkeypatch.setattr(
+        window, "_primary_work_area", lambda: (100, 50, 2020, 1130), raising=False
+    )
 
     assert window.run_native_window(url) is True
     args, kwargs = calls["window"]
     assert args == ("NetScope", url)
-    assert kwargs == {"width": 1280, "height": 860, "min_size": (900, 600)}
+    assert kwargs == {
+        "x": 420,
+        "y": 160,
+        "width": 1280,
+        "height": 860,
+        "min_size": (900, 600),
+    }
     assert calls["start"] == {"gui": "edgechromium", "debug": False}
+
+
+def test_run_native_window_falls_back_when_work_area_query_fails(monkeypatch):
+    def fail_to_get_work_area():
+        raise OSError("work area unavailable")
+
+    fake = SimpleNamespace(
+        create_window=lambda *_args, **_kwargs: None,
+        start=lambda **_kwargs: None,
+    )
+    monkeypatch.setitem(sys.modules, "webview", fake)
+    monkeypatch.setattr(window, "webview2_available", lambda: True)
+    monkeypatch.setattr(
+        window,
+        "_primary_work_area",
+        fail_to_get_work_area,
+        raising=False,
+    )
+
+    assert window.run_native_window("http://127.0.0.1:1/__boot__") is False
 
 
 class WindowLogger:
