@@ -751,7 +751,16 @@ def cmd_gui(args: Any, ctx: CliContext) -> int:
             return _failure(ctx, f"could not launch web UI: {exc}", exit_codes.FAILURES)
 
     try:
-        return int(run_web_ui(port=port_val, no_browser=no_browser, browser=browser, print_url=print_url, replace=replace) or 0)
+        return int(
+            run_web_ui(
+                port=port_val,
+                no_browser=no_browser,
+                browser=browser,
+                print_url=print_url,
+                replace=replace,
+            )
+            or 0
+        )
     except KeyboardInterrupt:
         return exit_codes.INTERRUPTED
     except Exception as exc:

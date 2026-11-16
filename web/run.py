@@ -145,6 +145,15 @@ def _remove_lock(pid: int | None = None) -> None:
         pass
 
 
+def _print_url(url: str) -> None:
+    if sys.stdout is None:
+        return
+    try:
+        print(url, flush=True)
+    except Exception:
+        pass
+
+
 def _launch_mode(no_browser: bool, browser: bool) -> str:
     if no_browser:
         return "headless"
@@ -155,7 +164,7 @@ def _launch_mode(no_browser: bool, browser: bool) -> str:
 
 def _show_existing(url: str, mode: str, state: WebState) -> bool:
     if mode == "headless":
-        print(url, flush=True)
+        _print_url(url)
         return True
     if mode == "window":
         if run_native_window(url):
@@ -179,7 +188,7 @@ def _run_window_session(state: WebState, srv: object, boot_url: str, print_url: 
     server_thread = threading.Thread(target=srv.serve_forever, daemon=True)
     server_thread.start()
     if print_url:
-        print(boot_url, flush=True)
+        _print_url(boot_url)
     if not run_native_window(boot_url):
         state.logger.warning("webview_unavailable", source="web")
         _open_url(boot_url)
@@ -322,17 +331,46 @@ def _monitor(state: WebState, interval: float = 2.0) -> None:
             os._exit(0)
 
 
-def run_web_ui(port: int | None = None, no_browser: bool = False) -> int:
-    instance_lock = _acquire_instance_lock()
+def run_web_ui(
+    port: int | None = None,
+    no_browser: bool = False,
+    browser: bool = False,
+    print_url: bool = False,
+    replace: bool = False,
+    handoff_url: str | None = None,
+    handoff_token: str | None = None,
+) -> int:
+    if bool(handoff_url) != bool(handoff_token):
+        raise ValueError("Both elevation handoff URL and token are required.")
+
+    mode = _launch_mode(no_browser, browser)
+
+    if replace:
+        instance_lock = _acquire_lock_with_wait(10.0)
+        if instance_lock is None:
+            logger = config.setup_logging("web", session_id="replace-wait")
+            logger.error("elevate_takeover_timeout", source="web", timeout=10.0)
+            return 1
+    else:
+        instance_lock = _acquire_instance_lock()
+
     if instance_lock is None:
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
-            url = _existing_instance_url(_read_lock())
+            lock = _read_lock()
+            url = _existing_instance_url(lock)
             if url:
-                if no_browser:
-                    print(url)
+                if mode == "headless" or print_url:
+                    _print_url(url)
                 else:
-                    _open_url(url)
+                    _show_existing(url, mode, WebState(mode="web"))
+                if handoff_url and handoff_token and lock:
+                    _notify_elevate_handoff(
+                        handoff_url,
+                        handoff_token,
+                        int(lock["port"]),
+                        str(lock["boot_token"]),
+                    )
                 return 0
             time.sleep(0.1)
         return 1
@@ -379,14 +417,14 @@ def run_web_ui(port: int | None = None, no_browser: bool = False) -> int:
 
         if mode == "window":
             if print_url:
-                print(boot_url, flush=True)
+                _print_url(boot_url)
             _run_window_session(state, srv, boot_url, print_url)
         elif mode == "browser":
             if print_url:
-                print(boot_url, flush=True)
+                _print_url(boot_url)
             threading.Timer(0.6, lambda: _open_url(boot_url)).start()
         else:
-            print(boot_url, flush=True)
+            _print_url(boot_url)
             srv.serve_forever()
     except KeyboardInterrupt:
         if state is not None:
@@ -403,3 +441,4 @@ def run_web_ui(port: int | None = None, no_browser: bool = False) -> int:
         else:
             _release_instance_lock(instance_lock)
     return 0
+

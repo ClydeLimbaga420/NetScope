@@ -18,7 +18,9 @@ from cli.launch import GUI_INTERNAL, detach_console, launch_detached_gui, owns_c
 def main(argv: Sequence[str] | None = None) -> int:
     args_in = list(sys.argv[1:] if argv is None else argv)
     if args_in and args_in[0] == GUI_INTERNAL:
-        return _run_gui_process()
+        return _run_gui_process(args_in[1:])
+    if not args_in and owns_console():
+        return _open_gui_from_owned_console()
     parser = build_parser()
     try:
         args = parser.parse_args(args_in)
@@ -102,13 +104,42 @@ def _open_gui_from_owned_console() -> int:
         return exit_codes.FAILURES
 
 
-def _run_gui_process() -> int:
+def _run_gui_process(extra: Sequence[str] = ()) -> int:
     """Internal entry (hidden ``__gui__`` token) - run web UI in-process."""
 
     try:
         from web.run import run_web_ui
 
-        return run_web_ui()
+        options = list(extra)
+
+        def option_value(name: str) -> str | None:
+            for index, argument in enumerate(options):
+                if argument == name and index + 1 < len(options):
+                    return options[index + 1]
+            return None
+
+        kwargs: dict[str, object] = {}
+        port_value = option_value("--port")
+        if port_value:
+            try:
+                kwargs["port"] = int(port_value)
+            except ValueError:
+                pass
+        if "--no-browser" in options:
+            kwargs["no_browser"] = True
+        if "--browser" in options:
+            kwargs["browser"] = True
+        if "--print-url" in options:
+            kwargs["print_url"] = True
+        if "--replace" in options:
+            kwargs["replace"] = True
+        handoff_url = option_value("--handoff-url")
+        handoff_token = option_value("--handoff-token")
+        if handoff_url:
+            kwargs["handoff_url"] = handoff_url
+        if handoff_token:
+            kwargs["handoff_token"] = handoff_token
+        return run_web_ui(**kwargs)  # type: ignore[arg-type]
     except KeyboardInterrupt:
         return exit_codes.INTERRUPTED
     except Exception as exc:

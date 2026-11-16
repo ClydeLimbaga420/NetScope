@@ -643,8 +643,23 @@ def test_elevate_requests_restart(client, monkeypatch):
     response = c.post("/api/elevate", headers=_post_headers(st, token), json={})
 
     assert response.status_code == 200
-    assert calls and calls[0][0].endswith("netscope.py")
-    assert st.shutdown_event.is_set()
+    assert calls[0][0] == "remove"
+    assert calls[1][0] == "release"
+    assert calls[2][0] == "launch"
+    assert calls[2][1][0].endswith("netscope.py")
+    assert calls[2][2] is True
+    assert "--handoff-url" in calls[2][1]
+    assert calls[2][1][calls[2][1].index("--handoff-url") + 1] == (
+        f"http://127.0.0.1:{st.port}/__elevate_complete__"
+    )
+    assert "--handoff-token" in calls[2][1]
+    assert calls[2][1][calls[2][1].index("--handoff-token") + 1] == (
+        st.elevate_handoff["callback_token"]
+    )
+    assert response.get_json()["handoff"] is True
+    assert st.elevate_handoff["active"] is True
+    assert st.instance_lock_handle is None
+    assert not st.shutdown_event.is_set()
 
 
 def test_fix_high_risk_requires_second_confirmation(client):
