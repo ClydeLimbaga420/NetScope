@@ -699,10 +699,12 @@
     const row = element("button", `repair-row${fix.id === state.libraryId ? " selected" : ""}`);
     row.type = "button";
     row.dataset.repairId = fix.id;
+    row.setAttribute("aria-pressed", fix.id === state.libraryId ? "true" : "false");
     const head = element("div", "repair-row-head");
     head.append(element("span", "repair-row-id", fix.id), element("strong", "", fix.name));
     row.append(head);
-    row.append(element("p", "repair-row-symptom", fix.symptom || ""));
+    const symptom = visibleText(fix.symptom);
+    if (symptom) row.append(element("p", "repair-row-symptom", symptom));
     const tags = element("div", "repair-row-tags");
     tags.append(element("span", "repair-row-tag", String(fix.risk || "unknown").toUpperCase()));
     if (fix.admin) tags.append(element("span", "repair-row-tag admin", "ADMIN"));
@@ -733,6 +735,8 @@
       return;
     }
     fixes.forEach((fix) => list.append(repairRow(fix)));
+    const selected = list.querySelector(".repair-row.selected");
+    if (selected) selected.scrollIntoView({ block: "nearest" });
   }
 
   function renderRepairLibrary() {
@@ -757,9 +761,23 @@
     updateRepairRows(list);
   }
 
+  function syncRepairSelection() {
+    const list = $("repair-library-list");
+    if (!list || !list.querySelector(".repair-row")) {
+      renderRepairLibrary();
+      return;
+    }
+    list.querySelectorAll(".repair-row").forEach((row) => {
+      const selected = row.dataset.repairId === state.libraryId;
+      row.classList.toggle("selected", selected);
+      row.setAttribute("aria-pressed", selected ? "true" : "false");
+      if (selected) row.scrollIntoView({ block: "nearest" });
+    });
+  }
+
   function selectRepair(fixId) {
     state.libraryId = fixId;
-    renderRepairLibrary();
+    syncRepairSelection();
     const target = $("repair-library-detail");
     if (target) target.replaceChildren(element("p", "muted", "Loading procedure..."));
     api(`/api/fixes/${encodeURIComponent(fixId)}`).then((payload) => {
@@ -1578,10 +1596,15 @@
   function loadCatalog() {
     api("/api/fixes").then((payload) => {
       state.fixes = payload.fixes || [];
+      renderRepairLibrary();
       if (state.libraryId) selectRepair(state.libraryId);
       else if (state.fixes.length) selectRepair(state.fixes[0].id);
-      else renderRepairLibrary();
-    }).catch(() => { renderRepairLibrary(); });
+    }).catch(() => {
+      state.fixes = [];
+      renderRepairLibrary();
+      const target = $("repair-library-detail");
+      if (target) target.replaceChildren(emptyState("Repair catalog unavailable", "The catalog could not be loaded. Diagnostics keep working; repairs need the catalog."));
+    });
   }
 
   function initialize() {

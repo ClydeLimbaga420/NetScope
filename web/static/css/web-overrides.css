@@ -651,11 +651,13 @@
 .repair-library-layout {
     display: grid;
 
-    grid-template-columns: minmax(240px, 340px) minmax(0, 1fr);
+    grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
 
     gap: 18px;
 
-    align-items: start;
+    align-items: stretch;
+
+    height: clamp(420px, 70vh, 760px);
 }
 
 .repair-library-list {
@@ -664,7 +666,8 @@
 
     gap: 6px;
 
-    max-height: 640px;
+    min-height: 0;
+    max-height: 100%;
 
     overflow: auto;
 
@@ -840,7 +843,10 @@
 }
 
 .repair-library-detail {
-    min-height: 240px;
+    display: flex;
+    flex-direction: column;
+
+    min-height: 0;
 
     padding: 20px;
 
@@ -848,6 +854,8 @@
     border-radius: var(--radius-md, 12px);
 
     background: rgba(15, 26, 48, 0.7);
+
+    overflow: auto;
 }
 
 .repair-section {
@@ -970,34 +978,62 @@
 @media (max-width: 900px) {
     .repair-library-layout {
         grid-template-columns: minmax(0, 1fr);
+
+        height: auto;
     }
 
     .repair-library-list {
         max-height: 320px;
     }
-}
 
-/* Scrollable diagnostic rail - independent of right detail */
-@media (min-width: 1001px) {
-    .diag-rail {
-        position: sticky;
-        top: 18px;
-
-        max-height: calc(100vh - 190px);
-
-        overflow-y: auto;
-
-        padding-right: 6px;
-
-        scrollbar-gutter: stable;
+    .repair-library-detail {
+        min-height: 240px;
+        max-height: none;
     }
 }
 
-@media (max-width: 1000px) {
-    .diag-rail {
-        max-height: 360px;
+/* Troubleshoot: bounded, scrollable rail and stage (like Repair Library) */
+.diag-layout {
+    align-items: stretch;
 
-        overflow-y: auto;
+    height: clamp(420px, 70vh, 760px);
+}
+
+.diag-rail {
+    min-height: 0;
+    max-height: 100%;
+
+    overflow-y: auto;
+
+    padding-right: 6px;
+
+    scrollbar-gutter: stable;
+}
+
+.diag-stage {
+    min-height: 0;
+    max-height: 100%;
+
+    overflow-y: auto;
+}
+
+@media (max-width: 1000px) {
+    .diag-layout {
+        grid-template-columns: minmax(0, 1fr);
+
+        height: auto;
+    }
+
+    .diag-rail {
+        flex-direction: column;
+        flex-wrap: nowrap;
+
+        max-height: 360px;
+    }
+
+    .diag-stage {
+        min-height: 240px;
+        max-height: none;
     }
 }
 
