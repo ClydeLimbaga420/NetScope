@@ -1,4 +1,4 @@
-﻿"""CLI entry point. Keeps terminal concerns out of the diagnostic engine."""
+"""CLI entry point. Keeps terminal concerns out of the diagnostic engine."""
 
 from __future__ import annotations
 
@@ -12,13 +12,13 @@ from cli.parser import apply_defaults, build_parser
 from cli.shell import run_shell
 from core.logging_config import flush_logging
 from core.models import new_session_id
-from gui.launch import GUI_INTERNAL, detach_console, launch_detached_gui, owns_console
+from cli.launch import GUI_INTERNAL, detach_console, launch_detached_gui, owns_console
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args_in = list(sys.argv[1:] if argv is None else argv)
     if args_in and args_in[0] == GUI_INTERNAL:
-        return _run_gui_process(args_in[1:])
+        return _run_gui_process()
     parser = build_parser()
     try:
         args = parser.parse_args(args_in)
@@ -102,38 +102,13 @@ def _open_gui_from_owned_console() -> int:
         return exit_codes.FAILURES
 
 
-def _run_gui_process(args_in: Sequence[str] | None = None) -> int:
+def _run_gui_process() -> int:
     """Internal entry (hidden ``__gui__`` token) - run web UI in-process."""
 
     try:
         from web.run import run_web_ui
 
-        args_in = list(sys.argv[1:] if args_in is None else args_in)
-        no_browser = "--no-browser" in args_in
-        port = None
-        for i, arg in enumerate(args_in):
-            if arg == "--port" and i + 1 < len(args_in):
-                try:
-                    port = int(args_in[i + 1])
-                except ValueError:
-                    port = None
-        def option_value(name: str) -> str | None:
-            try:
-                index = args_in.index(name)
-            except ValueError:
-                return None
-            if index + 1 >= len(args_in):
-                raise ValueError(f"{name} requires a value.")
-            return args_in[index + 1]
-
-        handoff_url = option_value("--handoff-url")
-        handoff_token = option_value("--handoff-token")
-        return run_web_ui(
-            port=port,
-            no_browser=no_browser,
-            handoff_url=handoff_url,
-            handoff_token=handoff_token,
-        )
+        return run_web_ui()
     except KeyboardInterrupt:
         return exit_codes.INTERRUPTED
     except Exception as exc:

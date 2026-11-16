@@ -1,4 +1,4 @@
-﻿"""JSON API routes calling the existing engine/fixes/CLI utilities."""
+"""JSON API routes calling the existing engine/fixes/CLI utilities."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from fixes.catalog import CatalogError, load_catalog
 from fixes.executor import FixExecutor
 from fixes.gateway_config import auto_configure_gateway
 from fixes.if_unresolved import build_unresolved_sections, unresolved_section
-from gui.launch import gui_relaunch_argv
+from cli.launch import gui_relaunch_argv
 from core.checks.descriptors import CHECK_DESCRIPTORS
 from core.models import Layer
 
@@ -453,20 +453,7 @@ def api_open_log_folder():  # type: ignore[no-untyped-def]
 @api_bp.post("/elevate")
 def api_elevate():  # type: ignore[no-untyped-def]
     st = _state()
-    argv = gui_relaunch_argv(no_browser=True)
-    handoff = getattr(st, "elevate_handoff", None)
-    if handoff and handoff.get("active"):
-        return _err("elevation_in_progress", "An administrator restart is already in progress.", 409)
-
-    callback_token = secrets.token_urlsafe(32)
-    callback_url = f"http://127.0.0.1:{int(st.port)}/__elevate_complete__"
-    launch_argv = [
-        *argv,
-        "--handoff-url",
-        callback_url,
-        "--handoff-token",
-        callback_token,
-    ]
+    argv = gui_relaunch_argv()
     st.logger.action(
         "web",
         "elevate_launch",

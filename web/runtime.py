@@ -1,8 +1,8 @@
-"""Runtime wiring for the GUI front end.
+"""Runtime wiring shared by the CLI, the legacy dashboard and the web UI.
 
-The GUI never builds commands itself; it drives the same ``DiagnosticEngine``,
-``FixExecutor`` and fix catalog the CLI uses. This module only assembles those
-shared objects without any terminal concerns.
+Front ends never build commands themselves; they drive the same
+``DiagnosticEngine``, ``FixExecutor`` and fix catalog. This module only
+assembles those shared objects without any terminal or browser concerns.
 """
 
 from __future__ import annotations
@@ -22,8 +22,8 @@ from powershell.runner import PowerShellLayer
 
 
 @dataclass
-class GuiRuntime:
-    """Everything the GUI needs from the shared engine side."""
+class AppRuntime:
+    """Everything a front end needs from the shared engine side."""
 
     engine: Any
     catalog: Catalog
@@ -55,8 +55,8 @@ def build_runtime(
     *,
     logger: Any | None = None,
     verbose: bool = False,
-) -> GuiRuntime:
-    """Build a fresh runtime with its own GUI session id and logging."""
+) -> AppRuntime:
+    """Build a fresh runtime with its own session id and logging."""
 
     session_id = new_session_id()
     if logger is None:
@@ -72,7 +72,7 @@ def build_runtime(
     except CatalogError as exc:
         logger.warning("fix_catalog_unavailable", error=str(exc))
         catalog = empty_catalog()
-    return GuiRuntime(
+    return AppRuntime(
         engine=engine,
         catalog=catalog,
         runner=runner,
@@ -82,15 +82,15 @@ def build_runtime(
     )
 
 
-def runtime_from_context(ctx: Any) -> GuiRuntime:
-    """Reuse an existing CLI context (same logger/session) for in-process GUI launch."""
+def runtime_from_context(ctx: Any) -> AppRuntime:
+    """Reuse an existing CLI context (same logger/session) for in-process launch."""
 
     try:
         catalog = load_catalog()
     except CatalogError as exc:
         ctx.logger.warning("fix_catalog_unavailable", error=str(exc))
         catalog = empty_catalog()
-    return GuiRuntime(
+    return AppRuntime(
         engine=ctx.engine(),
         catalog=catalog,
         runner=ctx.runner,

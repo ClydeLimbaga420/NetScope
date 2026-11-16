@@ -22,10 +22,19 @@ Thumbs.db
 
 # Test cache
 .pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
 
 # Project prompt (internal)
 prompt.txt
 
 build/
+dist/
+/NetScope.exe
+artifacts/
 
 netscope.egg-info/
+
+superpowers/
+/.superpowers/
