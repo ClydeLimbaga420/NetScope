@@ -614,7 +614,7 @@ def test_gateway_configure_runs_auto_fix_job(client, monkeypatch):
 def test_elevate_cancelled_keeps_server_running(client, monkeypatch):
     c, st = client
     token = _boot(c, st)
-    monkeypatch.setattr("web.api.relaunch_elevated", lambda _argv: False)
+    monkeypatch.setattr("web.api.relaunch_elevated", lambda _argv, **_kwargs: False)
 
     response = c.post("/api/elevate", headers=_post_headers(st, token), json={})
 
@@ -627,13 +627,91 @@ def test_elevate_requests_restart(client, monkeypatch):
     c, st = client
     token = _boot(c, st)
     calls = []
-    monkeypatch.setattr("web.api.relaunch_elevated", lambda argv: calls.append(argv) or True)
+    st.instance_lock_handle = object()
+
+    def relaunch(argv, *, windowless=False):
+        calls.append(("launch", argv, windowless))
+        return True
+
+    monkeypatch.setattr("web.api.relaunch_elevated", relaunch)
+    monkeypatch.setattr("web.run._remove_lock", lambda _pid: calls.append(("remove", None)))
+    monkeypatch.setattr(
+        "web.run._release_instance_lock",
+        lambda _handle: calls.append(("release", None)),
+    )
 
     response = c.post("/api/elevate", headers=_post_headers(st, token), json={})
 
     assert response.status_code == 200
-    assert calls and calls[0][0].endswith("netscope.py")
-    assert st.shutdown_event.is_set()
+    assert calls[0][0] == "remove"
+    assert calls[1][0] == "release"
+    assert calls[2][0] == "launch"
+    assert calls[2][1][0].endswith("netscope.py")
+    assert calls[2][2] is True
+    assert "--handoff-url" in calls[2][1]
+    assert calls[2][1][calls[2][1].index("--handoff-url") + 1] == (
+        f"http://127.0.0.1:{st.port}/__elevate_complete__"
+    )
+    assert "--handoff-token" in calls[2][1]
+    assert calls[2][1][calls[2][1].index("--handoff-token") + 1] == (
+        st.elevate_handoff["callback_token"]
+    )
+    assert response.get_json()["handoff"] is True
+    assert st.elevate_handoff["active"] is True
+    assert st.instance_lock_handle is None
+    assert not st.shutdown_event.is_set()
+
+
+def test_elevate_cancel_restores_current_instance_lock(client, monkeypatch):
+    c, st = client
+    token = _boot(c, st)
+    st.instance_lock_handle = object()
+    restored = []
+    monkeypatch.setattr("web.api.relaunch_elevated", lambda _argv, **_kwargs: False)
+    monkeypatch.setattr("web.run._remove_lock", lambda _pid: None)
+    monkeypatch.setattr("web.run._release_instance_lock", lambda _handle: None)
+    monkeypatch.setattr("web.run._restore_instance_lock", lambda state: restored.append(state) or True)
+
+    response = c.post("/api/elevate", headers=_post_headers(st, token), json={})
+
+    assert response.status_code == 409
+    assert response.get_json()["error"]["code"] == "elevate_cancelled"
+    assert restored == [st]
+    assert st.elevate_handoff["active"] is False
+    assert not st.shutdown_event.is_set()
+
+
+def test_elevate_completion_requires_callback_token_and_valid_boot_token(client):
+    c, st = client
+    st.elevate_handoff = {"active": True, "callback_token": "callback-secret"}
+    callback = "/__elevate_complete__"
+    payload = {"port": 54001, "boot_token": "elevated-boot-token"}
+
+    denied = c.post(
+        callback,
+        headers={"Host": f"127.0.0.1:{st.port}", "X-NetScope-Handoff": "wrong"},
+        json=payload,
+    )
+    assert denied.status_code == 403
+    assert st.elevate_handoff.get("url") is None
+
+    invalid_boot = c.post(
+        callback,
+        headers={"Host": f"127.0.0.1:{st.port}", "X-NetScope-Handoff": "callback-secret"},
+        json={"port": payload["port"], "boot_token": "invalid/token"},
+    )
+    assert invalid_boot.status_code == 400
+    assert st.elevate_handoff.get("url") is None
+
+    response = c.post(
+        callback,
+        headers={"Host": f"127.0.0.1:{st.port}", "X-NetScope-Handoff": "callback-secret"},
+        json=payload,
+    )
+    assert response.status_code == 200
+    assert st.elevate_handoff["url"] == (
+        f"http://127.0.0.1:{payload['port']}/__boot__?token={payload['boot_token']}"
+    )
 
 
 def test_fix_high_risk_requires_second_confirmation(client):

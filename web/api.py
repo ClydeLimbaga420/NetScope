@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import sys
 import threading
 import time
@@ -452,7 +453,20 @@ def api_open_log_folder():  # type: ignore[no-untyped-def]
 @api_bp.post("/elevate")
 def api_elevate():  # type: ignore[no-untyped-def]
     st = _state()
-    argv = gui_relaunch_argv()
+    argv = gui_relaunch_argv(no_browser=True)
+    handoff = getattr(st, "elevate_handoff", None)
+    if handoff and handoff.get("active"):
+        return _err("elevation_in_progress", "An administrator restart is already in progress.", 409)
+
+    callback_token = secrets.token_urlsafe(32)
+    callback_url = f"http://127.0.0.1:{int(st.port)}/__elevate_complete__"
+    launch_argv = [
+        *argv,
+        "--handoff-url",
+        callback_url,
+        "--handoff-token",
+        callback_token,
+    ]
     st.logger.action(
         "web",
         "elevate_launch",
@@ -460,17 +474,71 @@ def api_elevate():  # type: ignore[no-untyped-def]
         current_admin=is_admin(),
         executable=sys.executable,
     )
+
+    st.begin_elevate_handoff(callback_token)
+    handle = getattr(st, "instance_lock_handle", None)
+    released_lock = handle is not None
     try:
-        launched = relaunch_elevated(argv)
+        from web.run import _release_instance_lock, _remove_lock
+
+        if handle is not None:
+            _remove_lock(os.getpid())
+            st.instance_lock_handle = None
+            _release_instance_lock(handle)
+        launched = relaunch_elevated(launch_argv, windowless=True)
     except Exception as exc:  # noqa: BLE001
+        st.elevate_handoff.update(active=False, error=str(exc))
         st.logger.error("elevate_failed", source="web", error=str(exc), exc_info=True)
+        if released_lock:
+            _restore_elevate_instance(st)
         return _err("elevate_failed", str(exc), 500)
+
     if not launched:
+        st.elevate_handoff.update(
+            active=False,
+            error="Administrator elevation was cancelled or Windows could not start the elevated process.",
+        )
         st.logger.action("web", "elevate_cancelled")
-        return _err("elevate_cancelled", "Administrator elevation was cancelled.", 409)
+        if released_lock:
+            _restore_elevate_instance(st)
+        return _err("elevate_cancelled", st.elevate_handoff["error"], 409)
+
     st.logger.action("web", "elevate_requested")
-    st.shutdown_event.set()
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "handoff": True})
+
+
+def _restore_elevate_instance(st: Any) -> None:
+    try:
+        from web.run import _restore_instance_lock
+
+        if not _restore_instance_lock(st):
+            st.logger.error(
+                "elevate_handoff_lock_restore_failed",
+                source="web",
+                reason="instance lock is held by another process",
+            )
+    except Exception as exc:  # noqa: BLE001
+        st.logger.error(
+            "elevate_handoff_lock_restore_failed",
+            source="web",
+            error=str(exc),
+            exc_info=True,
+        )
+
+
+@api_bp.get("/elevate/status")
+def api_elevate_status():  # type: ignore[no-untyped-def]
+    st = _state()
+    handoff = getattr(st, "elevate_handoff", None)
+    if not handoff:
+        return jsonify({"status": "idle"})
+    if handoff.get("url"):
+        return jsonify({"status": "ready", "url": handoff["url"]})
+    if handoff.get("error"):
+        return jsonify({"status": "error", "message": handoff["error"]})
+    if handoff.get("active"):
+        return jsonify({"status": "pending"})
+    return jsonify({"status": "idle"})
 
 
 # --- fix plan/execute/rollback (server-side confirmation enforced) ---

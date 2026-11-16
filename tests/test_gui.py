@@ -443,7 +443,38 @@ def test_main_hidden_gui_token_runs_gui(monkeypatch):
     calls = []
     monkeypatch.setattr("web.run.run_web_ui", lambda **kwargs: calls.append(kwargs) or 7)
     assert main([GUI_INTERNAL]) == 7
-    assert calls == [{}]
+    assert calls == [
+        {
+            "port": None,
+            "no_browser": False,
+            "handoff_url": None,
+            "handoff_token": None,
+        }
+    ]
+
+
+def test_main_hidden_gui_token_passes_elevation_callback(monkeypatch):
+    calls = []
+    monkeypatch.setattr("web.run.run_web_ui", lambda **kwargs: calls.append(kwargs) or 7)
+
+    assert main(
+        [
+            GUI_INTERNAL,
+            "--no-browser",
+            "--handoff-url",
+            "http://127.0.0.1:5000/__elevate_complete__",
+            "--handoff-token",
+            "one-time-token",
+        ]
+    ) == 7
+    assert calls == [
+        {
+            "port": None,
+            "no_browser": True,
+            "handoff_url": "http://127.0.0.1:5000/__elevate_complete__",
+            "handoff_token": "one-time-token",
+        }
+    ]
 
 
 def test_main_no_args_with_owned_console_launches_gui(monkeypatch):

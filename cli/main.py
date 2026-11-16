@@ -18,7 +18,7 @@ from gui.launch import GUI_INTERNAL, detach_console, launch_detached_gui, owns_c
 def main(argv: Sequence[str] | None = None) -> int:
     args_in = list(sys.argv[1:] if argv is None else argv)
     if args_in and args_in[0] == GUI_INTERNAL:
-        return _run_gui_process()
+        return _run_gui_process(args_in[1:])
     parser = build_parser()
     try:
         args = parser.parse_args(args_in)
@@ -102,17 +102,43 @@ def _open_gui_from_owned_console() -> int:
         return exit_codes.FAILURES
 
 
-def _run_gui_process() -> int:
+def _run_gui_process(args_in: Sequence[str] | None = None) -> int:
     """Internal entry (hidden ``__gui__`` token) - run web UI in-process."""
 
     try:
         from web.run import run_web_ui
 
-        return run_web_ui()
+        args_in = list(sys.argv[1:] if args_in is None else args_in)
+        no_browser = "--no-browser" in args_in
+        port = None
+        for i, arg in enumerate(args_in):
+            if arg == "--port" and i + 1 < len(args_in):
+                try:
+                    port = int(args_in[i + 1])
+                except ValueError:
+                    port = None
+        def option_value(name: str) -> str | None:
+            try:
+                index = args_in.index(name)
+            except ValueError:
+                return None
+            if index + 1 >= len(args_in):
+                raise ValueError(f"{name} requires a value.")
+            return args_in[index + 1]
+
+        handoff_url = option_value("--handoff-url")
+        handoff_token = option_value("--handoff-token")
+        return run_web_ui(
+            port=port,
+            no_browser=no_browser,
+            handoff_url=handoff_url,
+            handoff_token=handoff_token,
+        )
     except KeyboardInterrupt:
         return exit_codes.INTERRUPTED
     except Exception as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        if sys.stderr is not None:
+            print(f"error: {exc}", file=sys.stderr)
         return exit_codes.FAILURES
 
 

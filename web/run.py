@@ -15,6 +15,7 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 from typing import BinaryIO
+from urllib.parse import urlsplit
 from werkzeug.serving import make_server
 
 import config
@@ -60,7 +61,9 @@ def _acquire_instance_lock() -> BinaryIO | None:
     return handle
 
 
-def _release_instance_lock(handle: BinaryIO) -> None:
+def _release_instance_lock(handle: BinaryIO | None) -> None:
+    if handle is None:
+        return
     try:
         handle.seek(0)
         if os.name == "nt":
@@ -73,7 +76,25 @@ def _release_instance_lock(handle: BinaryIO) -> None:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
     except OSError:
         pass
-    handle.close()
+    try:
+        handle.close()
+    except Exception:
+        pass
+
+
+def _restore_instance_lock(state: WebState) -> bool:
+    if getattr(state, "instance_lock_handle", None) is not None:
+        return True
+    handle = _acquire_instance_lock()
+    if handle is None:
+        return False
+    try:
+        _write_lock(state.port, state.security.boot_token, os.getpid())
+    except Exception:
+        _release_instance_lock(handle)
+        raise
+    state.instance_lock_handle = handle
+    return True
 
 
 def _read_lock() -> dict | None:
@@ -172,15 +193,86 @@ def _open_url(url: str) -> bool:
         return False
 
 
+def _notify_elevate_handoff(
+    callback_url: str,
+    callback_token: str,
+    port: int,
+    boot_token: str,
+) -> None:
+    parsed_url = urlsplit(callback_url)
+    if (
+        parsed_url.scheme != "http"
+        or parsed_url.hostname != "127.0.0.1"
+        or parsed_url.path != "/__elevate_complete__"
+        or parsed_url.username is not None
+        or parsed_url.password is not None
+        or parsed_url.query
+        or parsed_url.fragment
+        or parsed_url.port is None
+        or not 1 <= parsed_url.port <= 65535
+    ):
+        raise ValueError("Elevation handoff callback must be a local NetScope URL.")
+
+    payload = json.dumps({"port": int(port), "boot_token": boot_token}).encode("utf-8")
+    request = urllib.request.Request(
+        callback_url,
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "X-NetScope-Handoff": callback_token,
+        },
+        method="POST",
+    )
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(request, timeout=3) as response:
+        if response.status != 200:
+            raise RuntimeError(f"Elevation handoff callback returned HTTP {response.status}.")
+
+
 def _monitor(state: WebState, interval: float = 2.0) -> None:
     while True:
         if state.shutdown_event.wait(interval):
-            # explicit request (POST /api/shutdown or /api/elevate): give the
-            # HTTP response a moment to flush before exiting the process.
+            # explicit request (POST /api/shutdown): give the HTTP response a
+            # moment to flush before exiting the process.
             time.sleep(0.5)
             state.logger.event("server_shutdown", source="web", reason="api_request")
             _remove_lock(os.getpid())
             os._exit(0)
+
+        handoff = getattr(state, "elevate_handoff", None)
+        if handoff and handoff.get("active"):
+            if not handoff.get("url"):
+                lock = _read_lock() or {}
+                if int(lock.get("pid") or 0) != os.getpid():
+                    url = _existing_instance_url(lock)
+                    if url:
+                        handoff["url"] = url
+                        state.logger.event("elevate_handoff_ready", source="web", url=url)
+            if handoff.get("url") and not handoff.get("shutdown_scheduled"):
+                handoff["shutdown_scheduled"] = True
+                threading.Timer(5.0, lambda: state.shutdown_event.set()).start()
+            if not handoff.get("url") and time.monotonic() > float(handoff.get("deadline") or 0):
+                handoff["error"] = "Timed out waiting for the elevated NetScope instance."
+                handoff["active"] = False
+                state.logger.error("elevate_handoff_timeout", source="web")
+                try:
+                    if not _restore_instance_lock(state):
+                        state.logger.event(
+                            "elevate_handoff_lock_restore_failed",
+                            source="web",
+                            reason="instance lock is held by another process",
+                        )
+                    else:
+                        state.logger.event("elevate_handoff_lock_restored", source="web")
+                except Exception as exc:  # noqa: BLE001
+                    state.logger.error(
+                        "elevate_handoff_lock_restore_failed",
+                        source="web",
+                        error=str(exc),
+                        exc_info=True,
+                    )
+            continue
+
         if state.should_shutdown():
             state.logger.event("server_shutdown", source="web", reason="heartbeat_timeout")
             state.shutdown_event.set()
@@ -188,17 +280,34 @@ def _monitor(state: WebState, interval: float = 2.0) -> None:
             os._exit(0)
 
 
-def run_web_ui(port: int | None = None, no_browser: bool = False) -> int:
+def run_web_ui(
+    port: int | None = None,
+    no_browser: bool = False,
+    handoff_url: str | None = None,
+    handoff_token: str | None = None,
+) -> int:
+    if bool(handoff_url) != bool(handoff_token):
+        raise ValueError("Both elevation handoff URL and token are required.")
+
     instance_lock = _acquire_instance_lock()
     if instance_lock is None:
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
-            url = _existing_instance_url(_read_lock())
-            if url:
+            lock = _read_lock()
+            url = _existing_instance_url(lock)
+            if url and lock:
                 if no_browser:
-                    print(url)
+                    if sys.stdout is not None:
+                        print(url)
                 else:
                     _open_url(url)
+                if handoff_url and handoff_token:
+                    _notify_elevate_handoff(
+                        handoff_url,
+                        handoff_token,
+                        int(lock["port"]),
+                        str(lock["boot_token"]),
+                    )
                 return 0
             time.sleep(0.1)
         return 1
@@ -227,13 +336,29 @@ def run_web_ui(port: int | None = None, no_browser: bool = False) -> int:
             state.logger.error("server_bind_failed", source="web", port=port, error=str(exc))
             return 1
 
+        state.instance_lock_handle = instance_lock
         _write_lock(port, state.security.boot_token, os.getpid())
 
         threading.Thread(target=_monitor, args=(state,), daemon=True).start()
+        if handoff_url and handoff_token:
+            try:
+                _notify_elevate_handoff(
+                    handoff_url,
+                    handoff_token,
+                    port,
+                    state.security.boot_token,
+                )
+            except Exception as exc:
+                state.logger.error(
+                    "elevate_handoff_callback_failed",
+                    source="web",
+                    error=str(exc),
+                    exc_info=True,
+                )
 
         if not no_browser:
             threading.Timer(0.6, lambda: _open_url(boot_url)).start()
-        else:
+        elif sys.stdout is not None:
             print(boot_url, flush=True)
 
         state.logger.event("server_start", source="web", port=port)
@@ -242,6 +367,14 @@ def run_web_ui(port: int | None = None, no_browser: bool = False) -> int:
         if state is not None:
             state.logger.event("server_shutdown", source="web", reason="keyboard_interrupt")
     finally:
-        _remove_lock(os.getpid())
-        _release_instance_lock(instance_lock)
+        handoff = getattr(state, "elevate_handoff", None) if state is not None else None
+        if handoff and handoff.get("url"):
+            _remove_lock(int(handoff.get("pid") or os.getpid()))
+        else:
+            _remove_lock(os.getpid())
+        if state is not None:
+            _release_instance_lock(getattr(state, "instance_lock_handle", None))
+            state.instance_lock_handle = None
+        else:
+            _release_instance_lock(instance_lock)
     return 0

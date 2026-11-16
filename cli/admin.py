@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from pathlib import Path
 from typing import Sequence
 
 
@@ -28,7 +29,7 @@ def format_admin_command(argv: Sequence[str]) -> str:
     return subprocess.list2cmdline([sys.executable, *argv])
 
 
-def relaunch_elevated(argv: Sequence[str]) -> bool:
+def relaunch_elevated(argv: Sequence[str], *, windowless: bool = False) -> bool:
     """Ask Windows for an elevated relaunch. Returns False if the user cancels."""
 
     if os.name != "nt":
@@ -36,14 +37,23 @@ def relaunch_elevated(argv: Sequence[str]) -> bool:
     try:
         import ctypes
 
+        executable = sys.executable
+        show_command = 1
+        if windowless:
+            interpreter = Path(executable)
+            if interpreter.name.lower() == "python.exe":
+                pythonw = interpreter.with_name("pythonw.exe")
+                if pythonw.is_file():
+                    executable = str(pythonw)
+            show_command = 0
         params = subprocess.list2cmdline([*argv])
         result = ctypes.windll.shell32.ShellExecuteW(
             None,
             "runas",
-            sys.executable,
+            executable,
             params,
             None,
-            1,
+            show_command,
         )
         return int(result) > 32
     except Exception:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import hmac
 import os
 import sys
 import threading
@@ -70,6 +71,8 @@ class WebState:
         self.fix_lock = threading.Lock()
         self.last_snapshot: Any = None
         self.last_report: Any = None
+        self.instance_lock_handle: Any = None
+        self.elevate_handoff: dict[str, Any] | None = None
 
     def _build_runtime(self) -> GuiRuntime:
         runner = SubprocessRunner(self.logger)
@@ -95,9 +98,21 @@ class WebState:
         self.last_heartbeat = time.monotonic()
 
     def should_shutdown(self) -> bool:
+        if getattr(self, "elevate_handoff", None) and self.elevate_handoff.get("active"):
+            return False
         if (time.monotonic() - self.last_heartbeat) <= 120:
             return False
         return not self.jobs.has_active_jobs()
+
+    def begin_elevate_handoff(self, callback_token: str, timeout: float = 60.0) -> None:
+        self.elevate_handoff = {
+            "active": True,
+            "url": None,
+            "error": None,
+            "callback_token": callback_token,
+            "deadline": time.monotonic() + timeout,
+            "pid": os.getpid(),
+        }
 
 
 def create_app(state: WebState | None = None) -> Flask:
@@ -171,6 +186,40 @@ def create_app(state: WebState | None = None) -> Flask:
         # also make token available to JS? no, must keep clean URL and cookie/httpOnly; client will need header token via separate bootstrap endpoint after cookie? but header requires knowing token - design says "server exchanges it for HttpOnly..." and "All state-changing requests (POST) additionally require a custom header (X-NetScope-Token)". That means client must know token; cannot be HttpOnly-only for header. We'll set a non-HttpOnly readable companion cookie is insecure for XSS but CSP strict; better provide token via authenticated bootstrap JSON and keep in memory.
         st.logger.event("session_boot", source="web")
         return resp
+
+    @app.post("/__elevate_complete__")
+    def _elevate_complete():  # type: ignore[no-untyped-def]
+        st: WebState = app.extensions["netscope_state"]
+        handoff = getattr(st, "elevate_handoff", None)
+        provided_token = request.headers.get("X-NetScope-Handoff", "")
+        if (
+            not handoff
+            or not handoff.get("active")
+            or not provided_token
+            or not hmac.compare_digest(provided_token, handoff.get("callback_token", ""))
+        ):
+            return jsonify({"error": {"code": "invalid_handoff", "message": "Invalid elevation handoff."}}), 403
+
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"error": {"code": "invalid_handoff", "message": "Invalid elevation handoff."}}), 400
+        port = payload.get("port")
+        boot_token = payload.get("boot_token")
+        if (
+            isinstance(port, bool)
+            or not isinstance(port, int)
+            or not 1 <= port <= 65535
+            or not isinstance(boot_token, str)
+            or not boot_token
+            or len(boot_token) > 256
+            or not boot_token.isascii()
+            or not all(char.isalnum() or char in "-_" for char in boot_token)
+        ):
+            return jsonify({"error": {"code": "invalid_handoff", "message": "Invalid elevation handoff."}}), 400
+
+        handoff["url"] = f"http://127.0.0.1:{port}/__boot__?{TOKEN_PARAM}={boot_token}"
+        st.logger.event("elevate_handoff_ready", source="web", port=port)
+        return jsonify({"ok": True})
 
     @app.get("/__session__")
     def _session():  # type: ignore[no-untyped-def]

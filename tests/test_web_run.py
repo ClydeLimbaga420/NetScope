@@ -95,6 +95,47 @@ def test_existing_instance_rejects_non_netscope_service(monkeypatch):
     assert run._existing_instance_url({"port": 54321, "boot_token": "token"}) is None
 
 
+def test_elevation_callback_sends_new_instance_details_without_proxy(monkeypatch):
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+    class Opener:
+        def open(self, request, timeout):
+            assert request.full_url == "http://127.0.0.1:54321/__elevate_complete__"
+            assert request.get_header("X-netscope-handoff") == "one-time-secret"
+            assert json.loads(request.data) == {
+                "port": 54322,
+                "boot_token": "new-boot-token",
+            }
+            assert timeout == 3
+            return Response()
+
+    monkeypatch.setattr(run.urllib.request, "build_opener", lambda *_args: Opener())
+
+    run._notify_elevate_handoff(
+        "http://127.0.0.1:54321/__elevate_complete__",
+        "one-time-secret",
+        54322,
+        "new-boot-token",
+    )
+
+
+def test_elevation_callback_rejects_non_local_url():
+    with pytest.raises(ValueError, match="local NetScope URL"):
+        run._notify_elevate_handoff(
+            "https://example.com/__elevate_complete__",
+            "one-time-secret",
+            54322,
+            "new-boot-token",
+        )
+
+
 def test_werkzeug_request_logs_route_to_netscope_without_duplicate_handlers():
     class Recorder:
         def __init__(self):
@@ -133,6 +174,9 @@ class _MonitorRecorder:
         self.events = []
 
     def event(self, name, **fields):
+        self.events.append((name, fields))
+
+    def error(self, name, **fields):
         self.events.append((name, fields))
 
 
@@ -201,6 +245,46 @@ def test_monitor_keeps_running_while_heartbeat_and_jobs_are_active(exit_guard):
     assert exit_guard == []
     state.shutdown_event.set()
     thread.join(2)
+
+
+def test_monitor_restores_instance_after_elevation_timeout(exit_guard, monkeypatch):
+    written = []
+    monkeypatch.setattr(run, "_read_lock", lambda: None)
+    monkeypatch.setattr(run, "_acquire_instance_lock", lambda: object())
+    monkeypatch.setattr(run, "_write_lock", lambda *args: written.append(args))
+    state = _monitor_state(
+        elevate_handoff={
+            "active": True,
+            "url": None,
+            "error": None,
+            "deadline": time.monotonic() - 1,
+        },
+        instance_lock_handle=None,
+        port=54321,
+        security=types.SimpleNamespace(boot_token="boot-token"),
+    )
+
+    def run_monitor():
+        try:
+            run._monitor(state, interval=0.01)
+        except SystemExit:
+            pass
+
+    thread = threading.Thread(target=run_monitor, daemon=True)
+    thread.start()
+    deadline = time.monotonic() + 1
+    while state.elevate_handoff["active"] and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+    assert not state.elevate_handoff["active"]
+    assert state.elevate_handoff["error"]
+    assert state.instance_lock_handle is not None
+    assert written == [(54321, "boot-token", run.os.getpid())]
+    assert not state.shutdown_event.is_set()
+
+    state.shutdown_event.set()
+    thread.join(2)
+    assert not thread.is_alive()
 
 
 class _BindRecorder:

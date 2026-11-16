@@ -162,11 +162,36 @@
 
   async function requestElevation() {
     if (state.busy) return;
-    if (!window.confirm("Restart NetScope as administrator? Windows will show a UAC prompt and this page will disconnect.")) return;
+    if (!window.confirm("Restart NetScope as administrator? Windows will show a UAC prompt.")) return;
     state.adminNotice = "Requesting administrator rights...";
     renderAdminState();
     try {
-      await api("/api/elevate", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const result = await api("/api/elevate", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      if (result && result.handoff) {
+        state.adminNotice = "Restarting as administrator... Waiting for the elevated session.";
+        renderAdminState();
+        const deadline = Date.now() + 90000;
+        while (Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          let status;
+          try {
+            status = await api("/api/elevate/status");
+          } catch (pollError) {
+            if (Date.now() >= deadline) throw pollError;
+            continue;
+          }
+          if (status && status.status === "ready" && status.url) {
+            state.adminNotice = "Administrator session ready. Reloading...";
+            renderAdminState();
+            window.location.replace(status.url);
+            return;
+          }
+          if (status && status.status === "error") {
+            throw new Error(status.message || "Elevation handoff failed.");
+          }
+        }
+        throw new Error("Timed out waiting for the elevated NetScope session. You can reopen NetScope manually.");
+      }
       state.adminNotice = "Restarting as administrator... This page will disconnect.";
     } catch (error) {
       state.adminNotice = error.message;
@@ -1115,26 +1140,51 @@
     const dialog = element("dialog", "engine-confirmation");
     const panel = element("form", "engine-confirmation-panel");
     panel.method = "dialog";
-    panel.append(element("p", "eyebrow", "FIX PREVIEW"), element("h2", "", plan.name));
-    panel.append(element("p", "diag-desc", plan.explanation || "Review the changes before execution."));
+
+    const head = element("div", "engine-confirm-head");
+    const headText = element("div", "engine-confirm-head-text");
+    headText.append(element("p", "eyebrow", "FIX PREVIEW"), element("h2", "", plan.name));
+    head.append(svgIcon(["M12 3l8 3v5c0 4.6-3.2 8.4-8 10-4.8-1.6-8-5.4-8-10V6l8-3z", "m9 12 2 2 4-4"], 24), headText);
+    panel.append(head);
+
+    const intro = element("p", "diag-desc engine-confirm-intro", plan.explanation || "Review the changes before execution.");
+    panel.append(intro);
     renderFixFacts(panel, plan.admin, plan.risk, plan.reboot);
-    const commands = element("pre", "engine-evidence", (plan.preview || []).join("\n") || "No commands are required.");
+
+    const commands = element("section", "engine-confirm-section");
+    commands.append(element("p", "diag-command-label", "PLANNED COMMANDS"));
+    commands.append(element("pre", "engine-evidence", (plan.preview || []).join("\n") || "No commands are required."));
     panel.append(commands);
-    if (plan.rollback_notes) panel.append(element("p", "muted", `Rollback: ${plan.rollback_notes}`));
-    const dryRunLabel = element("label", "engine-toggle");
+
+    if (plan.rollback_notes) {
+      const rollback = element("section", "engine-confirm-section engine-confirm-rollback");
+      rollback.append(element("p", "diag-command-label", "ROLLBACK"));
+      rollback.append(element("p", "engine-confirm-note", String(plan.rollback_notes)));
+      panel.append(rollback);
+    }
+
+    const options = element("div", "engine-confirm-options");
+    const dryRunLabel = element("label", "engine-toggle engine-confirm-toggle");
     const dryRun = document.createElement("input");
     dryRun.type = "checkbox";
-    dryRunLabel.append(dryRun, document.createTextNode("Dry run"));
-    panel.append(dryRunLabel);
+    dryRunLabel.append(dryRun, element("span", "", "Dry run (preview only, no changes)"));
+    options.append(dryRunLabel);
+    panel.append(options);
+
     let typed = null;
     if (String(plan.risk).toLowerCase() === "high") {
-      panel.append(element("p", "step-reason error", "High-risk change. Type APPLY HIGH-RISK FIX to confirm."));
+      const warning = element("section", "engine-confirm-warning");
+      warning.append(element("strong", "", "High-risk change"));
+      warning.append(element("p", "", "Type APPLY HIGH-RISK FIX to confirm."));
       typed = document.createElement("input");
       typed.type = "text";
       typed.autocomplete = "off";
+      typed.placeholder = "APPLY HIGH-RISK FIX";
       typed.setAttribute("aria-label", "Type APPLY HIGH-RISK FIX to confirm");
-      panel.append(typed);
+      warning.append(typed);
+      panel.append(warning);
     }
+
     const actions = element("div", "engine-dialog-actions");
     const cancel = element("button", "ghost-button", "Cancel");
     cancel.type = "button";
@@ -1142,21 +1192,29 @@
     execute.type = "button";
     actions.append(cancel, execute);
     panel.append(actions);
+
     dialog.append(panel);
     document.body.append(dialog);
     cancel.addEventListener("click", () => dialog.close());
     execute.addEventListener("click", async () => {
       if (typed && typed.value.trim() !== "APPLY HIGH-RISK FIX") {
         typed.focus();
+        typed.classList.add("is-invalid");
         return;
       }
       dialog.close();
       dialog.remove();
       await executeFix(plan, dryRun.checked, Boolean(typed));
     });
+    if (typed) typed.addEventListener("input", () => typed.classList.remove("is-invalid"));
+    dialog.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      dialog.close();
+    });
     dialog.addEventListener("close", () => dialog.remove(), { once: true });
     dialog.showModal();
     if (typed) typed.focus();
+    else execute.focus();
   }
 
   function renderFixProgress(plan) {

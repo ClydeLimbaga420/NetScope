@@ -346,44 +346,199 @@
 /* ---------- Confirmation dialog ---------- */
 
 .engine-confirmation {
-    width: min(640px, calc(100vw - 32px));
+    width: min(680px, calc(100vw - 32px));
 
-    max-height: min(82vh, 760px);
+    max-height: min(86vh, 820px);
 
     padding: 0;
 
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-lg, 16px);
+    border: 1px solid rgba(126, 164, 228, 0.22);
+    border-radius: 18px;
 
     color: var(--text);
 
-    background: #0e1729;
+    background:
+        radial-gradient(120% 80% at 0% 0%, rgba(98, 167, 255, 0.12), transparent 45%),
+        #0b1424;
 
-    box-shadow: 0 32px 80px rgba(1, 4, 12, 0.6);
+    box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.03) inset,
+        0 36px 90px rgba(1, 4, 12, 0.7);
 
     overflow: auto;
 }
 
-.engine-confirmation::backdrop {
-    background: rgba(1, 4, 12, 0.74);
+.engine-confirmation[open] {
+    animation: rise 0.22s var(--ease);
+}
 
-    -webkit-backdrop-filter: blur(3px);
-    backdrop-filter: blur(3px);
+.engine-confirmation::backdrop {
+    background: rgba(2, 6, 16, 0.72);
+
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
 }
 
 .engine-confirmation-panel {
     display: grid;
 
-    gap: 14px;
+    gap: 16px;
 
     padding: 24px;
+}
+
+.engine-confirm-head {
+    display: flex;
+    align-items: flex-start;
+
+    gap: 14px;
+
+    padding-bottom: 14px;
+
+    border-bottom: 1px solid var(--border);
+}
+
+.engine-confirm-head > svg {
+    flex-shrink: 0;
+
+    width: 42px;
+    height: 42px;
+
+    padding: 9px;
+
+    border: 1px solid var(--accent-border);
+    border-radius: 12px;
+
+    background: var(--accent-soft);
+
+    color: var(--accent);
+}
+
+.engine-confirm-head-text {
+    display: grid;
+
+    gap: 4px;
+
+    min-width: 0;
+}
+
+.engine-confirm-head-text .eyebrow {
+    margin: 0;
 }
 
 .engine-confirmation-panel h2 {
     margin: 0;
 
-    font-size: 19px;
-    letter-spacing: -0.3px;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.35px;
+    line-height: 1.2;
+}
+
+.engine-confirm-intro {
+    margin: 0;
+
+    color: var(--text-2);
+}
+
+.engine-confirm-section {
+    display: grid;
+
+    gap: 8px;
+}
+
+.engine-confirm-section > .diag-command-label {
+    margin: 0;
+}
+
+.engine-confirm-section .engine-evidence {
+    max-height: 220px;
+}
+
+.engine-confirm-rollback {
+    padding: 12px 14px;
+
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.engine-confirm-note {
+    margin: 0;
+
+    color: var(--text-2);
+
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.engine-confirm-options {
+    display: flex;
+    flex-wrap: wrap;
+
+    gap: 10px;
+}
+
+.engine-confirm-toggle {
+    padding: 10px 12px;
+
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+
+    background: rgba(255, 255, 255, 0.02);
+
+    color: var(--text-2);
+}
+
+.engine-confirm-toggle:hover {
+    border-color: var(--border-strong);
+}
+
+.engine-confirm-warning {
+    display: grid;
+
+    gap: 8px;
+
+    padding: 14px;
+
+    border: 1px solid var(--red-border);
+    border-radius: var(--radius-md);
+
+    background: var(--red-soft);
+}
+
+.engine-confirm-warning strong {
+    color: #ffd7dd;
+
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.engine-confirm-warning p {
+    margin: 0;
+
+    color: #ffb2be;
+
+    font-size: 12.5px;
+}
+
+.engine-confirm-warning input[type="text"] {
+    margin-top: 2px;
+
+    border-color: rgba(255, 107, 129, 0.35);
+
+    background: rgba(8, 4, 8, 0.45);
+
+    font-family: var(--font-mono);
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
+.engine-confirm-warning input[type="text"].is-invalid {
+    border-color: var(--red);
+
+    box-shadow: 0 0 0 3px rgba(255, 107, 129, 0.18);
 }
 
 .engine-confirmation-panel input[type="text"] {
@@ -426,7 +581,10 @@
 
     gap: 10px;
 
-    margin-top: 6px;
+    margin-top: 4px;
+    padding-top: 14px;
+
+    border-top: 1px solid var(--border);
 }
 
 @media (max-width: 720px) {
@@ -438,6 +596,15 @@
 
     .engine-confirmation-panel {
         padding: 18px;
+    }
+
+    .engine-confirm-head {
+        gap: 12px;
+    }
+
+    .engine-confirm-head > svg {
+        width: 38px;
+        height: 38px;
     }
 
     .engine-dialog-actions .step-run,
