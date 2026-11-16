@@ -435,6 +435,84 @@
     line-height: 1.2;
 }
 
+.elevation-dialog {
+    width: min(460px, calc(100vw - 32px));
+}
+
+.elevation-dialog .engine-confirmation-panel {
+    gap: 18px;
+    padding: 26px;
+}
+
+.elevation-dialog-intro {
+    margin: 0;
+}
+
+.elevation-dialog-status {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    min-height: 58px;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm, 10px);
+    background: rgba(255, 255, 255, 0.025);
+}
+
+.elevation-dialog-status-copy {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+}
+
+.elevation-dialog-status-copy strong {
+    color: var(--text-2);
+    font-size: 12px;
+}
+
+.elevation-dialog-status-copy span {
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+.elevation-dialog-spinner {
+    width: 22px;
+    height: 22px;
+    flex: 0 0 22px;
+    border: 2px solid rgba(98, 167, 255, 0.2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: elevationSpin 0.8s linear infinite;
+}
+
+.elevation-dialog-spinner[hidden] {
+    display: none;
+}
+
+.elevation-dialog.is-pending .elevation-dialog-status {
+    border-color: var(--accent-border);
+    background: var(--accent-soft);
+}
+
+.elevation-dialog .engine-dialog-actions {
+    margin-top: 0;
+}
+
+@keyframes elevationSpin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .elevation-dialog .elevation-dialog-spinner {
+        animation: none;
+        border-top-color: var(--accent);
+        border-right-color: var(--accent);
+    }
+}
+
 .engine-confirm-intro {
     margin: 0;
 
@@ -592,6 +670,10 @@
         grid-template-columns: repeat(2, max-content);
 
         flex-basis: 100%;
+    }
+
+    .elevation-dialog .engine-confirmation-panel {
+        padding: 20px;
     }
 
     .engine-confirmation-panel {

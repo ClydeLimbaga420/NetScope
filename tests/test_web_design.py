@@ -122,6 +122,27 @@ def test_engine_ui_renders_structured_results_safely():
     assert "textContent" in text(WEB / "static" / "js" / "web-init.js")
 
 
+def test_admin_restart_has_a_branded_progress_dialog():
+    source = text(WEB / "static" / "js" / "engine-ui.js")
+    styles = text(WEB / "static" / "css" / "web-overrides.css")
+    for token in (
+        "function createElevationDialog",
+        "Waiting for Windows approval",
+        "Starting administrator session",
+        "Switching now...",
+        "elevation-dialog-status",
+        'window.location.replace(status.url)',
+    ):
+        assert token in source, token
+    for token in (
+        ".elevation-dialog",
+        ".elevation-dialog-status",
+        ".elevation-dialog-spinner",
+        "@media (prefers-reduced-motion: reduce)",
+    ):
+        assert token in styles, token
+
+
 def test_design_changelog_records_phase_c_files():
     doc = ROOT / "docs" / "phaseC-web-ui.md"
     assert doc.is_file()

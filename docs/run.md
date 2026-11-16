@@ -11,7 +11,8 @@ prompt. NetScope restarts elevated and automatically switches the current
 browser tab to the administrator session. If elevation is cancelled or fails,
 the existing session stays open. This also works when Windows asks for
 credentials for a different administrator account, without leaving an extra
-console window open.
+console window open. An in-app progress dialog stays visible during approval
+and reconnection.
 
 In the web GUI, open Troubleshoot and choose **Speed test** in the network
 tools. It reports HTTP latency plus download and upload throughput using

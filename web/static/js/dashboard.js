@@ -140,8 +140,21 @@ try { chart = new Chart(
             maintainAspectRatio: false,
 
             animation: {
-                duration: 700,
-                easing: "easeOutQuart"
+                duration: 1800,
+                easing: "linear"
+            },
+
+            transitions: {
+                active: {
+                    animation: {
+                        duration: 400
+                    }
+                },
+                resize: {
+                    animation: {
+                        duration: 400
+                    }
+                }
             },
 
             resizeDelay: 120,

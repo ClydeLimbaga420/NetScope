@@ -160,19 +160,92 @@
     renderAdminState();
   }
 
-  async function requestElevation() {
+  function createElevationDialog() {
+    const dialog = element("dialog", "engine-confirmation elevation-dialog");
+    const panel = element("div", "engine-confirmation-panel");
+    const head = element("div", "engine-confirm-head");
+    const headText = element("div", "engine-confirm-head-text");
+    const icon = svgIcon(["M12 3l8 3v5c0 4.6-3.2 8.4-8 10-4.8-1.6-8-5.4-8-10V6l8-3z", "m9 12 2 2 4-4"], 24);
+    head.append(icon);
+    headText.append(element("p", "eyebrow", "ADMINISTRATOR MODE"));
+    const heading = element("h2", "", "Restart NetScope");
+    heading.id = "elevation-dialog-title";
+    headText.append(heading);
+    head.append(headText);
+    panel.append(head);
+    panel.append(element(
+      "p",
+      "diag-desc elevation-dialog-intro",
+      "NetScope will restart with administrator rights. This browser tab will switch to the new session automatically."
+    ));
+
+    const statusBox = element("div", "elevation-dialog-status");
+    const spinner = element("span", "elevation-dialog-spinner");
+    spinner.setAttribute("aria-hidden", "true");
+    const statusText = element("div", "elevation-dialog-status-copy");
+    const title = element("strong", "", "Ready when you are");
+    title.id = "elevation-dialog-status-title";
+    const detail = element("span", "", "Windows will ask you to approve the restart.");
+    detail.id = "elevation-dialog-status-detail";
+    statusText.append(title, detail);
+    statusBox.append(spinner, statusText);
+    statusBox.setAttribute("role", "status");
+    statusBox.setAttribute("aria-live", "polite");
+    dialog.setAttribute("aria-labelledby", heading.id);
+    dialog.setAttribute("aria-describedby", detail.id);
+    panel.append(statusBox);
+
+    const actions = element("div", "engine-dialog-actions");
+    const cancel = element("button", "ghost-button", "Cancel");
+    cancel.type = "button";
+    const proceed = element("button", "step-run", "Continue");
+    proceed.type = "button";
+    actions.append(cancel, proceed);
+    panel.append(actions);
+    dialog.append(panel);
+    document.body.append(dialog);
+    dialog.addEventListener("close", () => dialog.remove(), { once: true });
+
+    return { dialog, cancel, proceed, spinner, title, detail };
+  }
+
+  async function requestElevation(dialogUi) {
     if (state.busy) return;
-    if (!window.confirm("Restart NetScope as administrator? Windows will show a UAC prompt.")) return;
-    state.adminNotice = "Requesting administrator rights...";
-    renderAdminState();
-    try {
-      const result = await api("/api/elevate", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-      if (result && result.handoff) {
-        state.adminNotice = "Restarting as administrator... Waiting for the elevated session.";
+    const { dialog, cancel, proceed, spinner, title, detail } = dialogUi;
+    let pending = false;
+    const setPending = (value) => {
+      pending = value;
+      dialog.classList.toggle("is-pending", value);
+      cancel.disabled = value;
+      proceed.hidden = value;
+      spinner.hidden = !value;
+      if (value) {
+        title.textContent = "Waiting for Windows approval";
+        detail.textContent = "Approve the NetScope request in the Windows security prompt.";
+      }
+    };
+    spinner.hidden = true;
+    dialog.addEventListener("cancel", (event) => {
+      if (pending) event.preventDefault();
+    });
+    cancel.addEventListener("click", () => dialog.close());
+    proceed.addEventListener("click", async () => {
+      setPending(true);
+      state.adminNotice = "Waiting for Windows approval...";
+      renderAdminState();
+      try {
+        const result = await api("/api/elevate", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+        if (!result || !result.handoff) {
+          throw new Error("NetScope could not start the administrator restart.");
+        }
+
+        title.textContent = "Starting administrator session";
+        detail.textContent = "Connecting securely to the new session. Keep this window open.";
+        state.adminNotice = "Starting administrator session...";
         renderAdminState();
         const deadline = Date.now() + 90000;
         while (Date.now() < deadline) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
+          await new Promise((resolve) => setTimeout(resolve, 300));
           let status;
           try {
             status = await api("/api/elevate/status");
@@ -181,22 +254,39 @@
             continue;
           }
           if (status && status.status === "ready" && status.url) {
-            state.adminNotice = "Administrator session ready. Reloading...";
+            title.textContent = "Administrator session ready";
+            detail.textContent = "Switching now...";
+            state.adminNotice = "";
             renderAdminState();
             window.location.replace(status.url);
             return;
           }
           if (status && status.status === "error") {
-            throw new Error(status.message || "Elevation handoff failed.");
+            throw new Error(status.message || "The administrator session could not be started.");
           }
         }
-        throw new Error("Timed out waiting for the elevated NetScope session. You can reopen NetScope manually.");
+        throw new Error("Timed out waiting for the administrator session. Your current session is still available.");
+      } catch (error) {
+        setPending(false);
+        spinner.hidden = true;
+        title.textContent = "Could not switch to administrator";
+        detail.textContent = error.message;
+        proceed.hidden = true;
+        cancel.textContent = "Close";
+        cancel.disabled = false;
+        state.adminNotice = error.message;
+        renderAdminState();
       }
-      state.adminNotice = "Restarting as administrator... This page will disconnect.";
-    } catch (error) {
-      state.adminNotice = error.message;
-    }
+    });
+    dialog.showModal();
+    proceed.focus();
+  }
+
+  function openElevationDialog() {
+    if (state.busy) return;
+    state.adminNotice = "";
     renderAdminState();
+    requestElevation(createElevationDialog());
   }
 
   function statusClass(status) {
@@ -1737,7 +1827,7 @@
       event.preventDefault();
       planFix(button.dataset.fixId);
     });
-    [["run-as-admin", requestElevation], ["repair-run-as-admin", requestElevation]].forEach(([id, handler]) => {
+    [["run-as-admin", openElevationDialog], ["repair-run-as-admin", openElevationDialog]].forEach(([id, handler]) => {
       const button = $(id);
       if (button) button.addEventListener("click", (event) => { event.preventDefault(); handler(); });
     });
