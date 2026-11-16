@@ -20,6 +20,7 @@ from werkzeug.serving import make_server
 import config
 from web.security import TOKEN_PARAM
 from web.server import WebState, create_app
+from web.window import run_native_window, webview2_available
 
 
 def _find_free_port() -> int:
@@ -123,6 +124,47 @@ def _remove_lock(pid: int | None = None) -> None:
         pass
 
 
+def _launch_mode(no_browser: bool, browser: bool) -> str:
+    if no_browser:
+        return "headless"
+    if browser:
+        return "browser"
+    return "window"
+
+
+def _show_existing(url: str, mode: str, state: WebState) -> bool:
+    if mode == "headless":
+        print(url, flush=True)
+        return True
+    if mode == "window":
+        if run_native_window(url):
+            return True
+        state.logger.warning("webview_unavailable", source="web")
+        return _open_url(url)
+    return _open_url(url)
+
+
+def _acquire_lock_with_wait(timeout: float = 10.0) -> BinaryIO | None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        lock = _acquire_instance_lock()
+        if lock is not None:
+            return lock
+        time.sleep(0.1)
+    return None
+
+
+def _run_window_session(state: WebState, srv: object, boot_url: str, print_url: bool) -> None:
+    server_thread = threading.Thread(target=srv.serve_forever, daemon=True)
+    server_thread.start()
+    if print_url:
+        print(boot_url, flush=True)
+    if not run_native_window(boot_url):
+        state.logger.warning("webview_unavailable", source="web")
+        _open_url(boot_url)
+    state.shutdown_event.wait()
+
+
 def _existing_instance_url(lock: dict | None) -> str | None:
     if not isinstance(lock, dict):
         return None
@@ -188,34 +230,45 @@ def _monitor(state: WebState, interval: float = 2.0) -> None:
             os._exit(0)
 
 
-def run_web_ui(port: int | None = None, no_browser: bool = False) -> int:
-    instance_lock = _acquire_instance_lock()
+def run_web_ui(
+    port: int | None = None,
+    no_browser: bool = False,
+    browser: bool = False,
+    print_url: bool = False,
+    replace: bool = False,
+) -> int:
+    mode = _launch_mode(no_browser, browser)
+
+    if replace:
+        instance_lock = _acquire_lock_with_wait(10.0)
+        if instance_lock is None:
+            logger = config.setup_logging("web", session_id="replace-wait")
+            logger.error("elevate_takeover_timeout", source="web", timeout=10.0)
+            return 1
+    else:
+        instance_lock = _acquire_instance_lock()
+
     if instance_lock is None:
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
             url = _existing_instance_url(_read_lock())
             if url:
-                if no_browser:
-                    print(url)
+                if mode == "headless" or print_url:
+                    print(url, flush=True)
                 else:
-                    _open_url(url)
+                    state = WebState(mode="web")
+                    _show_existing(url, mode, state)
                 return 0
             time.sleep(0.1)
         return 1
 
-    state = None
+    state = WebState(mode="web")
     try:
-        state = WebState(mode="web")
         app = create_app(state)
         port = int(port) if port else _find_free_port()
         state.port = port
         boot_url = f"http://127.0.0.1:{port}/__boot__?{TOKEN_PARAM}={state.security.boot_token}"
 
-        # Bind before advertising anything. Werkzeug 3.x converts bind
-        # OSErrors into print(strerror) + sys.exit(1) inside
-        # BaseWSGIServer.__init__, so a failed bind surfaces as SystemExit(1),
-        # not OSError; catch both so the failure is logged and returns
-        # cleanly instead of escaping the CLI.
         try:
             srv = make_server("127.0.0.1", port, app, threaded=True)
         except SystemExit as exc:
@@ -231,13 +284,20 @@ def run_web_ui(port: int | None = None, no_browser: bool = False) -> int:
 
         threading.Thread(target=_monitor, args=(state,), daemon=True).start()
 
-        if not no_browser:
-            threading.Timer(0.6, lambda: _open_url(boot_url)).start()
-        else:
-            print(boot_url, flush=True)
-
         state.logger.event("server_start", source="web", port=port)
-        srv.serve_forever()
+
+        if mode == "window":
+            if print_url:
+                print(boot_url, flush=True)
+            _run_window_session(state, srv, boot_url, print_url)
+        elif mode == "browser":
+            if print_url:
+                print(boot_url, flush=True)
+            threading.Timer(0.6, lambda: _open_url(boot_url)).start()
+            srv.serve_forever()
+        else:  # headless
+            print(boot_url, flush=True)
+            srv.serve_forever()
     except KeyboardInterrupt:
         if state is not None:
             state.logger.event("server_shutdown", source="web", reason="keyboard_interrupt")

@@ -132,3 +132,50 @@ jobs:
           name: NetScope-windows-x64
           path: dist/NetScope.exe
           if-no-files-found: error
+
+  installer:
+    name: Build and smoke-test installer
+    needs: build
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+            pyproject.toml
+
+      - name: Download exe
+        uses: actions/download-artifact@v4
+        with:
+          name: NetScope-windows-x64
+          path: dist
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . -r requirements-dev.txt
+
+      - name: Install Inno Setup
+        run: |
+          if (-not (Get-Command ISCC.exe -ErrorAction SilentlyContinue)) {
+            choco install innosetup --yes --no-progress
+          }
+
+      - name: Build installer
+        run: ./scripts/build_installer.ps1
+
+      - name: Installer smoke test
+        run: python scripts/installer_smoke.py --installer dist/installer/NetScope-Setup.exe
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: NetScope-Setup
+          path: dist/installer/NetScope-Setup.exe
+          if-no-files-found: error

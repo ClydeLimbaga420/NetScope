@@ -1,9 +1,10 @@
-# Phase D/E report: launch, packaging, installer, CI
+﻿# Phase D/E report: launch, packaging, installer, CI
 
 Date: 2026-11-15
 Branch: `phasec`
 Status: Phase D implementation complete; Phase E documentation/CI complete
-except browser E2E and a real Windows 10 VM run. Nothing has been pushed.
+except browser E2E and a real Windows 10 VM run. The Phase 7 desktop-installer
+follow-up is recorded in the addendum at the end. Nothing has been pushed.
 
 Deliverables index: `docs/phaseE-deliverables.md`.
 
@@ -12,8 +13,9 @@ Deliverables index: `docs/phaseE-deliverables.md`.
 - `main` was merged into `phasec` as a fast-forward: `49db262 -> cbb69b7`.
 - Commit `d1c610d` ("add mit license, bump version to 0.3.0") added `LICENSE`
   and updated `pyproject.toml` metadata.
-- The packaging, installer, CI, docs, and test changes in this report are in the
-  working tree and are not committed yet.
+- The original Phase D/E packaging, installer, CI, docs, and test changes have
+  since been committed. The Phase 7 desktop-window/Inno follow-up described in
+  the addendum is still in the working tree.
 - `LICENSE` is standard MIT with a blank author/copyright-holder line
   (`Copyright (c) 2026`); add the desired name before publishing if required.
 - `pyproject.toml` version is `0.3.0`, license metadata is MIT, and the removed
@@ -55,8 +57,9 @@ Deliverables index: `docs/phaseE-deliverables.md`.
 
 ### Executable size
 
-Current build: **13.8 MB** (`dist/NetScope.exe`, Python 3.14.7, PyInstaller
-6.22.3, UPX disabled).
+Phase D/E build: **13.8 MB** (`dist/NetScope.exe`, Python 3.14.7, PyInstaller
+6.22.3, UPX disabled). The Phase 7 follow-up build is **16.1 MB** because it
+bundles pywebview/pythonnet/WebView2 support; see the addendum.
 
 A comparable tkinter build was never produced in this checkout, so a numeric
 "before" size does not exist. tkinter/Tcl/Tk is excluded from the Flask build;
@@ -102,7 +105,8 @@ uninstall preservation, purge, missing source, and CLI confirmation/JSON paths
 - Double-click/Win+R/Start Menu uses the owned-console path: detach the console,
   start the server, and open the app window.
 - `netscope gui` from a terminal detaches, waits for a bounded boot URL, and
-  opens the browser; `--no-browser --port N` runs in the foreground.
+  opens the WebView2 app window; `--browser` forces Edge/Chrome and
+  `--no-browser --port N` runs in the foreground.
 - No arguments in a terminal opens the `netscope>` shell.
 - Single instance per user: OS lock plus atomically published port file, health
   verification before reuse, owner-checked cleanup.
@@ -152,3 +156,42 @@ uninstall preservation, purge, missing source, and CLI confirmation/JSON paths
   `docs/known-unverified.md`.
 - No remote CI run yet; the workflow has only been validated locally.
 - The working tree still needs a commit (and the user has not requested a push).
+
+## Desktop installer follow-up (2026-11-16)
+
+The raw-exe installer was extended into a desktop distribution:
+
+- `web/window.py` hosts the localhost UI in a pywebview/WebView2 window. The
+  window is default; `--browser` forces Edge/Chrome and `--no-browser` keeps the
+  headless server. Missing/broken WebView2 logs `webview_unavailable` and falls
+  back to the browser.
+- A second launch reuses the running server and opens it in the existing/new
+  window. Closing one window does not stop the shared server. Elevated fixes
+  relaunch with `--replace`, wait up to 10 seconds for the old lock, and keep the
+  original server alive if UAC is declined.
+- `installer/NetScope.iss` is a per-user Inno Setup 6/7 installer:
+  `%LOCALAPPDATA%\Programs\NetScope`, PATH/App Paths, Start Menu and optional
+  desktop shortcuts, uninstaller, WebView2 bootstrap/offline handling, and a
+  `.netscope-inno` marker. Uninstall removes the app/PATH/App Paths entries and
+  asks whether to delete `%LOCALAPPDATA%\NetScope`; Yes is the default. Silent
+  uninstalls skip the prompt and use that default.
+- `cli/installer.py` now refuses to modify an Inno-managed install and points to
+  **Settings > Apps**; the portable CLI installer keeps using
+  `.netscope-install`.
+- `scripts/build_installer.ps1` reads `config.APP_VERSION` (or `-Version`) and
+  finds `ISCC.exe` on PATH or in the per-user/machine Inno directories.
+  `scripts/installer_smoke.py` installs silently in a disposable profile,
+  verifies shortcut/App Paths/PATH/`--version`, creates a data marker, then
+  uninstalls and confirms app, shortcut, registry entries and data are removed.
+- CI adds an `installer` job after `build`: downloads the exe artifact, installs
+  Inno Setup via Chocolatey when needed, builds `NetScope-Setup.exe`, runs the
+  silent smoke test, and uploads `NetScope-Setup`.
+- `NetScope.spec` collects pywebview, pythonnet, and clr_loader data/binaries.
+  The rebuilt frozen exe is 16.1 MB; the installer is 17.8 MB.
+
+Verification on 2026-11-16: full suite **280 passed, 2 skipped**; frozen smoke
+**9/9**; Inno Setup 6.7.3 compiled `NetScope-Setup.exe`; silent install /
+launch / uninstall smoke passed with user data removed by default. The Windows
+10 VM run, interactive UAC/window checks, and human screenshot review remain
+manual. These desktop-installer changes are in the working tree; nothing has
+been committed or pushed.

@@ -1,38 +1,45 @@
-# AGENTS.md
+﻿# AGENTS.md
 
 NetScope is being evolved (per `prompt.txt`, tracked in `task.md`) from a Flask
 dashboard into a universal Windows network troubleshooting tool with one shared
 engine and two front ends (CLI + localhost web UI). Work phase by phase; update
 this file and `task.md` Notes at the end of every phase.
 
-**Current status: Phase 5 and Phase 6 D/E complete.** tkinter is removed;
-`dist/NetScope.exe` is a one-file console-subsystem build (13.8 MB) bundling the
-web templates/static and fix catalog; `netscope install`/`uninstall` manage a
-per-user PATH/App Paths/Start Menu install; CI covers tests on Python 3.11/3.14,
-80% coverage, Playwright browser smoke + screenshots, and the frozen exe smoke
-test. Latest local suite: 259 passed, 2 skipped (2026-11-15); coverage 82% over
-`core`/`fixes`/`powershell`. Remaining: a real Windows 10 VM run of
-`docs/manual-test-checklist.md` and human visual review of the captured UI
-screenshots. Nothing is pushed.
+**Current status: Phase 5, Phase 6 D/E, and the Phase 7 desktop-installer
+follow-up are complete.** tkinter is removed. `dist/NetScope.exe` is a one-file
+console-subsystem build (16.1 MB) bundling web templates/static, the fix
+catalog, pywebview/WebView2 and pythonnet; `dist/installer/NetScope-Setup.exe`
+(17.8 MB, Inno Setup 6.7.3) is a per-user installer with PATH/App Paths/Start
+Menu/desktop shortcuts, uninstaller, WebView2 handling, and a `.netscope-inno`
+marker. `netscope install`/`uninstall` still manage portable installs and refuse
+installer-managed copies. CI covers tests on Python 3.11/3.14, 80% coverage,
+Playwright browser smoke + screenshots, frozen exe smoke, and an Inno
+install/uninstall smoke. Latest local suite: 280 passed, 2 skipped (2026-11-16);
+coverage 82% over `core`/`fixes`/`powershell`. Manual validation (Windows 10
+VM checklist, window/UAC/installer cases, and human screenshot review) is
+deferred for now by request; it is a release-confidence item, not a code or
+test blocker. The Phase 7 changes are uncommitted; nothing is pushed.
 
 ## Run / environment
-- The Flask dashboard still works: `python app.py` → http://127.0.0.1:5000
+- The Flask dashboard still works: `python app.py` â†’ http://127.0.0.1:5000
   locally, or `http://<LAN-IP>:5000` from another device. It binds
   `HOST`/`PORT` from `config.py` (`0.0.0.0`, `debug=False`, `threaded=True`)
-  and prints reachable LAN URLs via `_lan_urls()`. No authentication — keep
+  and prints reachable LAN URLs via `_lan_urls()`. No authentication â€” keep
   it on a trusted LAN; never port-forward it to the internet.
 - This checkout originally had **no `.venv`**. A venv now exists (Python 3.14.7).
   Recreate with `py -m venv .venv`, then
   `.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt`.
-- Run tests: `.\.venv\Scripts\python.exe -m pytest` (latest full run: 259 passed,
-  2 skipped, 2026-11-15). Coverage gate:
+- Run tests: `.\.venv\Scripts\python.exe -m pytest` (latest full run: 280 passed,
+  2 skipped, 2026-11-16). Coverage gate:
   `.\.venv\Scripts\python.exe -m pytest --cov=core --cov=fixes --cov=powershell --cov-fail-under=80`.
 - Run the CLI: `.\.venv\Scripts\python.exe netscope.py --help`
   (or `python -m cli`). `netscope.py diagnose --json` is the machine interface.
-- Run the web UI: `netscope gui` launches the localhost interface; use
-  `netscope gui --no-browser --port N` to run it in the foreground and print
-  its boot URL. The hidden `__gui__` entry serves the UI in-process. tkinter is
-  gone; `cli/launch.py` owns console detection/detach/relaunch.
+- Run the web UI: `netscope gui` launches the localhost interface in a
+  pywebview/WebView2 window; use `--browser` to force Edge/Chrome or
+  `--no-browser --port N` to run it in the foreground and print its boot URL.
+  The hidden `__gui__` entry serves the UI in-process. tkinter is gone;
+  `cli/launch.py` owns console detection/detach/relaunch and `web/window.py`
+  owns WebView2 detection/window hosting.
 - Double-clicking `NetScope.exe` (no args, own console) detaches and opens the
   GUI; `netscope` with no args in a shared terminal opens the shell.
 - PowerShell is required for diagnostics (Windows PowerShell 5.1).
@@ -40,54 +47,54 @@ screenshots. Nothing is pushed.
   `from modules...`, `from core...`), not a package.
 
 ## New architecture (Phase 1)
-- `core/models.py` — `Status`, `Layer`, `CheckResult`, `DiagnosticReport`,
+- `core/models.py` â€” `Status`, `Layer`, `CheckResult`, `DiagnosticReport`,
   pipeline order (`LAYER_ORDER`), exit-code logic.
-- `core/runner.py` — the **single mockable command interface**.
+- `core/runner.py` â€” the **single mockable command interface**.
   `CommandRunner.run(args, timeout=...)`; `SubprocessRunner` (never `shell=True`,
   `CREATE_NO_WINDOW`, timeouts, encoding-safe capture, logs every command) and
   `FakeRunner` for tests.
-- `core/native.py` — native ping/netsh/arp/route parsing, defensive against
+- `core/native.py` â€” native ping/netsh/arp/route parsing, defensive against
   localized/malformed output.
-- `powershell/scripts.py` — static PowerShell query fragments (`BATCH_QUERIES`);
-  no user interpolation. `powershell/runner.py` — `PowerShellLayer` runs scripts
+- `powershell/scripts.py` â€” static PowerShell query fragments (`BATCH_QUERIES`);
+  no user interpolation. `powershell/runner.py` â€” `PowerShellLayer` runs scripts
   from a temp `.ps1` via `-File`, passes user values as separate `-ParamName
   value` arguments, batches all queries into one PowerShell startup, parses JSON,
   detects `ConstrainedLanguage`.
-- `powershell/validation.py` — strict validators for hosts, IPs, ports, adapter
+- `powershell/validation.py` â€” strict validators for hosts, IPs, ports, adapter
   names, profile names, fix IDs, paths. Reject shell metacharacters/control chars.
-- `core/snapshot.py` — collects one immutable `Snapshot` (batched PowerShell +
+- `core/snapshot.py` â€” collects one immutable `Snapshot` (batched PowerShell +
   needed native tools including `arp`, MTU subinterfaces and pings) that all
   checks consume.
-- `core/info.py` — builds the plain-data `info` view (adapters, addressing,
+- `core/info.py` â€” builds the plain-data `info` view (adapters, addressing,
   routes, ARP, DNS, proxy, VPN, Wi-Fi, MTU, admin status is added by the CLI).
-- `core/checks/` — one module per layer (`adapter`, `services`, `ip`, `gateway`,
+- `core/checks/` â€” one module per layer (`adapter`, `services`, `ip`, `gateway`,
   `lan`, `dns`, `internet`, `stack`); each exposes `run(ctx) -> list[CheckResult]`.
-- `core/subnets.py` — finds private remote LAN subnets from the routing table
+- `core/subnets.py` â€” finds private remote LAN subnets from the routing table
   (excluding local/virtual/loopback/link-local ranges) and picks their lowest-
   metric next hop. `collect_snapshot` pings up to 8 of those next hops, and the
   `LAN-03` check reports cross-subnet LAN reachability (route present but next
   hop silent / no next hop / not tested). It is block-level only: NetScope
   probes the next-hop router, not arbitrary hosts behind it.
-- `core/probes.py` — pure-Python socket/DNS/HTTP probes (`NetworkProbe`,
+- `core/probes.py` â€” pure-Python socket/DNS/HTTP probes (`NetworkProbe`,
   `FakeProbe`) with timeouts.
-- `core/engine.py` — `DiagnosticEngine.diagnose(layers=None, snapshot=None,
+- `core/engine.py` â€” `DiagnosticEngine.diagnose(layers=None, snapshot=None,
   progress=..., on_check=..., mode=...)`; builds the snapshot, runs layers in
   order, captures check exceptions as `ERROR` results, reports progress per
   layer and optionally per result.
-- `core/logging_config.py` — JSON-lines rotating logs. **Do not create a
+- `core/logging_config.py` â€” JSON-lines rotating logs. **Do not create a
   top-level `logging/` package** (it would shadow the stdlib).
-- `config.py` — app version, timeouts, pipeline constants, `%LOCALAPPDATA%`
+- `config.py` â€” app version, timeouts, pipeline constants, `%LOCALAPPDATA%`
   paths (`data_dir`, `log_dir`, `report_dir`, `backup_dir`).
 
 ## CLI (Phase 2)
 - Entry points: root `netscope.py`, `cli/main.py`, `python -m cli`. Rendering and
   terminal concerns stay in `cli/`; diagnostics stay in `core/`.
-- `cli/parser.py` — argparse commands: `diagnose`, `fix`, `info`, `ping`,
+- `cli/parser.py` â€” argparse commands: `diagnose`, `fix`, `info`, `ping`,
   `trace`, `dns`, `arp`, `routes`, `ports`, `mtu`, `monitor`, `logs`, `report`, `gui`,
   `install`, `uninstall`, `--version`. Global flags: `--json`, `--no-color`,
   `--quiet`, `--verbose`, `--yes`, `--dry-run`, `--yes-i-understand-risk`.
   Usage errors exit 64 (custom `CliArgumentParser.error`).
-- `cli/commands.py` — dispatch/handlers. `diagnose` streams each result to stdout
+- `cli/commands.py` â€” dispatch/handlers. `diagnose` streams each result to stdout
   as it completes (stderr shows collection), then a summary. `--json` emits one
   document without the full snapshot. `info` uses `core/info.py`. `fix` resolves a
   finding or fix ID, shows the preview (finding, cause, exact commands,
@@ -96,21 +103,21 @@ screenshots. Nothing is pushed.
   `--yes`, `--yes-i-understand-risk`, `--rollback`, `--adapter`, `--target`,
   `--value`, `--param`. Non-TTY without `--yes` errors with exit 64.
   `report` includes unresolved sections from `build_unresolved_sections()`.
-- `cli/utilities.py` — validated `ping`, `trace`, `dns`, `arp`, `routes`,
+- `cli/utilities.py` â€” validated `ping`, `trace`, `dns`, `arp`, `routes`,
   `ports` (port-spec expansion capped at 1024) and `mtu` (DF-ping binary search
-  548-1472 payload → path MTU).
-- `cli/colors.py` — ASCII status symbols + ANSI colour; disables on non-TTY,
+  548-1472 payload â†’ path MTU).
+- `cli/colors.py` â€” ASCII status symbols + ANSI colour; disables on non-TTY,
   `NO_COLOR`, `TERM=dumb`, `--json`/`--quiet`; enables Windows VT via ctypes.
-- `cli/shell.py` — `netscope>` shell, history/completion when stdlib `readline`
+- `cli/shell.py` â€” `netscope>` shell, history/completion when stdlib `readline`
   exists, `help`, numbered `menu`, `exit`. Shell commands reuse the same parser
   and dispatch. Type `monitor` to enter live dashboard mode.
-- `cli/monitor.py` — ANSI-based live monitoring dashboard (`netscope monitor`).
+- `cli/monitor.py` â€” ANSI-based live monitoring dashboard (`netscope monitor`).
   Periodic diagnostics (default 3s interval), real-time overall/layer/key-findings
   view, keyboard controls (`q` quit, `r` refresh, `i` interval). Requires TTY
   with color support.
-- `cli/admin.py` — `is_admin()`, `format_admin_command()`,
+- `cli/admin.py` â€” `is_admin()`, `format_admin_command()`,
   `relaunch_elevated()`; admin status is logged at startup and shown by `info`.
-- `cli/exit_codes.py` — 0/1/2/3/4/64/130 and `--help` text.
+- `cli/exit_codes.py` â€” 0/1/2/3/4/64/130 and `--help` text.
 - `logs` reads `%LOCALAPPDATA%\NetScope\logs\netscope.log`; `report` writes
   txt/json to `%LOCALAPPDATA%\NetScope\reports\` by default. `--output -` prints
   the report body to stdout.
@@ -118,18 +125,18 @@ screenshots. Nothing is pushed.
   preserve timeout exit code 124, and keep stderr clean.
 
 ## Fixes (Phase 3)
-- `fixes/catalog.py` — `CommandSpec`, `FixStep`, `Parameter`, `IfUnresolved`,
+- `fixes/catalog.py` â€” `CommandSpec`, `FixStep`, `Parameter`, `IfUnresolved`,
   `FixEntry`, `Catalog`; `parse_catalog()`, `load_catalog()`; validates unique
   IDs, required fields, parameter sources/validators, PS `$Param` declarations,
   native placeholders, high-risk second-confirmation, DETECT-ONLY restrictions,
   `[VERIFY]` flag on IP-08, LAN-10, DNS-04, DNS-05, NET-06, NET-08, NET-11.
-- `fixes/fixes.json` — 62 seeded entries: ADP-01..06, SVC-01..06, IP-01..09,
+- `fixes/fixes.json` â€” 62 seeded entries: ADP-01..06, SVC-01..06, IP-01..09,
   LAN-01..11, DNS-01..05, NET-01..11, VPN-01..06, WIFI-01..04, STK-01..04.
   Each has id, name, symptom, detection, explanation, admin, risk, reboot,
   snapshot (PS commands), rollback (commands + notes), verify (check IDs),
   ladder (steps with PS + native fallback), if_unresolved (this_device,
   beyond_device, next_checks, evidence_to_collect).
-- `core/gateway_setup.py` — read-only gateway discovery for `IP-09`:
+- `core/gateway_setup.py` â€” read-only gateway discovery for `IP-09`:
   `active_target()` picks an active physical adapter (preferring one without a
   default gateway); `detect_gateway()` ranks DHCP server/lease, existing
   gateways, default routes, then first/last/common subnet addresses, and pings
@@ -137,7 +144,7 @@ screenshots. Nothing is pushed.
   any default route exists, otherwise detects and executes `IP-09` immediately
   (snapshot/verification/rollback preserved). Both the legacy dashboard and the
   web Troubleshoot header expose `#auto-configure-gateway` for this action.
-- `fixes/executor.py` — `FixExecutor`: `prepare()` builds `FixPlan` with
+- `fixes/executor.py` â€” `FixExecutor`: `prepare()` builds `FixPlan` with
   resolved parameter values and preview lines; parameter sources
   `adapter_missing_gateway` and `detected_gateway` use `core/gateway_setup.py`.
   `run()` executes ladder with
@@ -147,7 +154,7 @@ screenshots. Nothing is pushed.
   rolled_back/needs_admin/declined/error/detection_only/unresolved), exit code,
   step details, verification evidence, rollback availability, unresolved
   causes. `rollback()` restores latest saved snapshot for the fix ID.
-- `fixes/if_unresolved.py` — `RankedCause`, `rank_causes()`, `unresolved_section()`,
+- `fixes/if_unresolved.py` â€” `RankedCause`, `rank_causes()`, `unresolved_section()`,
   `build_unresolved_sections()`, `unresolved_for_results()`. Ranks
   this_device vs beyond_device using evidence + isolation answer; probabilistic
   wording ("probable"/"possible", never diagnosis); `build_unresolved_sections()`
@@ -158,7 +165,7 @@ screenshots. Nothing is pushed.
   [--value VALUE] [--param NAME=VALUE]`. Streams preview to stdout, prompts
   interactively, logs confirmations/fix_applied/unresolved. JSON output
   includes full outcome + preview on `--dry-run`.
-- `tests/test_fixes.py` — 22 tests: catalog completeness/schema, DETECT-ONLY,
+- `tests/test_fixes.py` â€” 22 tests: catalog completeness/schema, DETECT-ONLY,
   verify flags, check fix_ids, executor resolve/dry-run/decline/admin/high-risk/
   rollback/detect-only, if_unresolved ranking/gating/wording/report, CLI
   dry-run/resolved/detect-only/unknown-id. Total 106 tests passed at Phase 3.
@@ -166,31 +173,73 @@ screenshots. Nothing is pushed.
 ## Launch / runtime after tkinter removal (Phase 6 D/E)
 - `gui/` is deleted. The web UI is the only graphical front end; it calls the
   same `DiagnosticEngine`, `FixExecutor`, and catalog as the CLI. Never put
-  detection, fix, or validation logic in `web/` — extend `core/` or `fixes/`.
-- `cli/launch.py` — `GUI_INTERNAL = "__gui__"`, `owns_console()`
+  detection, fix, or validation logic in `web/` â€” extend `core/` or `fixes/`.
+- `cli/launch.py` â€” `GUI_INTERNAL = "__gui__"`, `owns_console()`
   (`GetConsoleProcessList == 1`), `detach_console()` (`FreeConsole`),
   `launch_detached_gui()` (`DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP`,
   devnull stdio, cwd = project root), `gui_relaunch_argv()` (source:
   `[netscope.py, "__gui__"]`; frozen: `["__gui__"]`).
-- `web/runtime.py` — `AppRuntime` (engine/catalog/runner/ps/logger/
+- `web/runtime.py` â€” `AppRuntime` (engine/catalog/runner/ps/logger/
   admin_check/session_id/backup_dir, `executor()` factory), `build_runtime()`
   (fresh `web`-mode logging + real catalog; empty catalog if it fails to load)
   and `runtime_from_context()` (reuse a `CliContext`). Moved from
   `gui/runtime.py`; renamed from `GuiRuntime`.
 - `cli/main.py` intercepts `__gui__` before argparse and runs the web server in
   process (`_run_gui_process`). `netscope gui` (`cmd_gui`) spawns the detached
-  server and returns 0. No args + own console → detach + GUI; no args in a
-  shared terminal → shell; no args without a TTY → help/exit 64.
+  server and returns 0. No args + own console â†’ detach + GUI; no args in a
+  shared terminal â†’ shell; no args without a TTY â†’ help/exit 64.
 - `web/run.py` owns the single-instance lock, port file, `/health` reuse,
   bounded boot URL, bind-failure logging, heartbeat/idle shutdown, and clean
   `POST /api/shutdown`.
 - Launcher tradeoff: the exe stays console-subsystem, so double-clicking it
   briefly flashes a console; the GUI child itself is detached and shows no
   console. A double-clicked `.py` via `py.exe` shares a console, so
-  `owns_console()` is False and it opens the shell — the frozen exe behaves as
+  `owns_console()` is False and it opens the shell â€” the frozen exe behaves as
   specified.
 - `tests/test_launch.py` covers the retained launch helpers. `tests/test_gui.py`
   was deleted with the tkinter front end.
+
+## Desktop window and installer (Phase 7)
+- `web/window.py` â€” `WEBVIEW2_CLIENT_ID`, `_webview2_version()` (HKCU/HKLM/
+  WOW6432Node EdgeUpdate `pv`), `webview2_available()` (requires a non-zero
+  four-part version), and `run_native_window(boot_url)` (pywebview
+  `edgechromium`, 1280x860, min 900x600, blocks until close). Failures return
+  `False`; `web/run.py` logs `webview_unavailable` and falls back to the browser.
+- `web/run.py` launch modes: `window` (default), `browser`, `no_browser`.
+  `_acquire_lock_with_wait()` waits up to 10s for a new owner after `--replace`;
+  `_show_existing()` verifies `/health` and reopens the shared server;
+  `_run_window_session()` owns the pywebview window lifecycle. Closing a window
+  does not stop the shared server; `POST /api/shutdown`/Ctrl+C/heartbeat do.
+- CLI: `netscope gui [--browser] [--no-browser] [--port N]`; hidden
+  `--print-url` for the detached child and `--replace` for the elevated
+  handoff. `cmd_gui` detached child runs `__gui__ --print-url`; when run in a
+  TTY, `netscope gui` opens the window in a detached process and returns.
+  `web/api.py` `/api/elevate` calls `gui_relaunch_argv(replace=True)`; declining
+  UAC logs `elevate_cancelled`, returns 409, and leaves the old server running.
+- `cli/installer.py` portable install uses `.netscope-install`;
+  `INNO_MARKER_NAME = ".netscope-inno"`. `_reject_inno_managed()` makes both
+  `install()` and `uninstall()` raise `InstallerError` directing users to
+  **Settings > Apps** for installer-managed copies.
+- `installer/NetScope.iss` â€” per-user Inno Setup 6/7; AppId
+  `{8E6F1C2A-4B7D-4E3A-9C5F-2D1B7A6E8F04}`, install
+  `{localappdata}\Programs\NetScope`, `PrivilegesRequired=lowest`, PATH/App
+  Paths, Start Menu + optional desktop shortcut, `.netscope-inno`, WebView2
+  bootstrap/offline handling. Uninstall removes app/PATH/App Paths/shortcut and
+  prompts to delete `{localappdata}\NetScope` (Yes is default); silent
+  uninstalls skip the prompt and use Yes.
+- `scripts/build_installer.ps1` reads `config.APP_VERSION` or `-Version`, finds
+  `ISCC.exe` (PATH, per-user Programs, Program Files 6/7), and writes
+  `dist/installer/NetScope-Setup.exe`.
+- `scripts/installer_smoke.py` installs silently, checks shortcut/App
+  Paths/PATH/`--version`, creates a user-data marker, uninstalls silently, and
+  waits for app/shortcut/registry/data removal. It is destructive by design:
+  run it in a disposable profile or back up `%LOCALAPPDATA%\NetScope` first.
+- `NetScope.spec` adds `collect_all("webview")`, `collect_all("pythonnet")`,
+  `collect_all("clr_loader")`, `web.window`, and the platform/clr hidden imports;
+  excludes the Android webview platform. Current exe: 16.1 MB; setup: 17.8 MB.
+- `.github/workflows/ci.yml` has an `installer` job after `build`: downloads the
+  exe artifact, installs Inno via Chocolatey if needed, builds the setup, runs
+  the silent smoke, and uploads `NetScope-Setup`.
 
 Usage:
 ```python
@@ -271,7 +320,7 @@ runtime = build_runtime()  # same engine/catalog as the CLI, web-mode logging
   detail links to it with **View full procedure**. A sidebar **Run as
   administrator** button calls `/api/elevate`; cancellation (UAC declined) logs
   `elevate_cancelled`, returns 409 and keeps the server running.
-- Tests: latest full suite is 259 passed, 2 skipped (2026-11-15). Session 30's
+- Tests: latest full suite is 280 passed, 2 skipped (2026-11-16). Session 30's
   live repro verified the real CLI child, boot/session/CSP, local assets, 33 SSE
   check events, findings/fixes/catalog, fix plan+dry-run, log streaming,
   shutdown, single-instance reuse and bind-failure logging (25/25); the gateway
@@ -300,7 +349,7 @@ runtime = build_runtime()  # same engine/catalog as the CLI, web-mode logging
   empty states, and label-aware busy buttons. `dashboard.js` (web) renders
   adapter pills (`adapter-dot`/`adapter-body`/`adapter-state`), sets
   `data-live` (success/catch/401), uses `\u2715` error markers, null-guards
-  `#repair-steps` (web template has none — repairs live in the Repair Library)
+  `#repair-steps` (web template has none â€” repairs live in the Repair Library)
   and disables the Refresh devices button via `setRefreshDevicesBusy`. Brand:
   the "N" tile logo is gone everywhere (no `.brand-icon`); NetScope carries as
   a gradient wordmark (`@supports` background-clip text) and the favicon is a
@@ -313,7 +362,7 @@ runtime = build_runtime()  # same engine/catalog as the CLI, web-mode logging
   (`let chart = null; try ... catch`), `.btn-label`-aware `configureGateway`
   and a drawer IIFE mirroring `web-init.js`. Test constraints drove markup:
   the web templates must keep the literal tags `<aside class="sidebar">`,
-  `<main class="main">`, `<footer>` (no extra attributes on those tags — the
+  `<main class="main">`, `<footer>` (no extra attributes on those tags â€” the
   skip link targets the inner `#main-content` wrapper div instead).
 - Phase C session 42: reusable shell partials `web/templates/_page_header.html`,
   `_status.html`, `_toast.html` (`#toast-region`, `window.NetScope.toast`,
@@ -338,7 +387,7 @@ runtime = build_runtime()  # same engine/catalog as the CLI, web-mode logging
 
 ## Logging
 - JSON-lines file at `%LOCALAPPDATA%\NetScope\logs\netscope.log`, rotating
-  (5 MB × 5). Every record has `ts`, `level`, `logger`, `session_id`, `event`,
+  (5 MB Ã— 5). Every record has `ts`, `level`, `logger`, `session_id`, `event`,
   optional `fields`; secrets are redacted.
 - Structured logger helpers: `event`, `debug`, `warning`, `error`, `command`,
   `check`, `confirmation`, `fix_applied`, `unresolved`, `action`.
@@ -373,8 +422,8 @@ runtime = build_runtime()  # same engine/catalog as the CLI, web-mode logging
   diagnostics/repair endpoints are reachable by anyone who can access port 5000.
 - `modules/diagnostics.py` is a registry of predefined checks/repairs (adapter
   status, IP config, loopback, gateway/internet ping, DNS, traceroute, DNS
-  flush, DHCP renew, Winsock/TCP-IP reset). Commands are argv lists — never
-  shell strings — and the client can only select a known `step_id`; there is
+  flush, DHCP renew, Winsock/TCP-IP reset). Commands are argv lists â€” never
+  shell strings â€” and the client can only select a known `step_id`; there is
   no arbitrary command execution. Windows-only repairs report as unsupported
   elsewhere. `run_diagnostic` returns `{id, success, commands, output,
   duration_ms}`; `list_diagnostics` returns each step's `id`, `title`,
@@ -405,7 +454,7 @@ runtime = build_runtime()  # same engine/catalog as the CLI, web-mode logging
   best-effort label (`This PC`, `Router`, `Wireless`, `Wired`, `Unknown`)
   derived from ARP interface mapping (Wi-Fi adapter names), the default
   gateway (with `route print -4` fallback), randomized MACs, and
-  mobile/IoT vendor OUIs — Windows does not expose the AP's client list.
+  mobile/IoT vendor OUIs â€” Windows does not expose the AP's client list.
   Each entry also carries `mac_randomized`, `hardware_mac` and `mac_note`.
   Remote devices with randomized (locally administered) MACs are flagged
   because their real hardware MAC is hidden by design; the PC's own active
@@ -429,7 +478,7 @@ runtime = build_runtime()  # same engine/catalog as the CLI, web-mode logging
   (`#diag-progress-fill`, `#troubleshoot-percent`). Unsupported steps stay
   selectable so their `reason` is visible, but their run button is disabled.
   Repairs prompt via `window.confirm` and warn when not elevated.
-- `database/db.py` is not imported anywhere — the SQLite schema is unused
+- `database/db.py` is not imported anywhere â€” the SQLite schema is unused
   scaffolding (`database/netscope.db` is gitignored).
 - Do not delete `modules/`, `templates/`, `static/`, SQLite scaffolding until a
   later phase explicitly replaces them.
@@ -443,12 +492,12 @@ runtime = build_runtime()  # same engine/catalog as the CLI, web-mode logging
 - Never enable SMB1, disable SMB signing, or disable NCSI active probing by
   default (DETECT-ONLY or second confirmation only).
 
-## Packaging / installer / CI (Phase 5, Phase 6 D/E)
+## Packaging / installer / CI (Phase 5, Phase 6 D/E, Phase 7)
 - `NetScope.spec` is a one-file console-subsystem PyInstaller build (UPX off)
-  bundling `web/templates`, `web/static`, and `fixes/fixes.json`; tkinter and
-  heavy optional libs are excluded. `scripts/build.ps1` builds it with the venv
-  interpreter (`-Clean` wipes `build/` + `dist/`) and reports the exe size.
-  Current artifact: 13.8 MB.
+  bundling `web/templates`, `web/static`, `fixes/fixes.json`, pywebview,
+  pythonnet, and clr_loader; tkinter and heavy optional libs are excluded.
+  `scripts/build.ps1` builds it with the venv interpreter (`-Clean` wipes
+  `build/` + `dist/`) and reports the exe size. Current artifact: 16.1 MB.
 - `scripts/frozen_smoke.py` runs the frozen exe with an isolated
   `LOCALAPPDATA`: boot URL, dashboard, bundled CSS, `/api/status`, quiet
   console, structured `source:web` logging, `POST /api/shutdown`, clean exit,
@@ -462,9 +511,11 @@ runtime = build_runtime()  # same engine/catalog as the CLI, web-mode logging
   `main`; no PR or feature-branch runs): `test` matrix on Python 3.11 and
   3.14 with coverage over `core`/`fixes`/`powershell` (`--cov-fail-under=80`),
   a `browser` job installing Playwright Chromium and uploading
-  `artifacts/browser-smoke` screenshots, and a `build` job that runs the
+  `artifacts/browser-smoke` screenshots, a `build` job that runs the
   PyInstaller build, frozen smoke + frozen pytest, and uploads
-  `NetScope-windows-x64`.
+  `NetScope-windows-x64`, and an `installer` job that downloads the exe,
+  installs Inno via Chocolatey if needed, builds and silently smoke-tests
+  `NetScope-Setup.exe`, and uploads `NetScope-Setup`.
 - Docs: `README.md` (install/build/CLI/API/extension guide),
   `docs/manual-test-checklist.md` (Windows 10 VM checklist),
   `docs/known-unverified.md` (`[VERIFY]` repairs + Win10/Win11 caveats),
@@ -476,7 +527,8 @@ runtime = build_runtime()  # same engine/catalog as the CLI, web-mode logging
 ## Remaining work
 - Run `docs/manual-test-checklist.md` on a real Windows 10 VM, including the
   `[VERIFY]` repairs (`IP-08`, `LAN-10`, `DNS-04`, `DNS-05`, `NET-06`, `NET-08`,
-  `NET-11`).
+  `NET-11`), the WebView2 window/browser fallback, UAC replace handoff, and the
+  Inno install/uninstall/data-prompt cases.
 - Review the Playwright screenshots visually and on a high-DPI display.
 - Keep `LAN-09` DETECT-ONLY (deliberate deviation from `prompt.txt`) and keep
   the console-flash launcher tradeoff documented.

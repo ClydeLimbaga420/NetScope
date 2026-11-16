@@ -688,6 +688,9 @@ def cmd_report(args: Any, ctx: CliContext) -> int:
 def cmd_gui(args: Any, ctx: CliContext) -> int:
     """Launch the local web UI."""
     no_browser = bool(getattr(args, "no_browser", False))
+    browser = bool(getattr(args, "browser", False))
+    print_url = bool(getattr(args, "print_url", False))
+    replace = bool(getattr(args, "replace", False))
     port = getattr(args, "port", None)
     try:
         port_val = int(port) if port is not None else None
@@ -695,12 +698,12 @@ def cmd_gui(args: Any, ctx: CliContext) -> int:
         return _failure(ctx, "invalid --port value", exit_codes.USAGE)
 
     try:
-        from web.run import _open_url, run_web_ui
+        from web.run import run_web_ui
     except Exception as exc:
         return _failure(ctx, f"web interface unavailable: {exc}", exit_codes.FAILURES)
 
     # --no-browser: start server and print URL (foreground).
-    # Otherwise start server and open browser window (blocks this process).
+    # Otherwise start server and open window/browser (blocks this process).
     # When invoked from an interactive terminal without --no-browser, spawn a
     # detached server process so the prompt returns immediately.
     if (not no_browser) and _stdin_is_tty(ctx) and not getattr(ctx, "json_mode", False):
@@ -709,9 +712,11 @@ def cmd_gui(args: Any, ctx: CliContext) -> int:
             import subprocess
 
             if getattr(sys, "frozen", False):
-                argv = [sys.executable, "gui", "--no-browser"]
+                argv = [sys.executable, "gui", "--print-url"]
             else:
-                argv = [sys.executable, "-m", "cli", "gui", "--no-browser"]
+                argv = [sys.executable, "-m", "cli", "gui", "--print-url"]
+            if browser:
+                argv.append("--browser")
             if port_val is not None:
                 argv += ["--port", str(port_val)]
             env = os.environ.copy()
@@ -740,15 +745,13 @@ def cmd_gui(args: Any, ctx: CliContext) -> int:
                     except Exception:
                         pass
                 return _failure(ctx, "web UI process did not publish a valid local URL", exit_codes.FAILURES)
-            if not _open_url(line):
-                ctx.err(f"Could not open a browser. Open this local URL: {line}")
-            ctx.err("NetScope web UI launched.")
+            ctx.err("NetScope window launched.")
             return exit_codes.OK
         except Exception as exc:
             return _failure(ctx, f"could not launch web UI: {exc}", exit_codes.FAILURES)
 
     try:
-        return int(run_web_ui(port=port_val, no_browser=no_browser) or 0)
+        return int(run_web_ui(port=port_val, no_browser=no_browser, browser=browser, print_url=print_url, replace=replace) or 0)
     except KeyboardInterrupt:
         return exit_codes.INTERRUPTED
     except Exception as exc:

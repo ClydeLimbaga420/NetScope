@@ -633,6 +633,7 @@ def test_elevate_requests_restart(client, monkeypatch):
 
     assert response.status_code == 200
     assert calls and calls[0][0].endswith("netscope.py")
+    assert "--replace" in calls[0]
     assert st.shutdown_event.is_set()
 
 

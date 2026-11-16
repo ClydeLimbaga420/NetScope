@@ -9,10 +9,21 @@ them through sys._MEIPASS.
 
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_all
+
 project_root = Path(SPECPATH)
 
 web = project_root / "web"
 fixes = project_root / "fixes"
+
+webview_datas, webview_binaries, webview_hiddenimports = collect_all("webview")
+webview_hiddenimports = [
+    name
+    for name in webview_hiddenimports
+    if not name.startswith("webview.platforms.android")
+]
+pythonnet_datas, pythonnet_binaries, pythonnet_hiddenimports = collect_all("pythonnet")
+clr_loader_datas, clr_loader_binaries, clr_loader_hiddenimports = collect_all("clr_loader")
 
 hiddenimports = [
     "flask",
@@ -35,7 +46,14 @@ hiddenimports = [
     "web.runtime",
     "web.security",
     "web.server",
-]
+    "web.window",
+    "webview",
+    "webview.platforms.edgechromium",
+    "webview.platforms.winforms",
+    "pythonnet",
+    "clr",
+    "clr_loader",
+] + webview_hiddenimports + pythonnet_hiddenimports + clr_loader_hiddenimports
 
 excludes = [
     "tkinter",
@@ -53,12 +71,12 @@ excludes = [
 a = Analysis(
     [str(project_root / "netscope.py")],
     pathex=[str(project_root)],
-    binaries=[],
+    binaries=webview_binaries + pythonnet_binaries + clr_loader_binaries,
     datas=[
         (str(web / "templates"), "web/templates"),
         (str(web / "static"), "web/static"),
         (str(fixes / "fixes.json"), "fixes"),
-    ],
+    ] + webview_datas + pythonnet_datas + clr_loader_datas,
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},

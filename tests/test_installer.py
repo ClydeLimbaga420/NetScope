@@ -12,7 +12,7 @@ from cli import exit_codes
 from cli.colors import Colorizer
 from cli.commands import cmd_install, cmd_uninstall
 from cli.context import CliContext
-from cli.installer import InstallResult, install, uninstall
+from cli.installer import INNO_MARKER_NAME, InstallResult, install, uninstall
 from cli.parser import apply_defaults, build_parser
 from core.probes import FakeProbe
 from core.runner import FakeRunner
@@ -95,6 +95,28 @@ def shortcut_writer(monkeypatch):
         shortcut.write_text(f"shortcut -> {target}", encoding="utf-8")
 
     monkeypatch.setattr("cli.installer.create_shortcut", write)
+
+
+def test_install_refuses_inno_managed_install(tmp_path):
+    from cli.installer import InstallerError
+
+    install_dir = tmp_path / "install"
+    install_dir.mkdir()
+    (install_dir / INNO_MARKER_NAME).write_text("managed", encoding="utf-8")
+
+    with pytest.raises(InstallerError, match="Settings > Apps"):
+        install(source_exe=Path("missing.exe"), install_dir=install_dir)
+
+
+def test_uninstall_refuses_inno_managed_install(tmp_path):
+    from cli.installer import InstallerError
+
+    install_dir = tmp_path / "install"
+    install_dir.mkdir()
+    (install_dir / INNO_MARKER_NAME).write_text("managed", encoding="utf-8")
+
+    with pytest.raises(InstallerError, match="Settings > Apps"):
+        uninstall(install_dir=install_dir)
 
 
 def test_install_copies_exe_and_registers(monkeypatch, tmp_path):

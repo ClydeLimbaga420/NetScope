@@ -161,6 +161,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     gui = sub.add_parser("gui", parents=[common], help="launch the graphical/web interface")
     gui.add_argument("--no-browser", action="store_true", default=argparse.SUPPRESS, help="start server and print URL only")
+    gui.add_argument("--browser", action="store_true", default=argparse.SUPPRESS, help="open the UI in the system browser instead of the native window")
+    gui.add_argument("--print-url", action="store_true", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
+    gui.add_argument("--replace", action="store_true", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
     gui.add_argument("--port", type=int, default=argparse.SUPPRESS, metavar="N", help="bind web UI to this local port")
 
     install = sub.add_parser(
@@ -201,6 +204,9 @@ def apply_defaults(args: argparse.Namespace) -> argparse.Namespace:
         "dry_run",
         "yes_i_understand_risk",
         "no_browser",
+        "browser",
+        "print_url",
+        "replace",
     ):
         if not hasattr(args, name):
             setattr(args, name, False)

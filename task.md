@@ -452,6 +452,26 @@ strictly required for web (document why).
       for design files, `main` has no new commits, `build` has only Step 0
       merge commit.
 
+## Phase 7 - Desktop installer + WebView2 window (2026-11-16)
+
+Plan: `docs/superpowers/plans/2026-11-15-desktop-installer.md`.
+
+- [x] 1. `web/window.py` WebView2 detection + pywebview host; deps added.
+- [x] 2. `web/run.py` launch modes, lock wait/takeover, window session.
+- [x] 3. CLI `--browser`/`--print-url`/`--replace`, detached window launch,
+      `/api/elevate` replace handoff.
+- [x] 4. CLI installer refuses Inno-managed installs via `.netscope-inno`.
+- [x] 5. `installer/NetScope.iss` per-user installer + static invariant tests.
+- [x] 6. `scripts/build_installer.ps1`, `scripts/installer_smoke.py`, CI
+      installer job.
+- [x] 7. `NetScope.spec` collects pywebview/pythonnet/clr_loader; frozen smoke
+      still passes.
+- [x] 8. README/checklist/Phase D/E report/AGENTS updates.
+- [x] 9. Full verification: 280 passed/2 skipped, 82% coverage; frozen smoke
+      9/9; browser smoke + screenshots; `node --check`; Inno 6.7.3 compile;
+      silent install/uninstall/data-removal smoke. Real Windows 10
+      VM/window/UAC review remains manual.
+
 ---
 
 ## Notes
@@ -1185,3 +1205,38 @@ Session 46 (Phase 5 + Phase 6 D/E close-out):
 - Updated `AGENTS.md` for the post-tkinter architecture, packaging/installer/CI,
   and current test counts. Remaining: real Windows 10 VM checklist run and
   human visual review of screenshots. Nothing pushed.
+
+Session 47 (Phase 7 desktop window + installer):
+- Added the approved desktop follow-up: `web/window.py` hosts the UI in a
+  pywebview/WebView2 window (1280x860, min 900x600) with browser fallback;
+  `web/run.py` now supports `window` (default), `browser`, and `no_browser`
+  modes, `--replace` lock takeover, shared-server window reopen, and window
+  close without stopping the server.
+- CLI: `netscope gui` opens the window in a detached process; `--browser`
+  forces Edge/Chrome; hidden `--print-url`/`--replace` support the detached child
+  and elevated `/api/elevate` handoff. Declining UAC keeps the old server alive.
+- `cli/installer.py` refuses Inno-managed installs via `.netscope-inno` and
+  directs users to Settings > Apps; portable installs keep `.netscope-install`.
+- Added `installer/NetScope.iss` (per-user Inno Setup 6/7, no admin):
+  `%LOCALAPPDATA%\Programs\NetScope`, PATH/App Paths, Start Menu + optional
+  desktop shortcut, uninstaller, WebView2 bootstrap/offline handling. Uninstall
+  removes app/PATH/App Paths/shortcut and prompts to delete
+  `%LOCALAPPDATA%\NetScope` (Yes default). Silent uninstalls skip the prompt and
+  use Yes; this fixed the repeated data-removal prompt during smoke runs.
+- Added `scripts/build_installer.ps1` (config version or `-Version`, ISCC
+  discovery incl. per-user Programs), `scripts/installer_smoke.py` (silent
+  install, shortcut/App Paths/PATH/version, data marker, silent uninstall and
+  removal checks), and CI installer job (exe artifact, Inno via Chocolatey,
+  setup build, smoke, upload).
+- `NetScope.spec` collects pywebview/pythonnet/clr_loader. Rebuilt exe is
+  16.1 MB; setup is 17.8 MB. Frozen smoke still passes 9/9.
+- Updated README (installer/portable/source options, window launch/fallback,
+  build/installer steps), manual checklist (window/WebView2/UAC/Inno cases),
+  Phase D/E report + deliverables addendum, and AGENTS.
+- Verification: full suite 280 passed, 2 skipped; coverage 82%; Inno Setup 6.7.3
+  compiled `NetScope-Setup.exe`; silent installer smoke passed including default
+  user-data removal; `scripts/installer_smoke.py` was run with the real
+  `%LOCALAPPDATA%\NetScope` temporarily backed up and restored.
+- Remaining manual: Windows 10 VM window/UAC/installer cases and human
+  screenshot/high-DPI review. Deferred by request for now; not a code/test
+  blocker. Phase 7 changes are uncommitted; nothing pushed.

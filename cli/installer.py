@@ -26,6 +26,7 @@ import config
 
 APP_EXE_NAME = "NetScope.exe"
 MARKER_NAME = ".netscope-install"
+INNO_MARKER_NAME = ".netscope-inno"
 APP_PATHS_KEY = r"Software\Microsoft\Windows\CurrentVersion\App Paths"
 USER_ENV_KEY = r"Environment"
 
@@ -276,6 +277,14 @@ def _is_our_install(install_dir: Path) -> bool:
     return (install_dir / APP_EXE_NAME).is_file() or (install_dir / MARKER_NAME).is_file()
 
 
+def _reject_inno_managed(install_dir: Path) -> None:
+    if (install_dir / INNO_MARKER_NAME).is_file():
+        raise InstallerError(
+            "NetScope is managed by the Windows installer. "
+            "Use Settings > Apps to uninstall it."
+        )
+
+
 def install(
     *,
     source_exe: Path | None = None,
@@ -285,13 +294,14 @@ def install(
     dry_run: bool = False,
     create_start_menu: bool = True,
 ) -> InstallResult:
-    source = Path(source_exe).resolve() if source_exe else find_source_exe()
-    if not source.is_file():
-        raise InstallerError(f"installer source does not exist: {source}")
     target_dir = Path(install_dir) if install_dir else default_install_dir()
     target_dir = target_dir.expanduser()
     if not target_dir.is_absolute():
         raise InstallerError("install directory must be an absolute path")
+    _reject_inno_managed(target_dir)
+    source = Path(source_exe).resolve() if source_exe else find_source_exe()
+    if not source.is_file():
+        raise InstallerError(f"installer source does not exist: {source}")
     target = target_dir / APP_EXE_NAME
     shortcut = (Path(start_menu_dir) if start_menu_dir else default_start_menu_dir()) / "NetScope.lnk"
 
@@ -342,6 +352,7 @@ def uninstall(
     target_dir = target_dir.expanduser()
     if not target_dir.is_absolute():
         raise InstallerError("install directory must be an absolute path")
+    _reject_inno_managed(target_dir)
     target = target_dir / APP_EXE_NAME
     shortcut = (Path(start_menu_dir) if start_menu_dir else default_start_menu_dir()) / "NetScope.lnk"
     data_dir = config.data_dir()

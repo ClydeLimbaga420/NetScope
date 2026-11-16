@@ -96,7 +96,7 @@ def test_cmd_gui_reports_launch(monkeypatch):
     ctx = make_cli_ctx()
     result = cmd_gui(args, ctx)
     assert result == exit_codes.OK, ctx.stderr.getvalue()
-    assert calls == [{"port": None, "no_browser": False}]
+    assert calls == [{"port": None, "no_browser": False, "browser": False, "print_url": False, "replace": False}]
 
 
 def test_cmd_gui_failure_is_reported(monkeypatch):
@@ -113,7 +113,7 @@ def test_cmd_gui_failure_is_reported(monkeypatch):
 
 def test_cmd_gui_detached_launch_opens_valid_boot_url(monkeypatch):
     url = "http://127.0.0.1:54321/__boot__?token=launch-token"
-    calls = []
+    popen_calls = []
     process = type("Process", (), {
         "stdout": io.StringIO(url + "\n"),
         "poll": lambda self: None,
@@ -121,15 +121,14 @@ def test_cmd_gui_detached_launch_opens_valid_boot_url(monkeypatch):
         "wait": lambda self, **_kwargs: None,
     })()
     monkeypatch.setattr("cli.commands._stdin_is_tty", lambda _ctx: True)
-    monkeypatch.setattr(subprocess, "Popen", lambda *_args, **_kwargs: process)
-    monkeypatch.setattr("web.run._open_url", lambda value: calls.append(value) or True)
+    monkeypatch.setattr(subprocess, "Popen", lambda argv, **kwargs: popen_calls.append(argv) or process)
     args = apply_defaults(build_parser().parse_args(["gui"]))
     ctx = make_cli_ctx()
 
     result = cmd_gui(args, ctx)
     assert result == exit_codes.OK, ctx.stderr.getvalue()
-    assert calls == [url]
-    assert "launched" in ctx.stderr.getvalue()
+    assert "--print-url" in popen_calls[0]
+    assert "launched" in ctx.stderr.getvalue().lower()
 
 
 def test_cmd_gui_detached_launch_rejects_bad_startup_url(monkeypatch):
@@ -165,3 +164,41 @@ def test_main_no_args_with_owned_console_launches_gui(monkeypatch):
     monkeypatch.setattr("web.run.run_web_ui", lambda **kwargs: calls.append(kwargs) or 0)
     assert main([]) == exit_codes.OK
     assert calls == [{}]
+
+
+def test_gui_relaunch_argv_can_request_replace():
+    argv = gui_relaunch_argv(replace=True)
+    assert argv[-2:] == [GUI_INTERNAL, "--replace"]
+
+
+def test_gui_parser_accepts_browser_and_print_url():
+    args = apply_defaults(build_parser().parse_args(["gui", "--browser", "--print-url"]))
+    assert args.browser is True
+    assert args.print_url is True
+
+
+def test_cmd_gui_detached_child_opens_window(monkeypatch):
+    url = "http://127.0.0.1:54321/__boot__?token=launch-token"
+    popen_calls = []
+    process = type("Process", (), {
+        "stdout": io.StringIO(url + "\n"),
+        "poll": lambda self: None,
+        "terminate": lambda self: None,
+        "wait": lambda self, **_kwargs: None,
+    })()
+    monkeypatch.setattr("cli.commands._stdin_is_tty", lambda _ctx: True)
+    monkeypatch.setattr(subprocess, "Popen", lambda argv, **kwargs: popen_calls.append(argv) or process)
+    args = apply_defaults(build_parser().parse_args(["gui", "--browser"]))
+    ctx = make_cli_ctx()
+
+    assert cmd_gui(args, ctx) == exit_codes.OK, ctx.stderr.getvalue()
+    assert "--print-url" in popen_calls[0]
+    assert "--browser" in popen_calls[0]
+    assert "window launched" in ctx.stderr.getvalue().lower()
+
+
+def test_main_hidden_gui_token_passes_replace(monkeypatch):
+    calls = []
+    monkeypatch.setattr("web.run.run_web_ui", lambda **kwargs: calls.append(kwargs) or 0)
+    assert main([GUI_INTERNAL, "--replace"]) == 0
+    assert calls == [{"replace": True}]

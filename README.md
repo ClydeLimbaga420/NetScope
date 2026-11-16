@@ -1,4 +1,4 @@
-# NetScope
+﻿# NetScope
 ### Personal Network Monitoring Dashboard
 
 NetScope is a local-first Windows network troubleshooting and monitoring
@@ -34,7 +34,9 @@ The web UI replaces the former tkinter desktop GUI. The legacy Flask dashboard
   `ports`, `mtu`, `monitor`, `logs`, `report`, `gui`, `install`, and `uninstall`
 - Interactive `netscope>` shell with history, completion, and a numbered menu
 - Localhost web UI with per-check streaming, a repair library, and local assets
-- Per-user installer with PATH, App Paths, and Start Menu integration
+- Native desktop window (WebView2) with browser fallback
+- Per-user Windows installer with PATH, App Paths, Start Menu, desktop shortcut,
+  and an uninstaller
 - Legacy LAN dashboard for other devices on the same network
 - Separate engine-backed Run diagnosis action in the web UI
 - Per-step Run buttons on every diagnostics and repair item
@@ -63,16 +65,39 @@ The web UI replaces the former tkinter desktop GUI. The legacy Flask dashboard
 - PowerShell (Windows PowerShell 5.1)
 - Flask, Werkzeug, and Jinja2
 - psutil
+- pywebview, Microsoft Edge WebView2, and pythonnet
 - HTML, CSS, and JavaScript
 - Chart.js (bundled locally)
 - pytest
-- PyInstaller
+- PyInstaller and Inno Setup
 - GitHub Actions
 - SQLite (schema present, not yet used)
 
 ## Installation
 
-### Option A - prebuilt executable (recommended)
+### Option A - Windows installer (recommended)
+
+Run `NetScope-Setup.exe`. The installer is per-user, needs no administrator
+rights, and installs to `%LOCALAPPDATA%\Programs\NetScope\`. It adds `netscope`
+to your user `PATH`, registers the app in `App Paths`, creates Start Menu and
+optional desktop shortcuts, and adds an uninstaller. If Microsoft Edge WebView2
+is missing, the installer downloads the Evergreen bootstrapper; offline installs
+can include the 64-bit offline installer beside the setup executable.
+
+After installation, launch NetScope from the Start Menu, or run:
+
+```
+netscope                # terminal: interactive shell
+netscope gui            # terminal: background server + app window
+netscope diagnose       # terminal: CLI diagnosis
+```
+
+Uninstall from **Settings > Apps**, or use the Start Menu uninstaller. The
+uninstaller removes the app, shortcut, `PATH` entry and App Paths registration.
+It also offers to delete `%LOCALAPPDATA%\NetScope` (logs, reports, and fix
+backups); that option is selected by default.
+
+### Option B - portable executable
 
 Build `dist\NetScope.exe` (see [Building the executable](#building-the-executable))
 or download it from a release, then install it for the current user:
@@ -88,18 +113,14 @@ and broadcasts the environment change. Open a new terminal afterwards. Use
 `--dir PATH` for a different install directory, or `--no-shortcut` to skip the
 Start Menu entry. Non-interactive installs require `--yes`.
 
-After installation:
+`netscope install` and `netscope uninstall` refuse to modify an
+installer-managed copy (marked with `.netscope-inno`) and direct you to
+**Settings > Apps** instead.
 
-```
-NetScope.exe            # double-click / Win+R: opens the web UI
-netscope gui            # terminal: background server + browser
-netscope diagnose       # terminal: CLI diagnosis
-```
+Remove a portable install with `NetScope.exe uninstall`, or
+`NetScope.exe uninstall --purge` to also delete `%LOCALAPPDATA%\NetScope`.
 
-Remove it with `NetScope.exe uninstall`, or `NetScope.exe uninstall --purge`
-to also delete `%LOCALAPPDATA%\NetScope` (logs, reports, and fix backups).
-
-### Option B - from source
+### Option C - from source
 
 #### 1. Clone the repository
 
@@ -137,8 +158,9 @@ Localhost web UI:
 netscope gui
 ```
 
-Use `netscope gui --no-browser --port N` to run it in the foreground and print
-its boot URL. The web UI binds only to `127.0.0.1`.
+Use `netscope gui --browser` to force Edge/Chrome, or
+`netscope gui --no-browser --port N` to run it in the foreground and print its
+boot URL. The web UI binds only to `127.0.0.1`.
 
 Legacy LAN dashboard:
 
@@ -158,29 +180,31 @@ allow Python or TCP port 5000 through Windows Firewall.
 
 ## Project Structure
 
+```
 NetScope/
-├── netscope.py          # CLI entry point
-├── NetScope.spec        # PyInstaller one-file build definition
-├── app.py               # legacy Flask LAN dashboard
-├── config.py
-├── requirements.txt
-├── requirements-dev.txt
-├── README.md
-├── AGENTS.md
-├── task.md
-│
-├── .github/workflows/   # windows-latest test + build CI
-├── scripts/             # build.ps1 and frozen-exe smoke test
-├── core/                # shared engine, models, runner, snapshot, checks
-├── powershell/          # static PS scripts, runner, input validation
-├── fixes/               # catalog, executor, unresolved-cause ranking
-├── cli/                 # parser, dispatch, rendering, utilities, shell, monitor
-├── web/                 # localhost server, API, jobs/SSE, security, templates
-├── modules/             # legacy dashboard modules
-├── templates/           # legacy dashboard template
-├── static/              # legacy dashboard assets and bundled Chart.js/fonts
-├── database/
-└── tests/
+  netscope.py              # CLI entry point
+  NetScope.spec            # PyInstaller one-file build definition
+  app.py                   # legacy Flask LAN dashboard
+  config.py
+  requirements.txt
+  requirements-dev.txt
+  README.md
+  AGENTS.md
+  task.md
+  .github/workflows/       # windows-latest test/build/installer CI
+  installer/               # Inno Setup script
+  scripts/                 # build, frozen smoke, installer build/smoke
+  core/                    # shared engine, models, runner, snapshot, checks
+  powershell/              # static PS scripts, runner, input validation
+  fixes/                   # catalog, executor, unresolved-cause ranking
+  cli/                     # parser, dispatch, rendering, utilities, shell, monitor
+  web/                     # localhost server, API, jobs/SSE, security, templates
+  modules/                 # legacy dashboard modules
+  templates/               # legacy dashboard template
+  static/                  # legacy dashboard assets and bundled Chart.js/fonts
+  database/
+  tests/
+```
 
 ## Important Notes
 
@@ -287,8 +311,8 @@ Global flags work before or after the subcommand: `--json`, `--no-color`,
 | `monitor` | Live ANSI dashboard | `--interval SECONDS` |
 | `logs` | View/open/export the JSON-lines log | `--tail`, `--open`, `--export FILE` |
 | `report` | Save a diagnostic report | `--format txt\|json`, `--output FILE` (`-` = stdout) |
-| `gui` | Start the localhost web UI | `--no-browser`, `--port N` |
-| `install` | Install for the current user | `--source FILE`, `--dir DIR`, `--no-shortcut` |
+| `gui` | Open the desktop window or browser UI | `--browser`, `--no-browser`, `--port N` |
+| `install` | Install the portable exe for the current user | `--source FILE`, `--dir DIR`, `--no-shortcut` |
 | `uninstall` | Remove the current-user install | `--dir DIR`, `--purge` |
 
 Running `netscope` with no arguments in a terminal opens the interactive
@@ -312,8 +336,8 @@ never prompts: pass `--yes` where confirmation is needed.
 
 ## Building the executable
 
-The one-file, console-subsystem build bundles the web templates/static files and
-the fix catalog:
+The one-file, console-subsystem build bundles the web templates/static files,
+the fix catalog, pywebview, pythonnet, and the CLR loader:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Clean
@@ -327,11 +351,29 @@ To put the executable in the repository root instead of `dist\`, use
 powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Clean -DistPath .
 ```
 
+Build the installer with Inno Setup 6 or 7 after the exe exists:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build_installer.ps1
+python scripts\installer_smoke.py --installer dist\installer\NetScope-Setup.exe
+```
+
+`installer_smoke.py` is destructive by design: it installs, launches, and
+uninstalls NetScope, and the silent uninstall removes
+`%LOCALAPPDATA%\NetScope` by default. Run it in a disposable profile or back up
+that directory first.
+
+The installer script defaults to `config.APP_VERSION`; pass `-Version X.Y.Z` to
+override it. `scripts\build_installer.ps1` looks for `ISCC.exe` on `PATH` and in
+the usual Inno Setup 6/7 install directories. The installer writes
+`dist\installer\NetScope-Setup.exe`. It downloads the WebView2 Evergreen
+bootstrapper when needed; for offline installs place
+`MicrosoftEdgeWebView2RuntimeInstallerX64.exe` next to the setup executable.
+
 `scripts\build.ps1` uses `.venv\Scripts\python.exe` when present and requires
-PyInstaller (`pip install pyinstaller`). The current build is about 13.8 MB on
-Python 3.14.7 / PyInstaller 6.22.3. `NetScope.spec` excludes tkinter and unused
-GUI/scientific packages, and `web/paths.py` resolves bundled assets through
-`sys._MEIPASS`.
+PyInstaller (`pip install pyinstaller`). `NetScope.spec` excludes tkinter and
+unused GUI/scientific packages, collects the pywebview/pythonnet runtime files,
+and `web/paths.py` resolves bundled assets through `sys._MEIPASS`.
 
 The exe intentionally stays console-subsystem so the CLI works from any
 terminal. Double-clicking it briefly flashes a console before the GUI child
@@ -340,33 +382,46 @@ prompt. A terminal with no arguments still opens the `netscope>` shell.
 
 ## Install and uninstall
 
-The installer is per-user and requires no elevation:
+Both installers are per-user and require no elevation. They install to
+`%LOCALAPPDATA%\Programs\NetScope\`, add that directory to
+`HKCU\Environment\Path` (preserving the raw value type), register
+`HKCU\Software\Microsoft\Windows\CurrentVersion\App Paths\NetScope.exe`, and
+create a Start Menu shortcut.
 
-- copies `NetScope.exe` to `%LOCALAPPDATA%\Programs\NetScope\`
-- adds that directory to `HKCU\Environment\Path` (preserving the raw value type)
-- registers `HKCU\Software\Microsoft\Windows\CurrentVersion\App Paths\NetScope.exe`
-- creates `%APPDATA%\Microsoft\Windows\Start Menu\Programs\NetScope.lnk`
-- broadcasts `WM_SETTINGCHANGE` and writes a `.netscope-install` marker
+The Inno Setup installer (`NetScope-Setup.exe`) also offers a desktop shortcut,
+writes an uninstaller and `.netscope-inno` marker, and handles WebView2 runtime
+installation. Uninstall it from **Settings > Apps**. It removes the app files,
+shortcut, PATH entry and App Paths key. Its final prompt asks whether to delete
+`%LOCALAPPDATA%\NetScope` (logs, reports, fix backups); **Yes** is the default and
+hides Windows' own generic data prompt.
 
-Uninstall removes exactly those entries and the marked install directory. It
-never deletes unrelated files. User data in `%LOCALAPPDATA%\NetScope` (logs,
-reports, fix backups) is kept unless `--purge` is passed. Both commands support
-`--dry-run` and require `--yes` when stdin is not a terminal.
+The portable CLI installer (`NetScope.exe install`) writes a
+`.netscope-install` marker instead. It never deletes unrelated files, keeps user
+data unless `--purge` is passed, supports `--dry-run`, and requires `--yes` when
+stdin is not a terminal. Both CLI commands refuse installer-managed copies
+(`.netscope-inno`) and direct you to Settings > Apps.
 
 ## Dual-mode launch
 
 | Situation | Behaviour |
 | --- | --- |
-| Double-click `NetScope.exe`, Win+R, Start Menu | Detach/hide the console, start the localhost server, open the app window |
-| `netscope gui` in a terminal | Start a detached server and return to the prompt |
+| Double-click `NetScope.exe`, Win+R, Start Menu, desktop shortcut | Detach/hide the console, start the localhost server, and open the WebView2 app window |
+| `netscope gui` in a terminal | Start the app window in a detached process and return to the prompt |
+| `netscope gui --browser` | Force the Edge/Chrome browser instead of the app window |
 | `netscope gui --no-browser --port N` | Run in the foreground and print the boot URL |
 | `netscope` / `NetScope.exe` with no args in a terminal | Interactive `netscope>` shell |
 | `netscope diagnose`, `fix`, `info`, ... | Normal CLI output |
 
 Only one web UI runs per user. A second launch waits for the owner to publish
-its endpoint, verifies `/health`, and reopens the existing instance. The server
-shuts down on `POST /api/shutdown`, on Ctrl+C, or after the browser heartbeat
-has been absent for 120 seconds with no active job or fix running.
+its endpoint, verifies `/health`, and reopens the existing instance. Closing one
+window does not stop the shared server. The server shuts down on
+`POST /api/shutdown`, on Ctrl+C, or after the browser heartbeat has been absent
+for 120 seconds with no active job or fix running.
+
+If WebView2 is missing or pywebview cannot start, NetScope logs
+`webview_unavailable` and opens the browser UI instead. Running an elevated fix
+relaunches the server with `--replace`; it waits up to 10 seconds for the old
+instance's lock. If UAC is declined, the original server keeps running.
 
 ## Web UI and API
 
@@ -431,7 +486,8 @@ Dnscache, blackhole DNS, block the gateway, and trigger an unfixable upstream
 outage to exercise the unresolved panel. CI runs the same suite on
 `windows-latest` only when `main` is updated (push or merge), runs a Playwright
 headless-browser smoke test (skipped if no Chromium/Edge is available), builds
-the exe, and runs the frozen smoke test.
+the exe and frozen smoke test, then builds the Inno installer and runs a silent
+install/uninstall smoke test in a throwaway profile.
 
 The Phase D/E packaging, installer, and CI report is in
 [docs/phaseDE-report.md](docs/phaseDE-report.md); the close-out artifact index

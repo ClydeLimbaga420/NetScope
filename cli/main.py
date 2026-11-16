@@ -18,7 +18,7 @@ from cli.launch import GUI_INTERNAL, detach_console, launch_detached_gui, owns_c
 def main(argv: Sequence[str] | None = None) -> int:
     args_in = list(sys.argv[1:] if argv is None else argv)
     if args_in and args_in[0] == GUI_INTERNAL:
-        return _run_gui_process()
+        return _run_gui_process(args_in[1:])
     parser = build_parser()
     try:
         args = parser.parse_args(args_in)
@@ -102,13 +102,14 @@ def _open_gui_from_owned_console() -> int:
         return exit_codes.FAILURES
 
 
-def _run_gui_process() -> int:
+def _run_gui_process(extra: Sequence[str] = ()) -> int:
     """Internal entry (hidden ``__gui__`` token) - run web UI in-process."""
 
     try:
         from web.run import run_web_ui
 
-        return run_web_ui()
+        replace = "--replace" in extra
+        return run_web_ui(replace=replace) if replace else run_web_ui()
     except KeyboardInterrupt:
         return exit_codes.INTERRUPTED
     except Exception as exc:

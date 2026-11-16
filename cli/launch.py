@@ -23,7 +23,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 _ENTRY_POINT = _PROJECT_ROOT / "netscope.py"
 
 
-def gui_relaunch_argv() -> list[str]:
+def gui_relaunch_argv(replace: bool = False) -> list[str]:
     """Arguments (without the interpreter) that reopen the UI in a new process.
 
     Used both to spawn the detached UI and for elevated relaunches
@@ -31,8 +31,12 @@ def gui_relaunch_argv() -> list[str]:
     """
 
     if getattr(sys, "frozen", False):
-        return [GUI_INTERNAL]
-    return [str(_ENTRY_POINT), GUI_INTERNAL]
+        argv = [GUI_INTERNAL]
+    else:
+        argv = [str(_ENTRY_POINT), GUI_INTERNAL]
+    if replace:
+        argv.append("--replace")
+    return argv
 
 
 def owns_console() -> bool:

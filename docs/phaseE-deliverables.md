@@ -30,7 +30,9 @@ validation details stay in `docs/phaseDE-report.md`.
 | Build | Size | Notes |
 | --- | --- | --- |
 | tkinter (before) | not built in this checkout | No comparable artifact existed; tkinter is excluded from the Flask build |
-| Flask web UI (`dist/NetScope.exe`) | 13.8 MB | Python 3.14.7, PyInstaller 6.22.3, one file, UPX disabled |
+| Flask web UI (`dist/NetScope.exe`) | 13.8 MB | Phase D/E build; Python 3.14.7, PyInstaller 6.22.3, one file, UPX disabled |
+| Desktop build (`dist/NetScope.exe`) | 16.1 MB | Phase 7; adds pywebview/WebView2 + pythonnet |
+| Inno installer (`dist/installer/NetScope-Setup.exe`) | 17.8 MB | Per-user setup, Inno Setup 6.7.3 |
 
 The tkinter code was removed before a packaged artifact was produced, so the
 numeric before/after comparison is unavailable. The current build does not
@@ -149,3 +151,24 @@ git diff --stat main -- web/templates web/static -> (empty)
 
 The close-out work is still uncommitted. Commit it only when requested; do not
 push without an explicit request.
+
+## 11. Desktop installer follow-up (2026-11-16)
+
+- Design/plan live in `docs/superpowers/`:
+  `2026-11-15-desktop-installer-design.md` (approved) and
+  `2026-11-15-desktop-installer.md` (9-task plan).
+- New: `web/window.py`, `installer/NetScope.iss`,
+  `scripts/build_installer.ps1`, `scripts/installer_smoke.py`,
+  `tests/test_installer_script.py`.
+- Updated: `web/run.py`, `cli/parser.py`, `cli/launch.py`, `cli/main.py`,
+  `cli/commands.py`, `web/api.py`, `cli/installer.py`, `NetScope.spec`,
+  `.github/workflows/ci.yml`, README, manual checklist, and `AGENTS.md`.
+- The Windows installer writes `dist\installer\NetScope-Setup.exe` and is built
+  from the frozen exe. It is per-user, adds PATH/App Paths/Start Menu entries,
+  ships an uninstaller, handles WebView2, and marks the install
+  `.netscope-inno`.
+- Verification: 280 passed, 2 skipped; frozen smoke 9/9; Inno 6.7.3 compile;
+  silent installer smoke passed (install, version, shortcut, App Paths, PATH,
+  uninstall, default data removal). Rebuilt exe 16.1 MB; setup 17.8 MB.
+- The desktop-installer changes are uncommitted on `phasec`. The Windows 10 VM
+  checklist and human UI/window review are still open.

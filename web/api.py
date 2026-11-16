@@ -452,7 +452,7 @@ def api_open_log_folder():  # type: ignore[no-untyped-def]
 @api_bp.post("/elevate")
 def api_elevate():  # type: ignore[no-untyped-def]
     st = _state()
-    argv = gui_relaunch_argv()
+    argv = gui_relaunch_argv(replace=True)
     st.logger.action(
         "web",
         "elevate_launch",
