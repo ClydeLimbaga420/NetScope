@@ -125,6 +125,50 @@ def test_detach_console_hides_window_before_freeing_console(monkeypatch):
     assert calls == ["get", (123, 0), "free"]
 
 
+def test_detach_console_removes_taskbar_button_before_hiding(monkeypatch):
+    calls = []
+    original_style = 0x00040000 | 0x00010000  # WS_EX_APPWINDOW | WS_EX_OVERLAPPEDWINDOW
+
+    def get_style(hwnd, index):
+        calls.append(("get_style", hwnd, index))
+        return original_style
+
+    def set_style(hwnd, index, value):
+        calls.append(("set_style", hwnd, index, value))
+        return 1
+
+    get_console_window = FakeWinApiFunction(lambda: calls.append("get") or 123)
+    get_style_fn = FakeWinApiFunction(get_style)
+    set_style_fn = FakeWinApiFunction(set_style)
+    show_window = FakeWinApiFunction(
+        lambda hwnd, command: calls.append(("hide", hwnd, command))
+    )
+    free_console = FakeWinApiFunction(lambda: calls.append("free") or 1)
+    monkeypatch.setattr(launch.os, "name", "nt")
+    monkeypatch.setattr(
+        ctypes,
+        "windll",
+        SimpleNamespace(
+            kernel32=SimpleNamespace(
+                GetConsoleWindow=get_console_window,
+                FreeConsole=free_console,
+            ),
+            user32=SimpleNamespace(
+                GetWindowLongPtrW=get_style_fn,
+                SetWindowLongPtrW=set_style_fn,
+                ShowWindow=show_window,
+            ),
+        ),
+        raising=False,
+    )
+
+    assert launch.detach_console() is True
+    expected_style = (original_style | 0x00000080) & ~0x00040000
+    assert ("set_style", 123, -20, expected_style) in calls
+    assert calls.index(("set_style", 123, -20, expected_style)) < calls.index(("hide", 123, 0))
+    assert calls[-1] == "free"
+
+
 def test_detach_console_frees_console_when_window_handle_is_missing(monkeypatch):
     calls = []
     get_console_window = FakeWinApiFunction(lambda: 0)
@@ -146,6 +190,27 @@ def test_detach_console_frees_console_when_window_handle_is_missing(monkeypatch)
 
     assert launch.detach_console() is True
     assert calls == ["free"]
+
+
+def test_attach_parent_console_attaches_to_launching_terminal(monkeypatch):
+    calls = []
+    attach = FakeWinApiFunction(lambda pid: calls.append(pid) or 1)
+    monkeypatch.setattr(launch.os, "name", "nt")
+    monkeypatch.setattr(launch.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(
+        ctypes,
+        "windll",
+        SimpleNamespace(kernel32=SimpleNamespace(AttachConsole=attach)),
+        raising=False,
+    )
+
+    assert launch.attach_parent_console() is True
+    assert calls == [0xFFFFFFFF]
+
+
+def test_attach_parent_console_is_noop_for_source_runs(monkeypatch):
+    monkeypatch.setattr(launch.sys, "frozen", False, raising=False)
+    assert launch.attach_parent_console() is False
 
 
 def test_gui_relaunch_argv_targets_internal_token():

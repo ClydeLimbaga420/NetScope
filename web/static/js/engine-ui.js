@@ -291,7 +291,8 @@
 
   function statusClass(status) {
     if (["pass", "resolved", "success", "done"].includes(status)) return "success";
-    if (["fail", "error", "warn", "warning", "cancelled"].includes(status)) return "error";
+    if (["warn", "warning"].includes(status)) return "warn";
+    if (["fail", "error", "cancelled"].includes(status)) return "error";
     if (status === "running") return "running";
     return "idle";
   }
@@ -322,7 +323,7 @@
       const button = element("button", `diag-item ${kind} ${status}${item.id === state.selectedId ? " selected" : ""}`);
       button.type = "button";
       button.dataset.engineItem = item.id;
-      const marker = status === "success" ? "\u2713" : status === "error" ? "\u2715" : status === "running" ? "\u2026" : String(index + 1).padStart(2, "0");
+      const marker = status === "success" ? "\u2713" : status === "error" ? "\u2715" : status === "warn" ? "\u0021" : status === "running" ? "\u2026" : String(index + 1).padStart(2, "0");
       const number = element("span", "diag-item-index", marker);
       const text = element("span", "diag-item-text");
       text.append(element("strong", "", resultTitle(item)));
@@ -936,7 +937,7 @@
     const message = visibleText(item.message);
     const explanation = visibleText(item.explanation);
     const descText = check
-      ? (item.description || (item.pending ? "This check has not run yet. Select layers and run a diagnosis." : (message || "No additional detail.")))
+      ? (item.description || (item.pending ? "This check has not run yet. Run a diagnosis to see results." : (message || "No additional detail.")))
       : (item.symptom || explanation || "Catalog fix");
     title.append(element("p", "diag-desc", descText));
     header.append(title, element("span", `step-status ${statusClass(item.status)}`, item.status || "ready"));
@@ -995,7 +996,7 @@
         detail = reported ? `${reported} check${reported === 1 ? "" : "s"} reported` : "Checking";
       } else if (!results.length) {
         status = "idle";
-        detail = "Not run";
+        detail = "Unexecuted";
       } else {
         status = counts.fail ? "fail"
           : counts.error ? "error"
@@ -1149,11 +1150,10 @@
     state.fixes = state.fixes || [];
     state.selectedId = null;
     state.report = null;
-    const selectedLayers = Array.from(document.querySelectorAll("input[data-engine-layer]:checked"), (input) => input.dataset.engineLayer);
-    state.activeLayers = selectedLayers;
+    state.activeLayers = [...layers];
     renderLayerStatus();
     try {
-      const started = await api("/api/diagnose", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ layers: selectedLayers }) });
+      const started = await api("/api/diagnose", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
       state.jobId = started.job_id;
       setBusy(true, "Running diagnostics...");
       const job = await followJob(state.jobId);
@@ -1721,28 +1721,16 @@
     stage.append(panel);
   }
 
-  function addLayerControls() {
+  function addCancelControl() {
     const actions = document.querySelector(".troubleshoot-actions");
     const run = $("run-engine-diagnosis");
-    if (!actions || !run || $("engine-layer-controls")) return;
-    const controls = element("div", "engine-layer-controls");
-    controls.id = "engine-layer-controls";
-    layers.forEach((layer) => {
-      const label = element("label", "engine-layer-option");
-      const input = document.createElement("input");
-      input.type = "checkbox";
-      input.checked = true;
-      input.dataset.engineLayer = layer;
-      label.append(input, document.createTextNode(layer));
-      controls.append(label);
-    });
+    if (!actions || !run || $("engine-cancel-job")) return;
     const cancel = element("button", "ghost-button");
     cancel.id = "engine-cancel-job";
     cancel.type = "button";
     cancel.append(svgIcon("M6 6l12 12M18 6L6 18", 12), element("span", "btn-label", "Cancel run"));
     cancel.disabled = true;
     cancel.addEventListener("click", cancelJob);
-    actions.insertBefore(controls, run);
     actions.insertBefore(cancel, run);
   }
 
@@ -1794,7 +1782,7 @@
     const gateway = $("auto-configure-gateway");
     const run = $("run-engine-diagnosis");
     if (!run || !checks || !stage) return;
-    addLayerControls();
+    addCancelControl();
     loadAdminStatus();
     loadChecks();
     loadCatalog();

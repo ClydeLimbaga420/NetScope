@@ -42,6 +42,7 @@
     --green: #3ecf8e;
     --red: #ff6b81;
     --amber: #ffc66d;
+    --orange: #ff9f43;
 
     /* accent tints */
     --accent-soft: rgba(98, 167, 255, 0.10);
@@ -52,6 +53,8 @@
     --red-border: rgba(255, 107, 129, 0.32);
     --amber-soft: rgba(255, 198, 109, 0.10);
     --amber-border: rgba(255, 198, 109, 0.32);
+    --orange-soft: rgba(255, 159, 67, 0.10);
+    --orange-border: rgba(255, 159, 67, 0.32);
 
     /* button palette */
     --btn-primary: #2f6fd6;
@@ -112,6 +115,7 @@
     --green: #1f9d68;
     --red: #d6455d;
     --amber: #b7791f;
+    --orange: #c2570b;
 
     --accent-soft: rgba(47, 111, 214, 0.10);
     --accent-border: rgba(47, 111, 214, 0.28);
@@ -121,6 +125,8 @@
     --red-border: rgba(214, 69, 93, 0.28);
     --amber-soft: rgba(183, 121, 31, 0.12);
     --amber-border: rgba(183, 121, 31, 0.28);
+    --orange-soft: rgba(194, 87, 11, 0.12);
+    --orange-border: rgba(194, 87, 11, 0.28);
 
     --btn-primary: #2f6fd6;
     --btn-primary-hover: #2762bf;
@@ -2339,6 +2345,14 @@ details.note > *:not(summary) {
     color: var(--red);
 }
 
+.diag-item.warn .diag-item-index {
+    border-color: var(--orange-border);
+
+    background: var(--orange-soft);
+
+    color: var(--orange);
+}
+
 .diag-item.running .diag-item-index {
     border-color: rgba(98, 167, 255, 0.35);
 
@@ -2658,6 +2672,14 @@ details.note > *:not(summary) {
     background: var(--red-soft);
 
     color: var(--red);
+}
+
+.step-status.warn {
+    border-color: var(--orange-border);
+
+    background: var(--orange-soft);
+
+    color: var(--orange);
 }
 
 .step-kind {
