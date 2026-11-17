@@ -432,7 +432,25 @@ class DeviceDiscovery:
             raise _command_error(result, "ARP table read failed")
         return result.stdout
 
+    def _log_name_failure(self, method: str, ip: str, result: CommandResult) -> None:
+        """Record a best-effort name lookup failure without aborting discovery."""
+        if self.logger is not None:
+            self.logger.debug(
+                "device_name_lookup_failed",
+                method=method,
+                ip=ip,
+                timed_out=result.timed_out,
+                detail=result.error or result.stderr.strip() or None,
+            )
+
     def _resolve_name(self, device: dict[str, Any], is_windows: bool) -> str | None:
+        """Resolve a device name on a best-effort basis.
+
+        NetBIOS and reverse DNS are both optional: most devices (routers, IoT
+        gear, printers) never answer ``nbtstat`` and many have no PTR record. A
+        timeout or error must leave the device unnamed, never fail the whole
+        scan. If NetBIOS fails we still try reverse DNS before giving up.
+        """
         ip = validate_ip(device["ip"])
         if is_windows:
             result = self.runner.run(
@@ -440,16 +458,18 @@ class DeviceDiscovery:
                 timeout=NAME_RESOLVE_TIMEOUT_SECONDS,
             )
             if result.error or result.timed_out:
-                raise _command_error(result, f"NetBIOS lookup failed for {ip}")
-            name = _netbios_name(result.stdout, ip)
-            if name:
-                return name
+                self._log_name_failure("netbios", ip, result)
+            else:
+                name = _netbios_name(result.stdout, ip)
+                if name:
+                    return name
         result = self.runner.run(
             ["nslookup", "-timeout=1", "-retry=0", ip],
             timeout=NAME_RESOLVE_TIMEOUT_SECONDS,
         )
         if result.error or result.timed_out:
-            raise _command_error(result, f"reverse DNS lookup failed for {ip}")
+            self._log_name_failure("reverse_dns", ip, result)
+            return None
         return _nslookup_name(result.stdout, ip)
 
     def _resolve_names(self, devices: list[dict[str, Any]], is_windows: bool) -> None:
@@ -464,7 +484,16 @@ class DeviceDiscovery:
                 for device in pending
             }
             for future, device in futures.items():
-                device["name"] = future.result()
+                try:
+                    device["name"] = future.result()
+                except Exception as exc:  # name resolution is best-effort
+                    if self.logger is not None:
+                        self.logger.debug(
+                            "device_name_resolution_error",
+                            ip=device.get("ip"),
+                            error=str(exc),
+                        )
+                    device["name"] = None
 
     def discover(
         self,

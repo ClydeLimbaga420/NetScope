@@ -280,6 +280,77 @@ def test_discovery_reports_arp_collection_failure(snapshot_factory, tmp_path):
         discovery.discover(snapshot)
 
 
+def test_name_lookup_timeout_falls_back_to_dns_and_never_aborts_scan(
+    snapshot_factory, tmp_path
+):
+    class TimeoutNamesRunner(DiscoveryRunner):
+        def run(self, args, *, timeout=None, **kwargs):
+            argv = tuple(str(part) for part in args)
+            if (
+                argv[0].lower() in {"nbtstat", "nslookup"}
+                and argv[-1] == "192.168.1.9"
+            ):
+                return CommandResult(
+                    argv, 1, timed_out=True, error="command timed out"
+                )
+            return super().run(args, timeout=timeout, **kwargs)
+
+    arp_output = """
+Interface: 192.168.1.10 --- 0x5
+  192.168.1.9          00-00-0c-00-00-01     dynamic
+  192.168.1.11         00-00-0c-00-00-02     dynamic
+"""
+    runner = TimeoutNamesRunner(
+        arp_output=arp_output,
+        dns_names={"192.168.1.11": "client.local"},
+    )
+    discovery, _runner = _discovery(tmp_path, runner)
+    snapshot = _snapshot(
+        snapshot_factory,
+        [_adapter("Ethernet")],
+        [_address("192.168.1.10", 29, "Ethernet")],
+    )
+
+    devices = discovery.discover(snapshot)
+    by_ip = {device["ip"]: device for device in devices}
+
+    # A NetBIOS (and DNS) timeout leaves that device unnamed, not the scan failed.
+    assert by_ip["192.168.1.9"]["name"] is None
+    # Other devices still resolve despite one host's lookup failures.
+    assert by_ip["192.168.1.11"]["name"] == "client.local"
+
+
+def test_netbios_timeout_still_tries_reverse_dns(snapshot_factory, tmp_path):
+    class NetbiosTimeoutRunner(DiscoveryRunner):
+        def run(self, args, *, timeout=None, **kwargs):
+            argv = tuple(str(part) for part in args)
+            if argv[0].lower() == "nbtstat":
+                return CommandResult(
+                    argv, 1, timed_out=True, error="command timed out"
+                )
+            return super().run(args, timeout=timeout, **kwargs)
+
+    arp_output = """
+Interface: 192.168.1.10 --- 0x5
+  192.168.1.9          00-00-0c-00-00-01     dynamic
+"""
+    runner = NetbiosTimeoutRunner(
+        arp_output=arp_output,
+        dns_names={"192.168.1.9": "router.local"},
+    )
+    discovery, _runner = _discovery(tmp_path, runner)
+    snapshot = _snapshot(
+        snapshot_factory,
+        [_adapter("Ethernet")],
+        [_address("192.168.1.10", 29, "Ethernet")],
+    )
+
+    devices = discovery.discover(snapshot)
+
+    assert devices[0]["name"] == "router.local"
+    assert any(args[0].lower() == "nslookup" for args, _ in runner.calls)
+
+
 def test_discovery_formats_devices_and_routes_operations_through_runner(
     snapshot_factory, tmp_path
 ):
