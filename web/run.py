@@ -15,7 +15,7 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 from typing import BinaryIO
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 from werkzeug.serving import make_server
 
 import config
@@ -167,7 +167,7 @@ def _show_existing(url: str, mode: str, state: WebState) -> bool:
         _print_url(url)
         return True
     if mode == "window":
-        if run_native_window(url):
+        if run_native_window(url, logger=state.logger):
             return True
         state.logger.warning("webview_unavailable", source="web")
         return _open_url(url)
@@ -189,9 +189,17 @@ def _run_window_session(state: WebState, srv: object, boot_url: str, print_url: 
     server_thread.start()
     if print_url:
         _print_url(boot_url)
-    if not run_native_window(boot_url):
+    state.native_window_active = run_native_window(boot_url, logger=state.logger)
+    if not state.native_window_active:
         state.logger.warning("webview_unavailable", source="web")
         _open_url(boot_url)
+
+    if state.native_window_active:
+        handoff = getattr(state, "elevate_handoff", None)
+        if handoff and handoff.get("active") and handoff.get("url"):
+            _notify_elevate_shutdown_for_state(state)
+            state.shutdown_event.set()
+
     state.shutdown_event.wait()
 
 
@@ -244,17 +252,18 @@ def _open_url(url: str) -> bool:
         return False
 
 
-def _notify_elevate_handoff(
+def _post_local_callback(
     callback_url: str,
     callback_token: str,
-    port: int,
-    boot_token: str,
+    expected_path: str,
+    payload: bytes,
+    label: str,
 ) -> None:
     parsed_url = urlsplit(callback_url)
     if (
         parsed_url.scheme != "http"
         or parsed_url.hostname != "127.0.0.1"
-        or parsed_url.path != "/__elevate_complete__"
+        or parsed_url.path != expected_path
         or parsed_url.username is not None
         or parsed_url.password is not None
         or parsed_url.query
@@ -264,7 +273,6 @@ def _notify_elevate_handoff(
     ):
         raise ValueError("Elevation handoff callback must be a local NetScope URL.")
 
-    payload = json.dumps({"port": int(port), "boot_token": boot_token}).encode("utf-8")
     request = urllib.request.Request(
         callback_url,
         data=payload,
@@ -277,7 +285,59 @@ def _notify_elevate_handoff(
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     with opener.open(request, timeout=3) as response:
         if response.status != 200:
-            raise RuntimeError(f"Elevation handoff callback returned HTTP {response.status}.")
+            raise RuntimeError(f"Elevation {label} callback returned HTTP {response.status}.")
+
+
+def _notify_elevate_handoff(
+    callback_url: str,
+    callback_token: str,
+    port: int,
+    boot_token: str,
+) -> None:
+    payload = json.dumps({"port": int(port), "boot_token": boot_token}).encode("utf-8")
+    _post_local_callback(
+        callback_url,
+        callback_token,
+        "/__elevate_complete__",
+        payload,
+        "handoff",
+    )
+
+
+def _notify_elevate_shutdown(callback_url: str, callback_token: str) -> None:
+    _post_local_callback(
+        callback_url,
+        callback_token,
+        "/__elevate_shutdown__",
+        b"{}",
+        "shutdown",
+    )
+
+
+def _notify_elevate_shutdown_for_state(state: WebState) -> None:
+    handoff = getattr(state, "elevate_handoff", None)
+    if (
+        not handoff
+        or not handoff.get("active")
+        or not handoff.get("url")
+        or handoff.get("shutdown_notified")
+    ):
+        return
+    try:
+        parsed = urlsplit(handoff["url"])
+        shutdown_url = urlunsplit(
+            (parsed.scheme, parsed.netloc, "/__elevate_shutdown__", "", "")
+        )
+        _notify_elevate_shutdown(shutdown_url, handoff.get("callback_token", ""))
+        handoff["shutdown_notified"] = True
+        state.logger.event("elevate_shutdown_notified", source="web")
+    except Exception as exc:  # noqa: BLE001
+        state.logger.error(
+            "elevate_shutdown_failed",
+            source="web",
+            error=str(exc),
+            exc_info=True,
+        )
 
 
 def _monitor(state: WebState, interval: float = 2.0) -> None:
@@ -286,6 +346,7 @@ def _monitor(state: WebState, interval: float = 2.0) -> None:
             # explicit request (POST /api/shutdown): give the HTTP response a
             # moment to flush before exiting the process.
             time.sleep(0.5)
+            _notify_elevate_shutdown_for_state(state)
             state.logger.event("server_shutdown", source="web", reason="api_request")
             _remove_lock(os.getpid())
             os._exit(0)
@@ -299,9 +360,6 @@ def _monitor(state: WebState, interval: float = 2.0) -> None:
                     if url:
                         handoff["url"] = url
                         state.logger.event("elevate_handoff_ready", source="web", url=url)
-            if handoff.get("url") and not handoff.get("shutdown_scheduled"):
-                handoff["shutdown_scheduled"] = True
-                threading.Timer(5.0, lambda: state.shutdown_event.set()).start()
             if not handoff.get("url") and time.monotonic() > float(handoff.get("deadline") or 0):
                 handoff["error"] = "Timed out waiting for the elevated NetScope instance."
                 handoff["active"] = False
@@ -322,9 +380,11 @@ def _monitor(state: WebState, interval: float = 2.0) -> None:
                         error=str(exc),
                         exc_info=True,
                     )
-            continue
+            if getattr(state, "native_window_active", True):
+                continue
 
         if state.should_shutdown():
+            _notify_elevate_shutdown_for_state(state)
             state.logger.event("server_shutdown", source="web", reason="heartbeat_timeout")
             state.shutdown_event.set()
             _remove_lock(os.getpid())
@@ -376,7 +436,12 @@ def run_web_ui(
         return 1
 
     state = WebState(mode="web")
+    if handoff_token:
+        state.elevate_shutdown_token = handoff_token
     try:
+        monitoring = getattr(getattr(state, "runtime", None), "monitoring", None)
+        if monitoring is not None:
+            monitoring.prewarm()
         app = create_app(state)
         port = int(port) if port else _find_free_port()
         state.port = port

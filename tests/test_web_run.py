@@ -136,6 +136,40 @@ def test_elevation_callback_rejects_non_local_url():
         )
 
 
+def test_notify_elevate_shutdown_sends_token_without_proxy(monkeypatch):
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+    class Opener:
+        def open(self, request, timeout):
+            assert request.full_url == "http://127.0.0.1:54322/__elevate_shutdown__"
+            assert request.get_header("X-netscope-handoff") == "one-time-secret"
+            assert request.data == b"{}"
+            assert timeout == 3
+            return Response()
+
+    monkeypatch.setattr(run.urllib.request, "build_opener", lambda *_args: Opener())
+
+    run._notify_elevate_shutdown(
+        "http://127.0.0.1:54322/__elevate_shutdown__",
+        "one-time-secret",
+    )
+
+
+def test_notify_elevate_shutdown_rejects_non_local_url():
+    with pytest.raises(ValueError, match="local NetScope URL"):
+        run._notify_elevate_shutdown(
+            "https://example.com/__elevate_shutdown__",
+            "one-time-secret",
+        )
+
+
 def test_werkzeug_request_logs_route_to_netscope_without_duplicate_handlers():
     class Recorder:
         def __init__(self):
@@ -287,6 +321,77 @@ def test_monitor_restores_instance_after_elevation_timeout(exit_guard, monkeypat
     assert not thread.is_alive()
 
 
+def test_monitor_browser_fallback_handoff_notifies_elevated_on_heartbeat(
+    exit_guard, monkeypatch
+):
+    notified = []
+    monkeypatch.setattr(
+        run,
+        "_notify_elevate_shutdown",
+        lambda url, token: notified.append((url, token)),
+    )
+    state = _monitor_state(
+        should_shutdown=lambda: True,
+        native_window_active=False,
+        elevate_handoff={
+            "active": True,
+            "url": "http://127.0.0.1:54322/__boot__?token=t",
+            "callback_token": "secret",
+            "deadline": time.monotonic() + 10,
+            "error": None,
+        },
+    )
+
+    with pytest.raises(SystemExit):
+        run._monitor(state, interval=0.01)
+
+    assert notified == [
+        ("http://127.0.0.1:54322/__elevate_shutdown__", "secret")
+    ]
+    assert state.elevate_handoff["shutdown_notified"] is True
+    assert state.logger.events[-1][0] == "server_shutdown"
+
+
+def test_monitor_does_not_shut_down_on_handoff_ready(exit_guard, monkeypatch):
+    timers = []
+
+    class NoTimer:
+        def __init__(self, delay, function, *args, **kwargs):
+            timers.append((delay, function, args, kwargs))
+
+        def start(self):
+            raise AssertionError("no shutdown timer should be started")
+
+    monkeypatch.setattr(run.threading, "Timer", NoTimer)
+    monkeypatch.setattr(run, "_notify_elevate_shutdown", lambda *_args: None)
+    state = _monitor_state(
+        elevate_handoff={
+            "active": True,
+            "url": "http://127.0.0.1:54322/__boot__?token=t",
+            "deadline": time.monotonic() + 10,
+            "error": None,
+        },
+        instance_lock_handle=object(),
+    )
+
+    def run_monitor():
+        try:
+            run._monitor(state, interval=0.01)
+        except SystemExit:
+            pass
+
+    thread = threading.Thread(target=run_monitor, daemon=True)
+    thread.start()
+    thread.join(0.2)
+
+    assert not state.shutdown_event.is_set()
+    assert timers == []
+    assert exit_guard == []
+    state.shutdown_event.set()
+    thread.join(2)
+    assert not thread.is_alive()
+
+
 class _BindRecorder:
     def __init__(self):
         self.events = []
@@ -380,6 +485,43 @@ def test_run_web_ui_serves_until_keyboard_interrupt(monkeypatch, tmp_path, capsy
     handle = run._acquire_instance_lock()
     assert handle is not None
     run._release_instance_lock(handle)
+
+
+def test_run_web_ui_stores_elevated_shutdown_token(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
+    states = []
+
+    class State:
+        def __init__(self):
+            class Security:
+                boot_token = "boot-token"
+
+            self.security = Security()
+            self.logger = _BindRecorder()
+            self.shutdown_event = threading.Event()
+            self.port = None
+            states.append(self)
+
+        def should_shutdown(self):
+            return False
+
+    class Srv:
+        def serve_forever(self):
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(run, "WebState", lambda mode="web": State())
+    monkeypatch.setattr(run, "create_app", lambda state: object())
+    monkeypatch.setattr(run, "make_server", lambda *_args, **_kwargs: Srv())
+    monkeypatch.setattr(run, "_notify_elevate_handoff", lambda *_args, **_kwargs: None)
+
+    assert run.run_web_ui(
+        port=run._find_free_port(),
+        no_browser=True,
+        handoff_url="http://127.0.0.1:54321/__elevate_complete__",
+        handoff_token="one-time-secret",
+    ) == 0
+
+    assert states[0].elevate_shutdown_token == "one-time-secret"
 
 
 def test_source_cli_starts_local_web_server(tmp_path):

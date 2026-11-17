@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 APP_NAME = "NetScope"
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.4.0"
 
 PING_TIMEOUT_SECONDS = 1
 
@@ -65,3 +65,7 @@ def report_dir() -> Path:
 
 def backup_dir() -> Path:
     return data_dir() / "backups"
+
+
+def snapshot_cache_path() -> Path:
+    return data_dir() / "snapshot.json"

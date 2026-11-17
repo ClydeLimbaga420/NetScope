@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes
 import ctypes.wintypes
 import os
+from typing import Any
 
 WEBVIEW2_CLIENT_ID = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
 _SPI_GETWORKAREA = 0x0030
@@ -96,7 +97,7 @@ def webview2_available() -> bool:
     return any(number > 0 for number in numbers)
 
 
-def run_native_window(boot_url: str) -> bool:
+def run_native_window(boot_url: str, logger: Any | None = None) -> bool:
     """Open the NetScope window and block until it closes."""
 
     if not webview2_available():
@@ -109,6 +110,8 @@ def run_native_window(boot_url: str) -> bool:
         import webview
     except Exception:
         return False
+    if logger is not None:
+        logger.event("window_create", source="web")
     try:
         x, y, width, height, min_size = geometry
         webview.create_window(
@@ -120,7 +123,11 @@ def run_native_window(boot_url: str) -> bool:
             height=height,
             min_size=min_size,
         )
+        if logger is not None:
+            logger.event("window_started", source="web")
         webview.start(gui="edgechromium", debug=False)
     except Exception:
         return False
+    if logger is not None:
+        logger.event("window_closed", source="web")
     return True

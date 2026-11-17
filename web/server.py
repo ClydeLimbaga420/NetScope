@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import logging
 import hmac
+import logging
 import os
 import sys
 import threading
 import time
 from typing import Any
 
-from flask import Flask, jsonify, redirect, request, url_for
+from flask import Flask, g, jsonify, redirect, request, url_for
 
 import config
 from cli.admin import is_admin
@@ -73,6 +73,8 @@ class WebState:
         self.last_report: Any = None
         self.instance_lock_handle: Any = None
         self.elevate_handoff: dict[str, Any] | None = None
+        self.elevate_shutdown_token: str | None = None
+        self.native_window_active: bool = False
 
     def _build_runtime(self) -> AppRuntime:
         runner = SubprocessRunner(self.logger)
@@ -105,7 +107,11 @@ class WebState:
         self.last_heartbeat = time.monotonic()
 
     def should_shutdown(self) -> bool:
-        if getattr(self, "elevate_handoff", None) and self.elevate_handoff.get("active"):
+        if (
+            getattr(self, "elevate_handoff", None)
+            and self.elevate_handoff.get("active")
+            and getattr(self, "native_window_active", True)
+        ):
             return False
         if (time.monotonic() - self.last_heartbeat) <= 120:
             return False
@@ -139,13 +145,15 @@ def create_app(state: WebState | None = None) -> Flask:
     @app.before_request
     def _before() -> Any:
         st: WebState = app.extensions["netscope_state"]
+        path = request.path or ""
+        if path.startswith("/api/"):
+            g.api_started = time.perf_counter()
         if not st.security.host_ok(request, st.port):
             return jsonify({"error": {"code": "host_rejected", "message": "Host not allowed."}}), 403
         # Any successful request proves the UI is still alive; keep the
         # heartbeat timer from firing while the tab is open (Chrome throttles
         # background-tab timers, so the dedicated heartbeat may be delayed).
         st.touch()
-        path = request.path or ""
         if path.startswith("/api/"):
             try:
                 require_api_security(st.security, st.port)
@@ -173,12 +181,19 @@ def create_app(state: WebState | None = None) -> Flask:
         resp = apply_security_headers(response)
         st: WebState = app.extensions["netscope_state"]
         if request.path.startswith("/api/"):
+            started = getattr(g, "api_started", None)
+            duration_ms = (
+                round((time.perf_counter() - started) * 1000, 1)
+                if started is not None
+                else None
+            )
             st.logger.event(
                 "api_response",
                 source="web",
                 method=request.method,
                 path=request.path,
                 status=resp.status_code,
+                duration_ms=duration_ms,
             )
         return resp
 
@@ -226,6 +241,24 @@ def create_app(state: WebState | None = None) -> Flask:
 
         handoff["url"] = f"http://127.0.0.1:{port}/__boot__?{TOKEN_PARAM}={boot_token}"
         st.logger.event("elevate_handoff_ready", source="web", port=port)
+        return jsonify({"ok": True})
+
+    @app.post("/__elevate_shutdown__")
+    def _elevate_shutdown():  # type: ignore[no-untyped-def]
+        st: WebState = app.extensions["netscope_state"]
+        handoff = getattr(st, "elevate_handoff", None)
+        handoff_token = handoff.get("callback_token", "") if handoff and handoff.get("active") else ""
+        expected_token = getattr(st, "elevate_shutdown_token", None) or handoff_token
+        provided_token = request.headers.get("X-NetScope-Handoff", "")
+        if (
+            not provided_token
+            or not expected_token
+            or not hmac.compare_digest(provided_token, expected_token)
+        ):
+            return jsonify({"error": {"code": "invalid_handoff", "message": "Invalid elevation handoff."}}), 403
+
+        st.logger.event("elevate_shutdown_requested", source="web")
+        st.shutdown_event.set()
         return jsonify({"ok": True})
 
     @app.get("/__session__")

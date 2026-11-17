@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 from core.logging_config import flush_logging, setup_logging
 
@@ -34,6 +35,25 @@ def test_logging_writes_json_lines_with_session(tmp_path):
     command = next(record for record in records if record["event"] == "command")
     assert command["fields"]["args"] == ["ping", "1.1.1.1"]
     assert command["fields"]["returncode"] == 0
+
+
+def test_log_records_include_pid(tmp_path):
+    logger = setup_logging("test", session_id="s", log_dir=tmp_path)
+    logger.event("hello")
+    flush_logging()
+
+    record = next(r for r in _read_records(tmp_path) if r["event"] == "hello")
+    assert record["pid"] == os.getpid()
+
+
+def test_command_output_is_bounded(tmp_path):
+    logger = setup_logging("test", session_id="s", log_dir=tmp_path)
+    logger.command(["ping"], stdout="x" * 5000, stderr="y" * 5000)
+    flush_logging()
+
+    record = next(r for r in _read_records(tmp_path) if r["event"] == "command")
+    assert record["fields"]["stdout"] == "x" * 1000
+    assert record["fields"]["stderr"] == "y" * 1000
 
 
 def test_logging_redacts_secrets(tmp_path):

@@ -6,8 +6,11 @@ import ipaddress
 import os
 import re
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Generic, Literal, TypeVar
 
 import config
@@ -15,6 +18,8 @@ from core.device_discovery import DeviceDiscovery
 from core.info import build_info
 from core.native import parse_ping_stats
 from core.snapshot import Snapshot
+from core.snapshot_cache import load_with_reason as load_snapshot_cache
+from core.snapshot_cache import save as save_snapshot_cache
 from powershell.validation import validate_ip
 
 T = TypeVar("T")
@@ -269,9 +274,49 @@ def _status_problems(
     return deduped
 
 
+def _zero_traffic() -> dict[str, float | int]:
+    return {
+        "download_bytes_sec": 0.0,
+        "upload_bytes_sec": 0.0,
+        "download_mbps": 0.0,
+        "upload_mbps": 0.0,
+        "total_received_bytes": 0,
+        "total_sent_bytes": 0,
+    }
+
+
+def _pending_ping(host: str | None, reason: str) -> dict[str, Any]:
+    return {
+        "host": host,
+        "latency_ms": None,
+        "online": False,
+        "packet_loss_percent": None,
+        "packets_sent": 0,
+        "packets_received": 0,
+        "reason": reason,
+    }
+
+
+def _pending_status_ping(host: str | None) -> dict[str, Any]:
+    return {"host": host, "latency_ms": None, "online": False}
+
+
+def _snapshot_age_seconds(captured_at: str | None, now: float) -> float | None:
+    if not captured_at:
+        return None
+    try:
+        parsed = datetime.fromisoformat(captured_at)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return round(max(0.0, now - parsed.timestamp()), 1)
+
+
 class MonitoringService:
     DEVICE_CACHE_SECONDS = 15.0
     PACKET_LOSS_CACHE_SECONDS = 30.0
+    SNAPSHOT_CACHE_SECONDS = 15.0
 
     def __init__(
         self,
@@ -282,19 +327,157 @@ class MonitoringService:
         counter_provider: Callable[[], NetworkCounters],
         clock: Callable[[], float],
         logger: Any | None = None,
+        cache_path: Path | None = None,
+        wall_clock: Callable[[], float] | None = None,
     ):
         self.engine = engine
         self.runner = runner
         self.ps = ps
         self.counter_provider = counter_provider
         self.clock = clock
+        self.wall_clock = wall_clock or time.time
         self.logger = logger
+        self.cache_path = Path(cache_path) if cache_path is not None else config.snapshot_cache_path()
         self.device_discovery = DeviceDiscovery(runner, ps, logger, clock=clock)
         self._rates_lock = threading.Lock()
         self._previous_counters: NetworkCounters | None = None
         self._previous_time: float | None = None
         self._devices_task: _BackgroundTask[list[dict[str, Any]]] = _BackgroundTask()
         self._packet_loss_task: _BackgroundTask[dict[str, Any]] = _BackgroundTask()
+        self._snapshot_lock = threading.Lock()
+        self._snapshot_refresh_lock = threading.Lock()
+        self._snapshot: Snapshot | None = None
+        self._snapshot_at: float = 0.0
+        self._snapshot_error: str | None = None
+        self._snapshot_refreshing = False
+        self._snapshot_from_cache = False
+        self._snapshot_captured_at: str | None = None
+        self._load_cached_snapshot()
+
+    def _log(self, event: str, **fields: Any) -> None:
+        if self.logger is not None:
+            self.logger.event(event, source="cache" if "cache" in event else "refresh", **fields)
+
+    def _load_cached_snapshot(self) -> None:
+        started = time.monotonic()
+        cached, reason = load_snapshot_cache(self.cache_path)
+        duration_seconds = round(time.monotonic() - started, 4)
+        if cached is None:
+            if self.cache_path.exists():
+                self._log(
+                    "snapshot_cache_invalid",
+                    reason=reason or "unusable",
+                    duration_seconds=duration_seconds,
+                )
+            return
+        with self._snapshot_lock:
+            self._snapshot = cached
+            self._snapshot_at = 0.0
+            self._snapshot_error = None
+            self._snapshot_from_cache = True
+            self._snapshot_captured_at = cached.captured_at
+        self._log(
+            "snapshot_cache_loaded",
+            captured_at=cached.captured_at,
+            duration_seconds=duration_seconds,
+        )
+
+    def get_snapshot(self) -> Snapshot | None:
+        """Return the shared snapshot, refreshing stale data in the background."""
+        with self._snapshot_lock:
+            snapshot = self._snapshot
+            stale = (
+                snapshot is None
+                or (time.monotonic() - self._snapshot_at) >= self.SNAPSHOT_CACHE_SECONDS
+            )
+        if stale:
+            self._request_snapshot_refresh(delay=0.02 if snapshot is not None else 0.0)
+        return snapshot
+
+    def freshness(self) -> dict[str, Any]:
+        """Describe how current the shared snapshot is."""
+        with self._snapshot_lock:
+            snapshot = self._snapshot
+            error = self._snapshot_error
+            from_cache = self._snapshot_from_cache
+            snapshot_at = self._snapshot_at
+            captured_at = self._snapshot_captured_at
+
+        if snapshot is None:
+            state = "unavailable" if error else "collecting"
+        elif from_cache:
+            state = "stale"
+        elif time.monotonic() - snapshot_at >= self.SNAPSHOT_CACHE_SECONDS:
+            state = "stale"
+        else:
+            state = "fresh"
+
+        return {
+            "state": state,
+            "captured_at": captured_at,
+            "age_seconds": _snapshot_age_seconds(captured_at, self.wall_clock()),
+            "error": error if state == "unavailable" else None,
+        }
+
+    def prewarm(self) -> None:
+        """Start collecting the first snapshot without blocking the caller."""
+        self._request_snapshot_refresh()
+
+    def _request_snapshot_refresh(self, *, delay: float = 0.0) -> None:
+        with self._snapshot_refresh_lock:
+            if self._snapshot_refreshing:
+                return
+            self._snapshot_refreshing = True
+        with self._snapshot_lock:
+            self._snapshot_error = None
+        if delay:
+            timer = threading.Timer(delay, self._refresh_snapshot)
+            timer.name = "netscope-snapshot-refresh"
+            timer.daemon = True
+            timer.start()
+        else:
+            threading.Thread(
+                target=self._refresh_snapshot,
+                name="netscope-snapshot-refresh",
+                daemon=True,
+            ).start()
+
+    def _refresh_snapshot(self) -> None:
+        started = time.monotonic()
+        self._log("snapshot_refresh_start", duration_seconds=0.0)
+        try:
+            snapshot = self.engine.collect_snapshot()
+            try:
+                save_snapshot_cache(snapshot, self.cache_path)
+            except OSError as exc:
+                self._log(
+                    "snapshot_cache_invalid",
+                    reason="write_failed",
+                    duration_seconds=round(time.monotonic() - started, 4),
+                    error=str(exc),
+                )
+            with self._snapshot_lock:
+                self._snapshot = snapshot
+                self._snapshot_at = time.monotonic()
+                self._snapshot_error = None
+                self._snapshot_from_cache = False
+                self._snapshot_captured_at = snapshot.captured_at
+            self._log(
+                "snapshot_refresh_complete",
+                duration_seconds=round(time.monotonic() - started, 4),
+                captured_at=snapshot.captured_at,
+            )
+        except Exception as exc:  # noqa: BLE001
+            with self._snapshot_lock:
+                self._snapshot_error = str(exc)
+            self._log(
+                "snapshot_refresh_failed",
+                duration_seconds=round(time.monotonic() - started, 4),
+                error=str(exc),
+            )
+        finally:
+            with self._snapshot_refresh_lock:
+                self._snapshot_refreshing = False
 
     def _traffic(self) -> dict[str, float | int]:
         with self._rates_lock:
@@ -325,19 +508,42 @@ class MonitoringService:
         }
 
     def get_status(self) -> dict[str, Any]:
-        snapshot = self.engine.collect_snapshot()
-        info = build_info(snapshot)
-        network = _network_payload(snapshot, info)
+        snapshot = self.get_snapshot()
         internet_host = config.INTERNET_PING_HOSTS[0]
-        internet_ping = _ping_payload(internet_host, snapshot)
-        gateway_ping = _ping_payload(snapshot.gateway, snapshot)
-        return {
-            "network": network,
-            "traffic": self._traffic(),
-            "internet_ping": internet_ping,
-            "gateway_ping": gateway_ping,
-            "problems": _status_problems(network, internet_ping, gateway_ping),
-        }
+        if snapshot is None:
+            status: dict[str, Any] = {
+                "network": {
+                    "hostname": None,
+                    "local_ip": None,
+                    "gateway": None,
+                    "interfaces": [],
+                    "interface_count": 0,
+                    "diagnosis": {
+                        "gateway": None,
+                        "issues": [],
+                        "gateway_in_subnet": None,
+                        "network_down": False,
+                    },
+                },
+                "traffic": _zero_traffic(),
+                "internet_ping": _pending_status_ping(internet_host),
+                "gateway_ping": _pending_status_ping(None),
+                "problems": [],
+            }
+        else:
+            info = build_info(snapshot)
+            network = _network_payload(snapshot, info)
+            internet_ping = _ping_payload(internet_host, snapshot)
+            gateway_ping = _ping_payload(snapshot.gateway, snapshot)
+            status = {
+                "network": network,
+                "traffic": self._traffic(),
+                "internet_ping": internet_ping,
+                "gateway_ping": gateway_ping,
+                "problems": _status_problems(network, internet_ping, gateway_ping),
+            }
+        status["data_freshness"] = self.freshness()
+        return status
 
     def _collect_packet_loss(self, snapshot: Snapshot) -> dict[str, Any]:
         internet_host = validate_ip(config.INTERNET_PING_HOSTS[0])
@@ -431,7 +637,9 @@ class MonitoringService:
         self, force: bool = False
     ) -> MonitorTaskResult[list[dict[str, Any]]]:
         def discover() -> list[dict[str, Any]]:
-            snapshot = self.engine.collect_snapshot()
+            snapshot = self.get_snapshot()
+            if snapshot is None:
+                return []
             return self.device_discovery.discover(snapshot, force=True)
 
         return self._request_task(
@@ -446,7 +654,15 @@ class MonitoringService:
         self, force: bool = False
     ) -> MonitorTaskResult[dict[str, Any]]:
         def collect() -> dict[str, Any]:
-            snapshot = self.engine.collect_snapshot()
+            snapshot = self.get_snapshot()
+            if snapshot is None:
+                return {
+                    "count": 10,
+                    "internet": _pending_ping(
+                        config.INTERNET_PING_HOSTS[0], "Waiting for network data."
+                    ),
+                    "gateway": _pending_ping(None, "Waiting for network data."),
+                }
             return self._collect_packet_loss(snapshot)
 
         return self._request_task(

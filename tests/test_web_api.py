@@ -7,6 +7,7 @@ import time
 
 import pytest
 
+import config
 from core.checks.descriptors import CHECK_DESCRIPTORS
 from core.monitoring import MonitorTaskResult, MonitoringService, NetworkCounters
 from core.runner import CommandResult, FakeRunner, SubprocessRunner
@@ -83,6 +84,11 @@ class FakeMonitoringService:
         return self.packet_loss
 
 
+@pytest.fixture(autouse=True)
+def isolated_snapshot_cache(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "snapshot_cache_path", lambda: tmp_path / "snapshot.json")
+
+
 @pytest.fixture
 def web_state(monkeypatch):
     st = WebState.__new__(WebState)
@@ -95,12 +101,14 @@ def web_state(monkeypatch):
     import logging
     class NL:
         session_id = "s1"
-        def event(self,*a,**k): pass
-        def action(self,*a,**k): pass
-        def warning(self,*a,**k): pass
         def __init__(self):
+            self.events = []
             self.errors = []
+        def event(self,*a,**k): self.events.append((a[0], k))
+        def action(self,*a,**k): self.events.append((a[0], k))
+        def warning(self,*a,**k): self.events.append((a[0], k))
         def error(self,*a,**k):
+            self.events.append((a[0], k))
             self.errors.append((a, k))
         def confirmation(self,*a,**k): pass
         def fix_applied(self,*a,**k): pass
@@ -127,6 +135,11 @@ def web_state(monkeypatch):
                 "internet_ping": {},
                 "gateway_ping": {},
                 "problems": [],
+                "data_freshness": {
+                    "state": "fresh",
+                    "captured_at": None,
+                    "age_seconds": None,
+                },
             }
         ),
     )
@@ -144,6 +157,12 @@ def test_host_rejected(client):
     c, st = client
     r = c.get('/api/status', headers={'Host': 'evil.example.com'})
     assert r.status_code == 403
+    api_responses = [
+        fields for name, fields in st.logger.events
+        if name == "api_response" and fields["path"] == "/api/status"
+    ]
+    assert api_responses
+    assert isinstance(api_responses[-1]["duration_ms"], float)
 
 
 def test_api_requires_cookie(client):
@@ -168,6 +187,21 @@ def test_session_and_status(client):
     assert r.status_code == 403
     r = c.post('/api/heartbeat', headers={'Host': '127.0.0.1:5000', 'Origin': 'http://127.0.0.1:5000', 'X-NetScope-Token': token, 'Content-Type': 'application/json'}, json={})
     assert r.status_code == 200
+
+
+def test_api_response_logs_duration(client):
+    import math
+    c, st = client
+    _boot(c, st)
+    c.get('/api/status', headers={'Host': '127.0.0.1:5000'})
+    responses = [fields for name, fields in st.logger.events if name == 'api_response']
+    assert responses
+    assert all(
+        isinstance(f.get('duration_ms'), float)
+        and math.isfinite(f['duration_ms'])
+        and f['duration_ms'] >= 0
+        for f in responses
+    )
 
 
 def test_status_payload_contract(client, monkeypatch):
@@ -437,8 +471,9 @@ def test_monitoring_packet_loss_failure_is_logged_and_explicit(client):
 
 
 def test_monitoring_api_status_returns_while_workers_are_blocked(
-    client, snapshot_factory
+    client, snapshot_factory, tmp_path, monkeypatch
 ):
+    monkeypatch.setattr(config, "snapshot_cache_path", lambda: tmp_path / "snapshot.json")
     c, st = client
     snapshot = snapshot_factory()
     devices_started = threading.Event()
@@ -478,6 +513,10 @@ def test_monitoring_api_status_returns_while_workers_are_blocked(
         devices_started.set()
         release_devices.wait(2)
         return []
+
+    deadline = time.monotonic() + 2.0
+    while monitoring.get_snapshot() is None and time.monotonic() < deadline:
+        time.sleep(0.01)
 
     monitoring.device_discovery.discover = blocked_discovery
     st.runtime.monitoring = monitoring
@@ -529,6 +568,10 @@ def test_runtime_construction_owns_monitoring_service(snapshot_factory, monkeypa
         None,
         NullLogger(),
     )
+    monitoring.prewarm()
+    deadline = time.monotonic() + 2.0
+    while monitoring.get_snapshot() is None and time.monotonic() < deadline:
+        time.sleep(0.01)
     traffic = monitoring.get_status()["traffic"]
     assert traffic["total_received_bytes"] == 1234
     assert traffic["total_sent_bytes"] == 5678
@@ -833,10 +876,17 @@ def test_api_request_and_response_are_logged(client):
     response = c.get("/api/fixes", headers={"Host": "127.0.0.1:5000"})
 
     assert response.status_code == 200
-    assert recorder.events == [
-        ("api_request", {"source": "web", "method": "GET", "path": "/api/fixes"}),
-        ("api_response", {"source": "web", "method": "GET", "path": "/api/fixes", "status": 200}),
-    ]
+    assert len(recorder.events) == 2
+    assert recorder.events[0] == (
+        "api_request", {"source": "web", "method": "GET", "path": "/api/fixes"}
+    )
+    name, fields = recorder.events[1]
+    assert name == "api_response"
+    assert fields["source"] == "web"
+    assert fields["method"] == "GET"
+    assert fields["path"] == "/api/fixes"
+    assert fields["status"] == 200
+    assert isinstance(fields["duration_ms"], float)
 
 
 def test_dashboard_template_uses_shared_shell_and_local_assets(client):
@@ -1042,6 +1092,16 @@ def test_elevate_cancelled_keeps_server_running(client, monkeypatch):
     assert not st.shutdown_event.is_set()
 
 
+def test_should_shutdown_during_handoff_without_native_window():
+    st = WebState.__new__(WebState)
+    st.elevate_handoff = {"active": True}
+    st.native_window_active = False
+    st.last_heartbeat = time.monotonic() - 121
+    st.jobs = types.SimpleNamespace(has_active_jobs=lambda: False)
+
+    assert st.should_shutdown() is True
+
+
 def test_elevate_requests_restart(client, monkeypatch):
     c, st = client
     token = _boot(c, st)
@@ -1067,6 +1127,8 @@ def test_elevate_requests_restart(client, monkeypatch):
     assert calls[2][0] == "launch"
     assert calls[2][1][0].endswith("netscope.py")
     assert calls[2][2] is True
+    assert "--no-browser" in calls[2][1]
+    assert "--browser" not in calls[2][1]
     assert "--handoff-url" in calls[2][1]
     assert calls[2][1][calls[2][1].index("--handoff-url") + 1] == (
         f"http://127.0.0.1:{st.port}/__elevate_complete__"
@@ -1079,6 +1141,66 @@ def test_elevate_requests_restart(client, monkeypatch):
     assert st.elevate_handoff["active"] is True
     assert st.instance_lock_handle is None
     assert not st.shutdown_event.is_set()
+
+
+def test_elevate_shutdown_route_requires_valid_handoff_token(client):
+    c, st = client
+    st.elevate_handoff = {"active": True, "callback_token": "one-time-secret"}
+
+    missing = c.post(
+        "/__elevate_shutdown__",
+        headers={"Host": "127.0.0.1:5000"},
+        json={},
+    )
+
+    assert missing.status_code == 403
+    assert not st.shutdown_event.is_set()
+
+    wrong = c.post(
+        "/__elevate_shutdown__",
+        headers={
+            "Host": "127.0.0.1:5000",
+            "X-NetScope-Handoff": "wrong-secret",
+        },
+        json={},
+    )
+
+    assert wrong.status_code == 403
+    assert not st.shutdown_event.is_set()
+
+    right = c.post(
+        "/__elevate_shutdown__",
+        headers={
+            "Host": "127.0.0.1:5000",
+            "X-NetScope-Handoff": "one-time-secret",
+        },
+        json={},
+    )
+
+    assert right.status_code == 200
+    assert st.shutdown_event.is_set()
+
+
+def test_elevate_shutdown_route_accepts_elevated_token_without_active_handoff(client):
+    c, st = client
+    st.elevate_shutdown_token = "elevated-secret"
+    st.elevate_handoff = None
+
+    wrong = c.post(
+        "/__elevate_shutdown__",
+        headers={"Host": "127.0.0.1:5000", "X-NetScope-Handoff": "one-time-secret"},
+        json={},
+    )
+    assert wrong.status_code == 403
+    assert not st.shutdown_event.is_set()
+
+    right = c.post(
+        "/__elevate_shutdown__",
+        headers={"Host": "127.0.0.1:5000", "X-NetScope-Handoff": "elevated-secret"},
+        json={},
+    )
+    assert right.status_code == 200
+    assert st.shutdown_event.is_set()
 
 
 def test_fix_high_risk_requires_second_confirmation(client):

@@ -114,7 +114,9 @@ def test_launch_mode_precedence():
 def test_show_existing_window_uses_native(monkeypatch):
     calls = []
     state = SimpleNamespace(logger=WindowLogger())
-    monkeypatch.setattr(run, "run_native_window", lambda url: calls.append(url) or True)
+    monkeypatch.setattr(
+        run, "run_native_window", lambda url, **_kwargs: calls.append(url) or True
+    )
     assert run._show_existing("http://127.0.0.1:1/boot", "window", state) is True
     assert calls == ["http://127.0.0.1:1/boot"]
 
@@ -138,7 +140,7 @@ def test_window_session_falls_back_to_browser(monkeypatch):
     srv = SimpleNamespace(serve_forever=lambda: None)
     calls = []
 
-    def unavailable(_url):
+    def unavailable(_url, **_kwargs):
         state.shutdown_event.set()
         return False
 
@@ -147,6 +149,35 @@ def test_window_session_falls_back_to_browser(monkeypatch):
     run._run_window_session(state, srv, "http://127.0.0.1:1/boot", False)
     assert calls == ["http://127.0.0.1:1/boot"]
     assert any(event == "webview_unavailable" for event, _ in state.logger.events)
+
+
+def test_window_session_browser_fallback_defers_handoff_notification(monkeypatch):
+    state = SimpleNamespace(
+        shutdown_event=threading.Event(),
+        logger=WindowLogger(),
+        elevate_handoff={
+            "active": True,
+            "url": "http://127.0.0.1:54322/__boot__?token=t",
+            "callback_token": "secret",
+        },
+    )
+    srv = SimpleNamespace(serve_forever=lambda: None)
+
+    def unavailable(_url, **_kwargs):
+        state.shutdown_event.set()
+        return False
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("browser fallback should wait for heartbeat shutdown")
+
+    monkeypatch.setattr(run, "run_native_window", unavailable)
+    monkeypatch.setattr(run, "_open_url", lambda url: True)
+    monkeypatch.setattr(run, "_notify_elevate_shutdown", forbidden)
+
+    run._run_window_session(state, srv, "http://127.0.0.1:1/boot", False)
+
+    assert state.native_window_active is False
+    assert state.shutdown_event.is_set()
 
 
 def test_window_close_does_not_stop_shared_server(monkeypatch):
@@ -164,12 +195,45 @@ def test_window_close_does_not_stop_shared_server(monkeypatch):
     event = RecordingEvent()
     state = SimpleNamespace(shutdown_event=event, logger=WindowLogger())
     srv = SimpleNamespace(serve_forever=lambda: None)
-    monkeypatch.setattr(run, "run_native_window", lambda _url: True)
+    monkeypatch.setattr(run, "run_native_window", lambda _url, **_kwargs: True)
 
     run._run_window_session(state, srv, "http://127.0.0.1:1/boot", False)
 
     assert event.waited is True
     assert event.stopped is False
+
+
+def test_window_close_with_handoff_shuts_down_both(monkeypatch):
+    state = SimpleNamespace(
+        shutdown_event=threading.Event(),
+        logger=WindowLogger(),
+        elevate_handoff={
+            "active": True,
+            "url": "http://127.0.0.1:54322/__boot__?token=t",
+            "callback_token": "secret",
+        },
+    )
+    srv = SimpleNamespace(serve_forever=lambda: None)
+    notified = []
+    monkeypatch.setattr(
+        run,
+        "run_native_window",
+        lambda _url, **_kwargs: notified.append(("window", _kwargs)) or True,
+    )
+    monkeypatch.setattr(
+        run,
+        "_notify_elevate_shutdown",
+        lambda url, token: notified.append(("notify", url, token)),
+    )
+
+    run._run_window_session(state, srv, "http://127.0.0.1:1/boot", False)
+
+    assert state.shutdown_event.is_set()
+    assert notified[-1] == (
+        "notify",
+        "http://127.0.0.1:54322/__elevate_shutdown__",
+        "secret",
+    )
 
 
 def test_replace_waits_for_lock(monkeypatch):
