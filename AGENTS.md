@@ -14,8 +14,8 @@ Menu/desktop shortcuts, uninstaller, WebView2 handling, and a `.netscope-inno`
 marker. `netscope install`/`uninstall` still manage portable installs and refuse
 installer-managed copies. CI covers tests on Python 3.11/3.14, 80% coverage,
 Playwright browser smoke + screenshots, frozen exe smoke, and an Inno
-install/uninstall smoke. Latest local suite: 332 passed, 2 skipped (2026-11-17);
-coverage 83.34% over `core`/`fixes`/`powershell`. Manual validation (Windows 10
+install/uninstall smoke. Latest local suite: 346 passed, 2 skipped (2026-11-17);
+coverage 83.50% over `core`/`fixes`/`powershell`. Manual validation (Windows 10
 VM checklist, window/UAC/installer cases, and human screenshot review) is
 deferred for now by request; it is a release-confidence item, not a code or
 test blocker. Phase 7 and GUI launch follow-up changes are committed locally;
@@ -35,9 +35,11 @@ elevated backend (`--no-browser` + `windowless=True`); the original WebView wind
 navigates to the elevated server, stays open across the handoff, and notifies the
 elevated process through `POST /__elevate_shutdown__` when it closes. The old
 5-second handoff shutdown timer is gone, so a UAC decline or failed handoff leaves
-the original server and window running. Structured logs now include a top-level
+the original server and window running. The elevated process stores its launch
+handoff token and accepts the shutdown callback without mutating its own handoff
+state. Structured logs now include a top-level
 `pid`, bounded command output, API response `duration_ms`, and window lifecycle
-events. Full suite: 332 passed, 2 skipped; coverage 83.34%. Live UAC handoff,
+events. Full suite: 346 passed, 2 skipped; coverage 83.50%. Live UAC handoff,
 cold-start timing on a slow machine, and the badge still need manual Windows
 validation.
 
@@ -83,7 +85,7 @@ frozen smoke, and a built wheel contains `core/oui_vendors.json`.
   `.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt`.
 - Run tests: `.\.venv\Scripts\python.exe -m pytest` (latest full run: 332 passed,
   2 skipped, 2026-11-17; Phase 5/6 verification used system Python 3.14.7).
-  Coverage gate (latest: 83.34%):
+  Coverage gate (latest: 83.50%):
   `.\.venv\Scripts\python.exe -m pytest --cov=core --cov=fixes --cov=powershell --cov-fail-under=80`.
 - Run the CLI: `.\.venv\Scripts\python.exe netscope.py --help`
   (or `python -m cli`). `netscope.py diagnose --json` is the machine interface.
