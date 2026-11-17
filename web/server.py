@@ -10,7 +10,7 @@ import threading
 import time
 from typing import Any
 
-from flask import Flask, jsonify, redirect, request, url_for
+from flask import Flask, g, jsonify, redirect, request, url_for
 
 import config
 from cli.admin import is_admin
@@ -147,6 +147,7 @@ def create_app(state: WebState | None = None) -> Flask:
         st.touch()
         path = request.path or ""
         if path.startswith("/api/"):
+            g.api_started = time.perf_counter()
             try:
                 require_api_security(st.security, st.port)
             except Exception as exc:  # abort raises
@@ -173,12 +174,19 @@ def create_app(state: WebState | None = None) -> Flask:
         resp = apply_security_headers(response)
         st: WebState = app.extensions["netscope_state"]
         if request.path.startswith("/api/"):
+            started = getattr(g, "api_started", None)
+            duration_ms = (
+                round((time.perf_counter() - started) * 1000, 1)
+                if started is not None
+                else None
+            )
             st.logger.event(
                 "api_response",
                 source="web",
                 method=request.method,
                 path=request.path,
                 status=resp.status_code,
+                duration_ms=duration_ms,
             )
         return resp
 

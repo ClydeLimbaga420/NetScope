@@ -95,12 +95,14 @@ def web_state(monkeypatch):
     import logging
     class NL:
         session_id = "s1"
-        def event(self,*a,**k): pass
-        def action(self,*a,**k): pass
-        def warning(self,*a,**k): pass
         def __init__(self):
+            self.events = []
             self.errors = []
+        def event(self,*a,**k): self.events.append((a[0], k))
+        def action(self,*a,**k): self.events.append((a[0], k))
+        def warning(self,*a,**k): self.events.append((a[0], k))
         def error(self,*a,**k):
+            self.events.append((a[0], k))
             self.errors.append((a, k))
         def confirmation(self,*a,**k): pass
         def fix_applied(self,*a,**k): pass
@@ -168,6 +170,21 @@ def test_session_and_status(client):
     assert r.status_code == 403
     r = c.post('/api/heartbeat', headers={'Host': '127.0.0.1:5000', 'Origin': 'http://127.0.0.1:5000', 'X-NetScope-Token': token, 'Content-Type': 'application/json'}, json={})
     assert r.status_code == 200
+
+
+def test_api_response_logs_duration(client):
+    import math
+    c, st = client
+    _boot(c, st)
+    c.get('/api/status', headers={'Host': '127.0.0.1:5000'})
+    responses = [fields for name, fields in st.logger.events if name == 'api_response']
+    assert responses
+    assert all(
+        isinstance(f.get('duration_ms'), float)
+        and math.isfinite(f['duration_ms'])
+        and f['duration_ms'] >= 0
+        for f in responses
+    )
 
 
 def test_status_payload_contract(client, monkeypatch):
@@ -833,10 +850,16 @@ def test_api_request_and_response_are_logged(client):
     response = c.get("/api/fixes", headers={"Host": "127.0.0.1:5000"})
 
     assert response.status_code == 200
-    assert recorder.events == [
-        ("api_request", {"source": "web", "method": "GET", "path": "/api/fixes"}),
-        ("api_response", {"source": "web", "method": "GET", "path": "/api/fixes", "status": 200}),
-    ]
+    assert recorder.events[0] == (
+        "api_request", {"source": "web", "method": "GET", "path": "/api/fixes"}
+    )
+    name, fields = recorder.events[1]
+    assert name == "api_response"
+    assert fields["source"] == "web"
+    assert fields["method"] == "GET"
+    assert fields["path"] == "/api/fixes"
+    assert fields["status"] == 200
+    assert isinstance(fields["duration_ms"], float)
 
 
 def test_dashboard_template_uses_shared_shell_and_local_assets(client):

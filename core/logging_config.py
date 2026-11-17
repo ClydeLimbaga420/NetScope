@@ -77,6 +77,7 @@ class JsonLineFormatter(logging.Formatter):
             "level": record.levelname,
             "logger": record.name,
             "session_id": getattr(record, "session_id", "-"),
+            "pid": os.getpid(),
             "event": getattr(record, "event", record.getMessage()),
         }
 
@@ -144,16 +145,20 @@ class StructuredLogger:
         timeout: float | None = None,
         timed_out: bool = False,
     ) -> None:
-        self.event(
-            "command",
-            args=args,
-            returncode=returncode,
-            duration_seconds=round(duration_seconds, 4) if duration_seconds is not None else None,
-            stdout=stdout[-4000:],
-            stderr=stderr[-4000:],
-            timeout=timeout,
-            timed_out=timed_out,
-        )
+        fields: dict[str, Any] = {
+            "args": args,
+            "returncode": returncode,
+            "duration_seconds": (
+                round(duration_seconds, 4) if duration_seconds is not None else None
+            ),
+            "timeout": timeout,
+            "timed_out": timed_out,
+        }
+        if stdout:
+            fields["stdout"] = stdout[-1000:]
+        if stderr:
+            fields["stderr"] = stderr[-1000:]
+        self.event("command", **fields)
 
     def check(self, result: Any) -> None:
         fields = result.to_dict() if hasattr(result, "to_dict") else result
