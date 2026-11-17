@@ -321,6 +321,37 @@ def test_monitor_restores_instance_after_elevation_timeout(exit_guard, monkeypat
     assert not thread.is_alive()
 
 
+def test_monitor_browser_fallback_handoff_notifies_elevated_on_heartbeat(
+    exit_guard, monkeypatch
+):
+    notified = []
+    monkeypatch.setattr(
+        run,
+        "_notify_elevate_shutdown",
+        lambda url, token: notified.append((url, token)),
+    )
+    state = _monitor_state(
+        should_shutdown=lambda: True,
+        native_window_active=False,
+        elevate_handoff={
+            "active": True,
+            "url": "http://127.0.0.1:54322/__boot__?token=t",
+            "callback_token": "secret",
+            "deadline": time.monotonic() + 10,
+            "error": None,
+        },
+    )
+
+    with pytest.raises(SystemExit):
+        run._monitor(state, interval=0.01)
+
+    assert notified == [
+        ("http://127.0.0.1:54322/__elevate_shutdown__", "secret")
+    ]
+    assert state.elevate_handoff["shutdown_notified"] is True
+    assert state.logger.events[-1][0] == "server_shutdown"
+
+
 def test_monitor_does_not_shut_down_on_handoff_ready(exit_guard, monkeypatch):
     timers = []
 
@@ -332,6 +363,7 @@ def test_monitor_does_not_shut_down_on_handoff_ready(exit_guard, monkeypatch):
             raise AssertionError("no shutdown timer should be started")
 
     monkeypatch.setattr(run.threading, "Timer", NoTimer)
+    monkeypatch.setattr(run, "_notify_elevate_shutdown", lambda *_args: None)
     state = _monitor_state(
         elevate_handoff={
             "active": True,

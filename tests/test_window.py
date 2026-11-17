@@ -151,6 +151,35 @@ def test_window_session_falls_back_to_browser(monkeypatch):
     assert any(event == "webview_unavailable" for event, _ in state.logger.events)
 
 
+def test_window_session_browser_fallback_defers_handoff_notification(monkeypatch):
+    state = SimpleNamespace(
+        shutdown_event=threading.Event(),
+        logger=WindowLogger(),
+        elevate_handoff={
+            "active": True,
+            "url": "http://127.0.0.1:54322/__boot__?token=t",
+            "callback_token": "secret",
+        },
+    )
+    srv = SimpleNamespace(serve_forever=lambda: None)
+
+    def unavailable(_url, **_kwargs):
+        state.shutdown_event.set()
+        return False
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("browser fallback should wait for heartbeat shutdown")
+
+    monkeypatch.setattr(run, "run_native_window", unavailable)
+    monkeypatch.setattr(run, "_open_url", lambda url: True)
+    monkeypatch.setattr(run, "_notify_elevate_shutdown", forbidden)
+
+    run._run_window_session(state, srv, "http://127.0.0.1:1/boot", False)
+
+    assert state.native_window_active is False
+    assert state.shutdown_event.is_set()
+
+
 def test_window_close_does_not_stop_shared_server(monkeypatch):
     class RecordingEvent:
         def __init__(self):

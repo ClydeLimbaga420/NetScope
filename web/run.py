@@ -189,27 +189,16 @@ def _run_window_session(state: WebState, srv: object, boot_url: str, print_url: 
     server_thread.start()
     if print_url:
         _print_url(boot_url)
-    if not run_native_window(boot_url, logger=state.logger):
+    state.native_window_active = run_native_window(boot_url, logger=state.logger)
+    if not state.native_window_active:
         state.logger.warning("webview_unavailable", source="web")
         _open_url(boot_url)
 
-    handoff = getattr(state, "elevate_handoff", None)
-    if handoff and handoff.get("active") and handoff.get("url"):
-        try:
-            parsed = urlsplit(handoff["url"])
-            shutdown_url = urlunsplit(
-                (parsed.scheme, parsed.netloc, "/__elevate_shutdown__", "", "")
-            )
-            _notify_elevate_shutdown(shutdown_url, handoff.get("callback_token", ""))
-            state.logger.event("elevate_shutdown_notified", source="web")
-        except Exception as exc:  # noqa: BLE001
-            state.logger.error(
-                "elevate_shutdown_failed",
-                source="web",
-                error=str(exc),
-                exc_info=True,
-            )
-        state.shutdown_event.set()
+    if state.native_window_active:
+        handoff = getattr(state, "elevate_handoff", None)
+        if handoff and handoff.get("active") and handoff.get("url"):
+            _notify_elevate_shutdown_for_state(state)
+            state.shutdown_event.set()
 
     state.shutdown_event.wait()
 
@@ -325,12 +314,39 @@ def _notify_elevate_shutdown(callback_url: str, callback_token: str) -> None:
     )
 
 
+def _notify_elevate_shutdown_for_state(state: WebState) -> None:
+    handoff = getattr(state, "elevate_handoff", None)
+    if (
+        not handoff
+        or not handoff.get("active")
+        or not handoff.get("url")
+        or handoff.get("shutdown_notified")
+    ):
+        return
+    try:
+        parsed = urlsplit(handoff["url"])
+        shutdown_url = urlunsplit(
+            (parsed.scheme, parsed.netloc, "/__elevate_shutdown__", "", "")
+        )
+        _notify_elevate_shutdown(shutdown_url, handoff.get("callback_token", ""))
+        handoff["shutdown_notified"] = True
+        state.logger.event("elevate_shutdown_notified", source="web")
+    except Exception as exc:  # noqa: BLE001
+        state.logger.error(
+            "elevate_shutdown_failed",
+            source="web",
+            error=str(exc),
+            exc_info=True,
+        )
+
+
 def _monitor(state: WebState, interval: float = 2.0) -> None:
     while True:
         if state.shutdown_event.wait(interval):
             # explicit request (POST /api/shutdown): give the HTTP response a
             # moment to flush before exiting the process.
             time.sleep(0.5)
+            _notify_elevate_shutdown_for_state(state)
             state.logger.event("server_shutdown", source="web", reason="api_request")
             _remove_lock(os.getpid())
             os._exit(0)
@@ -364,9 +380,11 @@ def _monitor(state: WebState, interval: float = 2.0) -> None:
                         error=str(exc),
                         exc_info=True,
                     )
-            continue
+            if getattr(state, "native_window_active", True):
+                continue
 
         if state.should_shutdown():
+            _notify_elevate_shutdown_for_state(state)
             state.logger.event("server_shutdown", source="web", reason="heartbeat_timeout")
             state.shutdown_event.set()
             _remove_lock(os.getpid())

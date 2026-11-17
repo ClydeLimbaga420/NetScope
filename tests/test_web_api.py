@@ -1086,6 +1086,16 @@ def test_elevate_cancelled_keeps_server_running(client, monkeypatch):
     assert not st.shutdown_event.is_set()
 
 
+def test_should_shutdown_during_handoff_without_native_window():
+    st = WebState.__new__(WebState)
+    st.elevate_handoff = {"active": True}
+    st.native_window_active = False
+    st.last_heartbeat = time.monotonic() - 121
+    st.jobs = types.SimpleNamespace(has_active_jobs=lambda: False)
+
+    assert st.should_shutdown() is True
+
+
 def test_elevate_requests_restart(client, monkeypatch):
     c, st = client
     token = _boot(c, st)

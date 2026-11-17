@@ -74,6 +74,7 @@ class WebState:
         self.instance_lock_handle: Any = None
         self.elevate_handoff: dict[str, Any] | None = None
         self.elevate_shutdown_token: str | None = None
+        self.native_window_active: bool = False
 
     def _build_runtime(self) -> AppRuntime:
         runner = SubprocessRunner(self.logger)
@@ -106,7 +107,11 @@ class WebState:
         self.last_heartbeat = time.monotonic()
 
     def should_shutdown(self) -> bool:
-        if getattr(self, "elevate_handoff", None) and self.elevate_handoff.get("active"):
+        if (
+            getattr(self, "elevate_handoff", None)
+            and self.elevate_handoff.get("active")
+            and getattr(self, "native_window_active", True)
+        ):
             return False
         if (time.monotonic() - self.last_heartbeat) <= 120:
             return False
