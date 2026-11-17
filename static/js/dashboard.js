@@ -1084,7 +1084,7 @@ function statusLabel(step, status) {
         return "Failed";
     }
 
-    return "Not run";
+    return "Unexecuted";
 
 }
 

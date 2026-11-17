@@ -4,21 +4,8 @@
    the shared shell (style.css). Keep all selector names.
    ============================================================ */
 
-/* ---------- Layer selection ---------- */
+/* ---------- Toggles ---------- */
 
-.engine-layer-controls {
-    display: grid;
-
-    grid-template-columns: repeat(4, max-content);
-
-    gap: 6px 16px;
-
-    flex-basis: 100%;
-
-    padding: 10px 0 4px;
-}
-
-.engine-layer-option,
 .engine-toggle {
     display: inline-flex;
     align-items: center;
@@ -41,12 +28,10 @@
     transition: color 0.15s ease;
 }
 
-.engine-layer-option:hover,
 .engine-toggle:hover {
     color: var(--text-2);
 }
 
-.engine-layer-option input,
 .engine-toggle input {
     width: 14px;
     height: 14px;
@@ -166,7 +151,7 @@
     animation: pulseBeat 1.2s ease-in-out infinite;
 }
 
-.layer-status-name[data-detail]:not([data-detail="Not run"])::after {
+.layer-status-name[data-detail]:not([data-detail="Unexecuted"])::after {
     display: block;
     overflow: hidden;
     color: var(--muted);
@@ -666,12 +651,6 @@
 }
 
 @media (max-width: 720px) {
-    .engine-layer-controls {
-        grid-template-columns: repeat(2, max-content);
-
-        flex-basis: 100%;
-    }
-
     .elevation-dialog .engine-confirmation-panel {
         padding: 20px;
     }
