@@ -99,15 +99,21 @@ def _valid_payload(payload: Any) -> bool:
     )
 
 
-def load(path: Path) -> Snapshot | None:
-    """Return the cached snapshot, or ``None`` if the file is unusable."""
+def load_with_reason(path: Path) -> tuple[Snapshot | None, str | None]:
+    """Return the cached snapshot and the reason it was rejected, if any."""
 
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None, "missing"
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return None
+        return None, "malformed_json"
+    if not isinstance(payload, dict):
+        return None, "invalid_payload"
+    if payload.get("version") != CACHE_VERSION:
+        return None, "unsupported_version"
     if not _valid_payload(payload):
-        return None
+        return None, "invalid_payload"
 
     pings = {
         host: PingResult(
@@ -132,18 +138,28 @@ def load(path: Path) -> Snapshot | None:
         for name, raw in payload["native"].items()
     }
 
-    return Snapshot(
-        is_windows=payload["is_windows"],
-        language_mode=payload["language_mode"],
-        ps_available=payload["ps_available"],
-        constrained=payload["constrained"],
-        data=payload["sections"],
-        errors=payload["errors"],
-        native=native,
-        pings=pings,
-        gateway=payload["gateway"],
-        captured_at=payload["captured_at"],
+    return (
+        Snapshot(
+            is_windows=payload["is_windows"],
+            language_mode=payload["language_mode"],
+            ps_available=payload["ps_available"],
+            constrained=payload["constrained"],
+            data=payload["sections"],
+            errors=payload["errors"],
+            native=native,
+            pings=pings,
+            gateway=payload["gateway"],
+            captured_at=payload["captured_at"],
+        ),
+        None,
     )
+
+
+def load(path: Path) -> Snapshot | None:
+    """Return the cached snapshot, or ``None`` if the file is unusable."""
+
+    snapshot, _reason = load_with_reason(path)
+    return snapshot
 
 
 def save(snapshot: Snapshot, path: Path) -> None:

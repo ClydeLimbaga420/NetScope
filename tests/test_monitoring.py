@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import threading
 import time
+from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
@@ -17,6 +18,14 @@ from core.runner import CommandResult, FakeRunner
 @pytest.fixture(autouse=True)
 def isolated_snapshot_cache(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "snapshot_cache_path", lambda: tmp_path / "snapshot.json")
+
+
+class _EventLogger:
+    def __init__(self):
+        self.events = []
+
+    def event(self, name, **fields):
+        self.events.append((name, fields))
 
 
 def _service(snapshot, counters, timestamps, runner=None, clock=None):
@@ -441,6 +450,74 @@ def test_cache_loaded_at_startup_is_stale_and_refreshed_in_background(
     while service.freshness()["state"] != "fresh" and time.monotonic() < deadline:
         time.sleep(0.01)
     assert service.freshness()["state"] == "fresh"
+
+
+def test_corrupt_cache_falls_back_to_pending_status(snapshot_factory):
+    cache_path = config.snapshot_cache_path()
+    cache_path.write_text('{"version": 99}', encoding="utf-8")
+    logger = _EventLogger()
+    service = MonitoringService(
+        SimpleNamespace(collect_snapshot=snapshot_factory),
+        FakeRunner(),
+        None,
+        counter_provider=lambda: NetworkCounters(0, 0),
+        clock=lambda: 10.0,
+        logger=logger,
+    )
+
+    status = service.get_status()
+
+    assert status["data_freshness"]["state"] == "collecting"
+    invalid = [fields for name, fields in logger.events if name == "snapshot_cache_invalid"]
+    assert invalid
+    assert invalid[0]["reason"] == "unsupported_version"
+    assert isinstance(invalid[0]["duration_seconds"], float)
+
+
+def test_cache_events_include_duration_seconds(snapshot_factory):
+    snapshot_cache.save(snapshot_factory(), config.snapshot_cache_path())
+    logger = _EventLogger()
+    service = MonitoringService(
+        SimpleNamespace(collect_snapshot=snapshot_factory),
+        FakeRunner(),
+        None,
+        counter_provider=lambda: NetworkCounters(0, 0),
+        clock=lambda: 10.0,
+        logger=logger,
+    )
+
+    service.get_status()
+    deadline = time.monotonic() + 2
+    while service.freshness()["state"] != "fresh" and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+    events = [
+        (name, fields)
+        for name, fields in logger.events
+        if name in {"snapshot_cache_loaded", "snapshot_refresh_start", "snapshot_refresh_complete"}
+    ]
+    assert {name for name, _ in events} == {
+        "snapshot_cache_loaded",
+        "snapshot_refresh_start",
+        "snapshot_refresh_complete",
+    }
+    assert all("duration_seconds" in fields for _name, fields in events)
+
+
+def test_freshness_age_uses_injected_wall_clock(snapshot_factory):
+    snapshot = snapshot_factory()
+    snapshot_cache.save(snapshot, config.snapshot_cache_path())
+    captured = datetime.fromisoformat(snapshot.captured_at).timestamp()
+    service = MonitoringService(
+        SimpleNamespace(collect_snapshot=lambda: snapshot),
+        FakeRunner(),
+        None,
+        counter_provider=lambda: NetworkCounters(0, 0),
+        clock=lambda: 0.0,
+        wall_clock=lambda: captured + 12,
+    )
+
+    assert service.freshness()["age_seconds"] == 12.0
 
 
 def test_cold_start_returns_pending_status_without_blocking(snapshot_factory):

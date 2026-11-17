@@ -18,7 +18,7 @@ from core.device_discovery import DeviceDiscovery
 from core.info import build_info
 from core.native import parse_ping_stats
 from core.snapshot import Snapshot
-from core.snapshot_cache import load as load_snapshot_cache
+from core.snapshot_cache import load_with_reason as load_snapshot_cache
 from core.snapshot_cache import save as save_snapshot_cache
 from powershell.validation import validate_ip
 
@@ -301,7 +301,7 @@ def _pending_status_ping(host: str | None) -> dict[str, Any]:
     return {"host": host, "latency_ms": None, "online": False}
 
 
-def _snapshot_age_seconds(captured_at: str | None) -> float | None:
+def _snapshot_age_seconds(captured_at: str | None, now: float) -> float | None:
     if not captured_at:
         return None
     try:
@@ -310,7 +310,7 @@ def _snapshot_age_seconds(captured_at: str | None) -> float | None:
         return None
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
-    return round(max(0.0, time.time() - parsed.timestamp()), 1)
+    return round(max(0.0, now - parsed.timestamp()), 1)
 
 
 class MonitoringService:
@@ -329,12 +329,14 @@ class MonitoringService:
         clock: Callable[[], float],
         logger: Any | None = None,
         cache_path: Path | None = None,
+        wall_clock: Callable[[], float] | None = None,
     ):
         self.engine = engine
         self.runner = runner
         self.ps = ps
         self.counter_provider = counter_provider
         self.clock = clock
+        self.wall_clock = wall_clock or time.time
         self.logger = logger
         self.cache_path = Path(cache_path) if cache_path is not None else config.snapshot_cache_path()
         self.device_discovery = DeviceDiscovery(runner, ps, logger, clock=clock)
@@ -358,10 +360,16 @@ class MonitoringService:
             self.logger.event(event, source="cache" if "cache" in event else "refresh", **fields)
 
     def _load_cached_snapshot(self) -> None:
-        cached = load_snapshot_cache(self.cache_path)
+        started = time.monotonic()
+        cached, reason = load_snapshot_cache(self.cache_path)
+        duration_seconds = round(time.monotonic() - started, 4)
         if cached is None:
             if self.cache_path.exists():
-                self._log("snapshot_cache_invalid", reason="unusable")
+                self._log(
+                    "snapshot_cache_invalid",
+                    reason=reason or "unusable",
+                    duration_seconds=duration_seconds,
+                )
             return
         with self._snapshot_lock:
             self._snapshot = cached
@@ -369,7 +377,11 @@ class MonitoringService:
             self._snapshot_error = None
             self._snapshot_from_cache = True
             self._snapshot_captured_at = cached.captured_at
-        self._log("snapshot_cache_loaded", captured_at=cached.captured_at)
+        self._log(
+            "snapshot_cache_loaded",
+            captured_at=cached.captured_at,
+            duration_seconds=duration_seconds,
+        )
 
     def get_snapshot(self) -> Snapshot | None:
         """Return the shared snapshot, refreshing stale data in the background."""
@@ -391,8 +403,6 @@ class MonitoringService:
             from_cache = self._snapshot_from_cache
             snapshot_at = self._snapshot_at
             captured_at = self._snapshot_captured_at
-        with self._snapshot_refresh_lock:
-            refreshing = self._snapshot_refreshing
 
         if snapshot is None:
             state = "unavailable" if error else "collecting"
@@ -400,15 +410,13 @@ class MonitoringService:
             state = "stale"
         elif time.monotonic() - snapshot_at >= self.SNAPSHOT_CACHE_SECONDS:
             state = "stale"
-        elif refreshing and error:
-            state = "stale"
         else:
             state = "fresh"
 
         return {
             "state": state,
             "captured_at": captured_at,
-            "age_seconds": _snapshot_age_seconds(captured_at),
+            "age_seconds": _snapshot_age_seconds(captured_at, self.wall_clock()),
         }
 
     def prewarm(self) -> None:
@@ -436,15 +444,16 @@ class MonitoringService:
 
     def _refresh_snapshot(self) -> None:
         started = time.monotonic()
-        self._log("snapshot_refresh_start")
+        self._log("snapshot_refresh_start", duration_seconds=0.0)
         try:
             snapshot = self.engine.collect_snapshot()
             try:
                 save_snapshot_cache(snapshot, self.cache_path)
-            except OSError as exc:  # noqa: BLE001
+            except OSError as exc:
                 self._log(
                     "snapshot_cache_invalid",
                     reason="write_failed",
+                    duration_seconds=round(time.monotonic() - started, 4),
                     error=str(exc),
                 )
             with self._snapshot_lock:
