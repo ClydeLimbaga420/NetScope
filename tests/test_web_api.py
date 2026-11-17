@@ -870,6 +870,7 @@ def test_api_request_and_response_are_logged(client):
     response = c.get("/api/fixes", headers={"Host": "127.0.0.1:5000"})
 
     assert response.status_code == 200
+    assert len(recorder.events) == 2
     assert recorder.events[0] == (
         "api_request", {"source": "web", "method": "GET", "path": "/api/fixes"}
     )

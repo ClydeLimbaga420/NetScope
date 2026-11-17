@@ -59,7 +59,10 @@ def test_monitoring_ui_distinguishes_pending_and_api_errors():
 
 def test_status_card_has_freshness_badge():
     source = text(WEB / "templates" / "index.html")
-    assert 'id="data-freshness"' in source
+    badge = re.search(r'<span[^>]*id="data-freshness"[^>]*>', source)
+    assert badge
+    assert 'role="status"' in badge.group(0)
+    assert 'aria-live="polite"' in badge.group(0)
     assert "Checking data\u2026" in source
     assert not re.search(r"\son[a-z]+\s*=", source, re.I), source
 
