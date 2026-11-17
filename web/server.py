@@ -236,6 +236,23 @@ def create_app(state: WebState | None = None) -> Flask:
         st.logger.event("elevate_handoff_ready", source="web", port=port)
         return jsonify({"ok": True})
 
+    @app.post("/__elevate_shutdown__")
+    def _elevate_shutdown():  # type: ignore[no-untyped-def]
+        st: WebState = app.extensions["netscope_state"]
+        handoff = getattr(st, "elevate_handoff", None)
+        provided_token = request.headers.get("X-NetScope-Handoff", "")
+        if (
+            not handoff
+            or not handoff.get("active")
+            or not provided_token
+            or not hmac.compare_digest(provided_token, handoff.get("callback_token", ""))
+        ):
+            return jsonify({"error": {"code": "invalid_handoff", "message": "Invalid elevation handoff."}}), 403
+
+        st.logger.event("elevate_shutdown_requested", source="web")
+        st.shutdown_event.set()
+        return jsonify({"ok": True})
+
     @app.get("/__session__")
     def _session():  # type: ignore[no-untyped-def]
         st: WebState = app.extensions["netscope_state"]

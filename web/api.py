@@ -403,7 +403,7 @@ def api_open_log_folder():  # type: ignore[no-untyped-def]
 @api_bp.post("/elevate")
 def api_elevate():  # type: ignore[no-untyped-def]
     st = _state()
-    argv = gui_relaunch_argv()
+    argv = gui_relaunch_argv(no_browser=True)
     handoff = getattr(st, "elevate_handoff", None)
     if handoff and handoff.get("active"):
         return _err("elevation_in_progress", "An administrator restart is already in progress.", 409)

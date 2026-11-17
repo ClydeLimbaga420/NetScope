@@ -1101,7 +1101,7 @@ def test_elevate_requests_restart(client, monkeypatch):
     assert calls[2][0] == "launch"
     assert calls[2][1][0].endswith("netscope.py")
     assert calls[2][2] is True
-    assert "--no-browser" not in calls[2][1]
+    assert "--no-browser" in calls[2][1]
     assert "--browser" not in calls[2][1]
     assert "--handoff-url" in calls[2][1]
     assert calls[2][1][calls[2][1].index("--handoff-url") + 1] == (
@@ -1115,6 +1115,35 @@ def test_elevate_requests_restart(client, monkeypatch):
     assert st.elevate_handoff["active"] is True
     assert st.instance_lock_handle is None
     assert not st.shutdown_event.is_set()
+
+
+def test_elevate_shutdown_route_requires_valid_handoff_token(client):
+    c, st = client
+    st.elevate_handoff = {"active": True, "callback_token": "one-time-secret"}
+
+    wrong = c.post(
+        "/__elevate_shutdown__",
+        headers={
+            "Host": "127.0.0.1:5000",
+            "X-NetScope-Handoff": "wrong-secret",
+        },
+        json={},
+    )
+
+    assert wrong.status_code == 403
+    assert not st.shutdown_event.is_set()
+
+    right = c.post(
+        "/__elevate_shutdown__",
+        headers={
+            "Host": "127.0.0.1:5000",
+            "X-NetScope-Handoff": "one-time-secret",
+        },
+        json={},
+    )
+
+    assert right.status_code == 200
+    assert st.shutdown_event.is_set()
 
 
 def test_fix_high_risk_requires_second_confirmation(client):

@@ -15,7 +15,7 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 from typing import BinaryIO
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 from werkzeug.serving import make_server
 
 import config
@@ -167,7 +167,7 @@ def _show_existing(url: str, mode: str, state: WebState) -> bool:
         _print_url(url)
         return True
     if mode == "window":
-        if run_native_window(url):
+        if run_native_window(url, logger=state.logger):
             return True
         state.logger.warning("webview_unavailable", source="web")
         return _open_url(url)
@@ -189,9 +189,28 @@ def _run_window_session(state: WebState, srv: object, boot_url: str, print_url: 
     server_thread.start()
     if print_url:
         _print_url(boot_url)
-    if not run_native_window(boot_url):
+    if not run_native_window(boot_url, logger=state.logger):
         state.logger.warning("webview_unavailable", source="web")
         _open_url(boot_url)
+
+    handoff = getattr(state, "elevate_handoff", None)
+    if handoff and handoff.get("active") and handoff.get("url"):
+        try:
+            parsed = urlsplit(handoff["url"])
+            shutdown_url = urlunsplit(
+                (parsed.scheme, parsed.netloc, "/__elevate_shutdown__", "", "")
+            )
+            _notify_elevate_shutdown(shutdown_url, handoff.get("callback_token", ""))
+            state.logger.event("elevate_shutdown_notified", source="web")
+        except Exception as exc:  # noqa: BLE001
+            state.logger.error(
+                "elevate_shutdown_failed",
+                source="web",
+                error=str(exc),
+                exc_info=True,
+            )
+        state.shutdown_event.set()
+
     state.shutdown_event.wait()
 
 
@@ -280,6 +299,36 @@ def _notify_elevate_handoff(
             raise RuntimeError(f"Elevation handoff callback returned HTTP {response.status}.")
 
 
+def _notify_elevate_shutdown(callback_url: str, callback_token: str) -> None:
+    parsed_url = urlsplit(callback_url)
+    if (
+        parsed_url.scheme != "http"
+        or parsed_url.hostname != "127.0.0.1"
+        or parsed_url.path != "/__elevate_shutdown__"
+        or parsed_url.username is not None
+        or parsed_url.password is not None
+        or parsed_url.query
+        or parsed_url.fragment
+        or parsed_url.port is None
+        or not 1 <= parsed_url.port <= 65535
+    ):
+        raise ValueError("Elevation handoff callback must be a local NetScope URL.")
+
+    request = urllib.request.Request(
+        callback_url,
+        data=b"{}",
+        headers={
+            "Content-Type": "application/json",
+            "X-NetScope-Handoff": callback_token,
+        },
+        method="POST",
+    )
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(request, timeout=3) as response:
+        if response.status != 200:
+            raise RuntimeError(f"Elevation shutdown callback returned HTTP {response.status}.")
+
+
 def _monitor(state: WebState, interval: float = 2.0) -> None:
     while True:
         if state.shutdown_event.wait(interval):
@@ -299,9 +348,6 @@ def _monitor(state: WebState, interval: float = 2.0) -> None:
                     if url:
                         handoff["url"] = url
                         state.logger.event("elevate_handoff_ready", source="web", url=url)
-            if handoff.get("url") and not handoff.get("shutdown_scheduled"):
-                handoff["shutdown_scheduled"] = True
-                threading.Timer(5.0, lambda: state.shutdown_event.set()).start()
             if not handoff.get("url") and time.monotonic() > float(handoff.get("deadline") or 0):
                 handoff["error"] = "Timed out waiting for the elevated NetScope instance."
                 handoff["active"] = False

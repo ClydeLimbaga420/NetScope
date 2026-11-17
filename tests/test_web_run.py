@@ -136,6 +136,14 @@ def test_elevation_callback_rejects_non_local_url():
         )
 
 
+def test_notify_elevate_shutdown_rejects_non_local_url():
+    with pytest.raises(ValueError, match="local NetScope URL"):
+        run._notify_elevate_shutdown(
+            "https://example.com/__elevate_shutdown__",
+            "one-time-secret",
+        )
+
+
 def test_werkzeug_request_logs_route_to_netscope_without_duplicate_handlers():
     class Recorder:
         def __init__(self):
@@ -282,6 +290,45 @@ def test_monitor_restores_instance_after_elevation_timeout(exit_guard, monkeypat
     assert written == [(54321, "boot-token", run.os.getpid())]
     assert not state.shutdown_event.is_set()
 
+    state.shutdown_event.set()
+    thread.join(2)
+    assert not thread.is_alive()
+
+
+def test_monitor_does_not_shut_down_on_handoff_ready(exit_guard, monkeypatch):
+    timers = []
+
+    class NoTimer:
+        def __init__(self, delay, function, *args, **kwargs):
+            timers.append((delay, function, args, kwargs))
+
+        def start(self):
+            raise AssertionError("no shutdown timer should be started")
+
+    monkeypatch.setattr(run.threading, "Timer", NoTimer)
+    state = _monitor_state(
+        elevate_handoff={
+            "active": True,
+            "url": "http://127.0.0.1:54322/__boot__?token=t",
+            "deadline": time.monotonic() + 10,
+            "error": None,
+        },
+        instance_lock_handle=object(),
+    )
+
+    def run_monitor():
+        try:
+            run._monitor(state, interval=0.01)
+        except SystemExit:
+            pass
+
+    thread = threading.Thread(target=run_monitor, daemon=True)
+    thread.start()
+    thread.join(0.2)
+
+    assert not state.shutdown_event.is_set()
+    assert timers == []
+    assert exit_guard == []
     state.shutdown_event.set()
     thread.join(2)
     assert not thread.is_alive()
