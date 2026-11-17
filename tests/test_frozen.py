@@ -28,9 +28,12 @@ def test_frozen_exe_reports_version():
     assert config.APP_VERSION in result.stdout
 
 
-def test_frozen_exe_serves_dashboard_and_shuts_down():
-    subprocess.run(
+def test_frozen_exe_serves_localhost_ui_and_bundled_vendor_data():
+    result = subprocess.run(
         [sys.executable, str(ROOT / "scripts" / "frozen_smoke.py"), "--exe", EXE],
         check=True,
         timeout=240,
+        capture_output=True,
+        text=True,
     )
+    assert "bundled OUI resource loaded" in result.stdout

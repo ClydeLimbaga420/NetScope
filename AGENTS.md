@@ -1,7 +1,6 @@
 ﻿# AGENTS.md
 
-NetScope is being evolved (per `prompt.txt`, tracked in `task.md`) from a Flask
-dashboard into a universal Windows network troubleshooting tool with one shared
+NetScope is a universal Windows network troubleshooting tool with one shared
 engine and two front ends (CLI + localhost web UI). Work phase by phase; update
 this file and `task.md` Notes at the end of every phase.
 
@@ -15,14 +14,14 @@ Menu/desktop shortcuts, uninstaller, WebView2 handling, and a `.netscope-inno`
 marker. `netscope install`/`uninstall` still manage portable installs and refuse
 installer-managed copies. CI covers tests on Python 3.11/3.14, 80% coverage,
 Playwright browser smoke + screenshots, frozen exe smoke, and an Inno
-install/uninstall smoke. Latest local suite: 290 passed, 2 skipped (2026-11-16);
-coverage 82% over `core`/`fixes`/`powershell`. Manual validation (Windows 10
+install/uninstall smoke. Latest local suite: 312 passed, 3 skipped (2026-11-17);
+coverage 83.10% over `core`/`fixes`/`powershell`. Manual validation (Windows 10
 VM checklist, window/UAC/installer cases, and human screenshot review) is
 deferred for now by request; it is a release-confidence item, not a code or
-test blocker. Phase 7 and GUI launch follow-up changes are uncommitted; nothing
-is pushed.
+test blocker. Phase 7 and GUI launch follow-up changes are committed locally;
+remote CI has not been run.
 
-**Legacy-dashboard removal:** Phases 1-5 are complete. The secured localhost
+**Legacy-dashboard removal:** Phases 1-6 are complete. The secured localhost
 `/api/status`, `/api/devices`, and `/api/packet-loss` successful payload
 contracts are characterized in `tests/test_web_api.py`. Phase 2 core monitoring
 and bounded device discovery are implemented in `core/monitoring.py` and
@@ -46,18 +45,23 @@ root `app.py`, `templates/`, `static/`, `modules/`, and their legacy-only tests;
 `web/templates/` and `web/static/` remain. Phase 5 focused tests passed
 (89 passed); the full suite passed (309 passed, 3 skipped) with 83.10% coverage.
 The 19.8 MB frozen executable built successfully and its smoke test passed all
-11 checks, including `/api/devices` and the OUI load event. Phase 6 is next for
-remaining documentation and packaging-metadata cleanup.
+11 checks, including `/api/devices` and the OUI load event. Phase 6 removed the
+retired server settings, aligned setuptools package discovery and OUI package
+data, and updated the supported run/build documentation while preserving the
+historical Phase C changelog with an explicit removal note. Phase 6 focused
+tests passed (92 passed, 3 skipped); the full suite passed (312 passed,
+3 skipped) with 83.10% coverage. The clean 19.8 MB build passed its 11-check
+frozen smoke, and a built wheel contains `core/oui_vendors.json`.
 
 ## Run / environment
 - The standalone Flask/LAN dashboard (`app.py`) was removed in Phase 5; there
-  is no `python app.py` entry point or LAN server. Use `netscope gui` for the
+  is no legacy standalone server. Use `netscope gui` for the
   localhost interface.
 - This checkout currently has no `.venv`.
   Recreate with `py -m venv .venv`, then
   `.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt`.
-- Run tests: `.\.venv\Scripts\python.exe -m pytest` (latest full run: 309 passed,
-  3 skipped, 2026-11-17; Phase 5 verification used system Python 3.14.7).
+- Run tests: `.\.venv\Scripts\python.exe -m pytest` (latest full run: 312 passed,
+  3 skipped, 2026-11-17; Phase 5/6 verification used system Python 3.14.7).
   Coverage gate (latest: 83.10%):
   `.\.venv\Scripts\python.exe -m pytest --cov=core --cov=fixes --cov=powershell --cov-fail-under=80`.
 - Run the CLI: `.\.venv\Scripts\python.exe netscope.py --help`
@@ -169,8 +173,8 @@ remaining documentation and packaging-metadata cleanup.
   gateways, default routes, then first/last/common subnet addresses, and pings
   candidates. `fixes/gateway_config.py` runs the one-click path: it skips when
   any default route exists, otherwise detects and executes `IP-09` immediately
-  (snapshot/verification/rollback preserved). Both the legacy dashboard and the
-  web Troubleshoot header expose `#auto-configure-gateway` for this action.
+  (snapshot/verification/rollback preserved). The web Troubleshoot header
+  exposes `#auto-configure-gateway` for this action.
 - `fixes/executor.py` â€” `FixExecutor`: `prepare()` builds `FixPlan` with
   resolved parameter values and preview lines; parameter sources
   `adapter_missing_gateway` and `detected_gateway` use `core/gateway_setup.py`.
@@ -268,7 +272,7 @@ remaining documentation and packaging-metadata cleanup.
   run it in a disposable profile or back up `%LOCALAPPDATA%\NetScope` first.
 - `NetScope.spec` adds `collect_all("webview")`, `collect_all("pythonnet")`,
   `collect_all("clr_loader")`, `web.window`, and the platform/clr hidden imports;
-  excludes the Android webview platform. Current exe: 16.1 MB; setup: 17.8 MB.
+  excludes the Android webview platform. Current exe: 20.0 MB; setup: 21.6 MB.
 - `.github/workflows/ci.yml` has an `installer` job after `build`: downloads the
   exe artifact, installs Inno via Chocolatey if needed, builds the setup, runs
   the silent smoke, and uploads `NetScope-Setup`.
@@ -385,14 +389,9 @@ runtime = build_runtime()  # same engine/catalog as the CLI, web-mode logging
   NetScope carries as a solid-colour wordmark (no gradients) in the sidebar and
   mobile topbar. The Wi-Fi signal glyph is the favicon and the
   `assets/netscope.ico` exe/installer icon (`NetScope.spec`,
-  `installer/NetScope.iss`). The legacy dashboard was synced to the same
-  design: `templates/index.html` rewritten (drawer markup, conn-grid,
-  troubleshoot rail incl. `#repair-steps`, `#elevation-badge`, footer), its
-  `static/css/style.css` is a copy of the web stylesheet, and
-  `static/js/dashboard.js` got the same adapter pills/data-live/`\u2715`/
-  `setRefreshDevicesBusy` treatment plus a guarded Chart init
-  (`let chart = null; try ... catch`), `.btn-label`-aware `configureGateway`
-  and a drawer IIFE mirroring `web-init.js`. Test constraints drove markup:
+  `installer/NetScope.iss`). Phase C also synced the then-existing standalone
+  dashboard to this design; Phase 5 removed that frontend and its root assets.
+  Test constraints drove markup:
   the web templates must keep the literal tags `<aside class="sidebar">`,
   `<main class="main">`, `<footer>` (no extra attributes on those tags â€” the
   skip link targets the inner `#main-content` wrapper div instead).
@@ -447,9 +446,8 @@ runtime = build_runtime()  # same engine/catalog as the CLI, web-mode logging
   is enabled (avoids false "62 rules disabled").
 
 ## Historical legacy dashboard notes (removed in Phase 5)
-The following describes the deleted standalone app before Phase 5 and is
-retained temporarily for Phase 6 documentation cleanup; it is not available
-functionality.
+The following describes pre-Phase 5 behavior for historical context only; it is
+not current functionality.
 
 - `app.py` exposes `/`, `/api/status`, `/api/devices`, `/api/diagnostics`, and
   `POST /api/diagnostics/<step_id>/run`; `static/js/dashboard.js`
@@ -516,8 +514,9 @@ functionality.
   Repairs prompt via `window.confirm` and warn when not elevated.
 - `database/db.py` is not imported anywhere â€” the SQLite schema is unused
   scaffolding (`database/netscope.db` is gitignored).
-- Do not delete `modules/`, `templates/`, `static/`, SQLite scaffolding until a
-  later phase explicitly replaces them.
+- Phase 5 removed the standalone server, root `templates/` and `static/`
+  assets, and the old `modules/` package. The supported web UI remains under
+  `web/`, uses the shared core monitoring services, and binds only to localhost.
 
 ## Safety invariants (do not break)
 - All system calls go through `CommandRunner.run`; never `shell=True`, never
@@ -530,15 +529,17 @@ functionality.
 
 ## Packaging / installer / CI (Phase 5, Phase 6 D/E, Phase 7)
 - `NetScope.spec` is a one-file console-subsystem PyInstaller build (UPX off)
-  bundling `web/templates`, `web/static`, `fixes/fixes.json`, pywebview,
-  pythonnet, and clr_loader; tkinter and heavy optional libs are excluded.
-  `scripts/build.ps1` builds it with the venv interpreter (`-Clean` wipes
-  `build/` + `dist/`) and reports the exe size. Current artifact: 16.1 MB.
+  bundling `web/templates`, `web/static`, `fixes/fixes.json`,
+  `core/oui_vendors.json`, pywebview, pythonnet, and clr_loader; tkinter and
+  heavy optional libs are excluded. `scripts/build.ps1` uses the venv
+  interpreter when available (`-Clean` wipes
+  `build/` + `dist/`) and reports the exe size. Current artifact: 20.0 MB.
 - `scripts/frozen_smoke.py` runs the frozen exe with an isolated
-  `LOCALAPPDATA`: boot URL, dashboard, bundled CSS, `/api/status`, quiet
-  console, structured `source:web` logging, `POST /api/shutdown`, clean exit,
-  and port-lock removal (9 checks). `tests/test_frozen.py` wraps it plus
-  `--version` and is skipped unless `NETSCOPE_EXE` is set.
+  `LOCALAPPDATA`: boot URL, localhost UI, bundled CSS, `/api/status`,
+  `/api/devices`, bundled OUI resource, quiet console, structured `source:web`
+  logging, shutdown, clean exit, and port-lock removal (11 checks).
+  `tests/test_frozen.py` wraps it plus `--version` and is skipped unless
+  `NETSCOPE_EXE` is set.
 - `cli/installer.py` implements per-user `netscope install`/`uninstall`:
   PATH (user), App Paths, Start Menu shortcut, marker file; supports
   `--dry-run`, `--json`, `--purge`. It never needs admin and never touches
@@ -577,18 +578,13 @@ functionality.
 - The web Troubleshoot tab shows per-layer status from streamed diagnostic check
   results; layers are marked Not run until diagnosed and show in-progress and
   aggregated pass/warn/fail/error/skip states during and after a run.
-## Packaging fix (dev install root cause)
-- Bug: `netscope` command failed with `ModuleNotFoundError: No module named 'config'`
-  because flat imports (`import config`, `from modules...`) assume the project
-  root is importable, but `pyproject.toml` only declared packages `cli`, `core`,
-  `fixes`, `gui`, `powershell`, `web`. `config.py` (a top-level module) and
-  the `modules` package were not declared, so the editable finder never exposed
-  them.
-- Fix: `pyproject.toml` now sets `py-modules = ["config"]` and adds `modules*`
-  to `[tool.setuptools.packages.find] include`. No PYTHONPATH tricks or wrapper
-  scripts. Deleted the masking `.venv\Scripts\netscope.bat`.
-- Verify with venv activated/on PATH: `netscope --help`, `netscope diagnose`,
-  `netscope gui` work from any directory.
+## Packaging layout
+- `pyproject.toml` exposes `config.py` as a top-level module, discovers the
+  `cli`, `core`, `fixes`, `powershell`, and `web` packages, and includes
+  `core/oui_vendors.json` as package data. The retired `modules` package is not
+  part of the installed project.
+- Verify an editable install with `netscope --help`, `netscope diagnose`, and
+  `netscope gui` from outside the repository.
 ## Stale-UI fix (Session 37)
 - `refreshDevices` referenced an undefined `devices` variable, so the device
   table never updated (stuck on "Loading..."). refreshStatus could throw on

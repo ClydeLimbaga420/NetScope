@@ -73,5 +73,5 @@ that setting because it weakens SMB guest security.
   the executor, plus a test.
 - `web/paths.py` resolves templates/static through `sys._MEIPASS`. New bundled
   data files must be added to `NetScope.spec` and to the offline asset tests.
-- The legacy `app.py` dashboard is still unauthenticated and LAN-bound. Do not
-  expose it to the internet; the localhost web UI is the supported interface.
+- The supported web UI is localhost-only. The standalone LAN dashboard was
+  removed in Phase 5; no separate legacy server is included.

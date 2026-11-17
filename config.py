@@ -1,8 +1,4 @@
-"""NetScope configuration constants.
-
-Kept deliberately small and dependency free. The Flask dashboard imports
-``PING_TIMEOUT_SECONDS`` from here, so keep that name stable.
-"""
+"""Shared application and diagnostic configuration constants."""
 
 from __future__ import annotations
 
@@ -11,12 +7,6 @@ from pathlib import Path
 
 APP_NAME = "NetScope"
 APP_VERSION = "0.3.0"
-
-HOST = "0.0.0.0"
-
-PORT = 5000
-
-REFRESH_INTERVAL_MS = 2000
 
 PING_TIMEOUT_SECONDS = 1
 

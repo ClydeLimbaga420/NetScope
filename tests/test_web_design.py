@@ -86,6 +86,22 @@ def test_standalone_dashboard_and_legacy_modules_are_removed():
     assert '"modules.' not in spec
 
 
+def test_project_docs_describe_the_supported_localhost_ui():
+    readme = text(ROOT / "README.md").lower()
+    run_guide = text(ROOT / "docs" / "run.md").lower()
+    manual = text(ROOT / "docs" / "manual-test-checklist.md").lower()
+    known = text(ROOT / "docs" / "known-unverified.md").lower()
+    changelog = text(ROOT / "docs" / "phaseC-web-ui.md").lower()
+
+    for source in (readme, run_guide, manual):
+        assert "python app.py" not in source
+        assert "http://<lan-ip>:5000" not in source
+    assert "legacy dashboard" not in readme
+    assert "legacy `app.py` dashboard is still unauthenticated" not in known
+    assert "phase 5 removal note" in changelog
+    assert "localhost web ui" in readme
+
+
 def test_design_tokens_and_breakpoints_are_preserved():
     css = text(WEB / "static" / "css" / "style.css")
     for marker in (

@@ -1,4 +1,4 @@
-"""Runtime wiring shared by the CLI, the legacy dashboard and the web UI.
+"""Runtime wiring shared by the CLI and the localhost web UI.
 
 Front ends never build commands themselves; they drive the same
 ``DiagnosticEngine``, ``FixExecutor`` and fix catalog. This module only

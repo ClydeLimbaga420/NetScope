@@ -33,7 +33,10 @@ py-modules = ["config"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["cli*", "core*", "fixes*", "modules*", "powershell*", "web*"]
+include = ["cli*", "core*", "fixes*", "powershell*", "web*"]
+
+[tool.setuptools.package-data]
+core = ["oui_vendors.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

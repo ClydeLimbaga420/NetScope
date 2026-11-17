@@ -1,5 +1,5 @@
 ﻿# NetScope
-### Personal Network Monitoring Dashboard
+### Universal Windows Network Troubleshooting Tool
 
 NetScope is a local-first Windows network troubleshooting and monitoring
 application. It provides real-time network statistics, internet connectivity
@@ -13,8 +13,8 @@ internet, and protocol stack layers. Failed checks link to a catalogued repair
 that can be previewed, dry-run, executed with confirmation, verified by
 re-checking, and rolled back from a pre-fix snapshot.
 
-The web UI replaces the former tkinter desktop GUI. The legacy Flask dashboard
-(`python app.py`) remains available for LAN access only.
+The desktop window and browser interface use the secured localhost web UI.
+There is no LAN-hosted dashboard or separate legacy server.
 
 ## Features
 
@@ -37,11 +37,10 @@ The web UI replaces the former tkinter desktop GUI. The legacy Flask dashboard
 - Native desktop window (WebView2) with browser fallback
 - Per-user Windows installer with PATH, App Paths, Start Menu, desktop shortcut,
   and an uninstaller
-- Legacy LAN dashboard for other devices on the same network
 - Separate engine-backed Run diagnosis action in the web UI
 - Per-step Run buttons on every diagnostics and repair item
 
-### Dashboard
+### Monitoring and device discovery
 - Combined Internet and Gateway connectivity status card
 - Internet connectivity and ping latency monitoring
 - Packet loss monitoring for internet and gateway pings
@@ -162,16 +161,6 @@ Use `netscope gui --browser` to force Edge/Chrome, or
 `netscope gui --no-browser --port N` to run it in the foreground and print its
 boot URL. The web UI binds only to `127.0.0.1`.
 
-Legacy LAN dashboard:
-
-```
-python app.py
-```
-
-then open http://127.0.0.1:5000 locally, or
-`http://<LAN-IP>:5000` from another device. If other devices cannot connect,
-allow Python or TCP port 5000 through Windows Firewall.
-
 #### 6. Run tests
 
 ```
@@ -184,7 +173,6 @@ allow Python or TCP port 5000 through Windows Firewall.
 NetScope/
   netscope.py              # CLI entry point
   NetScope.spec            # PyInstaller one-file build definition
-  app.py                   # legacy Flask LAN dashboard
   config.py
   requirements.txt
   requirements-dev.txt
@@ -194,14 +182,11 @@ NetScope/
   .github/workflows/       # windows-latest test/build/installer CI
   installer/               # Inno Setup script
   scripts/                 # build, frozen smoke, installer build/smoke
-  core/                    # shared engine, models, runner, snapshot, checks
+  core/                    # shared engine, models, runner, checks, OUI resource
   powershell/              # static PS scripts, runner, input validation
   fixes/                   # catalog, executor, unresolved-cause ranking
   cli/                     # parser, dispatch, rendering, utilities, shell, monitor
   web/                     # localhost server, API, jobs/SSE, security, templates
-  modules/                 # legacy dashboard modules
-  templates/               # legacy dashboard template
-  static/                  # legacy dashboard assets and bundled Chart.js/fonts
   database/
   tests/
 ```
@@ -217,18 +202,17 @@ The localhost web UI binds to `127.0.0.1` and uses boot/session tokens,
 same-origin checks for state-changing requests, a Content Security Policy, and
 security headers. It is not exposed to the LAN.
 
-The legacy dashboard (`python app.py`) binds to all network interfaces
-(`0.0.0.0:5000`) so other LAN devices can open it. It has no authentication:
-anyone who can reach port 5000 can view the dashboard and trigger predefined
-troubleshooting commands, including repairs. Use it only on a trusted local
-network, and never forward port 5000 to the internet.
+The UI's monitoring routes use the shared core `MonitoringService`. Slow
+packet-loss and device-discovery work can report pending or explicit error
+states; they are not presented as successful empty results.
 
 Bandwidth monitoring measures total traffic across network interfaces.
 Displayed speeds are smoothed in the browser to reduce jitter.
 
-Device discovery briefly probes the local private subnet to populate the ARP
-cache, then reads the operating system's ARP table. It does not scan public or
-routed networks.
+Device discovery is limited to private IPv4 subnets on active local
+interfaces. It probes at most 1,024 local targets with at most 64 workers to
+populate the ARP cache, then reads the operating system's ARP table. It never
+scans public or routed networks.
 
 Device names are resolved best-effort through NetBIOS and reverse DNS. Many
 devices do not publish a name.
@@ -285,7 +269,6 @@ netscope info
 ### From source (without editable install)
 
 ```bash
-python app.py                    # legacy Flask dashboard on http://127.0.0.1:5000
 .\.venv\Scripts\python.exe netscope.py --help
 .\.venv\Scripts\python.exe netscope.py gui
 ```
@@ -340,7 +323,7 @@ See [docs/build.md](docs/build.md) for Git Bash requirements, environment
 overrides, output paths, and post-build verification.
 
 The one-file, console-subsystem build bundles the web templates/static files,
-the fix catalog, pywebview, pythonnet, and the CLR loader:
+the fix catalog, the offline OUI map, pywebview, pythonnet, and the CLR loader:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Clean
@@ -454,11 +437,8 @@ The JSON API is a thin layer over the same engine/catalog/utilities as the CLI:
 `/api/fix/rollback`, `/api/fix/history`, `/api/fixes`,
 `/api/unresolved/answer`, `/api/info`, `/api/tools/<name>`, `/api/logs`,
 `/api/logs/stream`, `/api/report`, `/api/devices`, `/api/heartbeat`,
-`/api/shutdown`, and `/api/elevate`. Long operations run as background jobs and
-stream over Server-Sent Events with polling fallback.
-
-The legacy dashboard (`python app.py`) is separate and unauthenticated. Keep it
-on a trusted LAN and never expose port 5000 to the internet.
+`/api/packet-loss`, `/api/shutdown`, and `/api/elevate`. Long operations run as
+background jobs and stream over Server-Sent Events with polling fallback.
 
 ## Adding checks, fixes, and subcommands
 

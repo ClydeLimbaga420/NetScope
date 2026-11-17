@@ -7,9 +7,26 @@ from pathlib import Path
 
 import pytest
 
+import config
+
 
 ROOT = Path(__file__).resolve().parents[1]
 BASH = shutil.which("bash")
+
+
+def test_setuptools_packages_vendor_data_without_removed_modules():
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+
+    assert '"modules*"' not in pyproject
+    assert "[tool.setuptools.package-data]" in pyproject
+    assert 'core = ["oui_vendors.json"]' in pyproject
+
+
+def test_config_excludes_retired_dashboard_server_settings():
+    assert not hasattr(config, "HOST")
+    assert not hasattr(config, "PORT")
+    assert not hasattr(config, "REFRESH_INTERVAL_MS")
+    assert config.PING_TIMEOUT_SECONDS == 1
 
 
 @pytest.mark.skipif(

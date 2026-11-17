@@ -203,13 +203,3 @@ result after applying the repair.
 - [ ] Install from a copied exe with `--source PATH`; the installed copy runs.
 - [ ] Install to a custom absolute directory with `--dir PATH`; uninstall with
       the same `--dir`.
-
-## 8. Legacy dashboard (if kept in the build under test)
-
-- [ ] `python app.py` serves `/` on port 5000.
-- [ ] The dashboard shows connectivity, devices, bandwidth, packet loss, and
-      the Troubleshoot rail.
-- [ ] `#auto-configure-gateway` appears only when no default gateway exists and
-      runs the one-click repair.
-- [ ] The LAN URL works from another VM on the same network (and is not
-      reachable from outside the LAN).

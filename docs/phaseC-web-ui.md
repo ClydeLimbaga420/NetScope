@@ -100,3 +100,11 @@ Build features intentionally not placed as new navigation:
   `FixExecutor.run(progress=...)` through the job queue, rendering a progress
   bar and per-step running/verifying/done states before the structured outcome.
 - Browser end-to-end flows remain the last Phase C verification item.
+
+## Phase 5 removal note
+
+The root `templates/`, `static/`, `app.py`, and `modules/` entries above record
+the Phase C state and are historical. Phase 5 removed the standalone LAN
+dashboard and migrated its supported monitoring and device-discovery behavior
+into the shared core service. The maintained UI is under `web/` and is served
+only on localhost; Flask remains its HTTP framework.
