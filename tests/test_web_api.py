@@ -130,6 +130,170 @@ def test_session_and_status(client):
     assert r.status_code == 200
 
 
+def test_status_payload_contract(client, monkeypatch):
+    import config
+
+    c, st = client
+    network = {
+        "hostname": "netscope-host",
+        "local_ip": "192.168.1.25",
+        "gateway": "192.168.1.1",
+        "interfaces": [
+            {
+                "name": "Ethernet",
+                "ipv4": "192.168.1.25",
+                "mac": "00:11:22:33:44:55",
+                "is_up": True,
+                "speed_mbps": 1000,
+            }
+        ],
+        "interface_count": 1,
+        "diagnosis": {
+            "issues": [
+                {"severity": "warning", "message": "A configuration warning."}
+            ]
+        },
+    }
+    traffic = {
+        "download_bytes_sec": 1200.0,
+        "upload_bytes_sec": 300.0,
+        "download_mbps": 0.01,
+        "upload_mbps": 0.002,
+        "total_received_bytes": 10000,
+        "total_sent_bytes": 2000,
+    }
+    pings = {
+        "1.1.1.1": {"host": "1.1.1.1", "latency_ms": 12.5, "online": True},
+        "192.168.1.1": {
+            "host": "192.168.1.1",
+            "latency_ms": 1.5,
+            "online": True,
+        },
+    }
+    monkeypatch.setattr("web.api.get_network_info", lambda: network)
+    monkeypatch.setattr("web.api._dashboard_bandwidth.get_rates", lambda: traffic)
+    monkeypatch.setattr("web.api.ping_host", lambda host: pings[host])
+    monkeypatch.setattr("web.api.is_admin", lambda: True)
+    st.runtime.ps = object()
+    _boot(c, st)
+
+    response = c.get("/api/status", headers={"Host": "127.0.0.1:5000"})
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert set(payload) == {
+        "network",
+        "traffic",
+        "internet_ping",
+        "gateway_ping",
+        "problems",
+        "app",
+        "version",
+        "admin",
+        "session_id",
+        "dry_run_default",
+        "powershell",
+    }
+    assert payload["network"] == network
+    assert payload["traffic"] == traffic
+    assert payload["internet_ping"] == pings["1.1.1.1"]
+    assert payload["gateway_ping"] == pings["192.168.1.1"]
+    assert payload["problems"] == [
+        {
+            "source": "configuration",
+            "severity": "warning",
+            "message": "A configuration warning.",
+        }
+    ]
+    assert payload["app"] == config.APP_NAME
+    assert payload["version"] == config.APP_VERSION
+    assert payload["admin"] is True
+    assert payload["session_id"] == st.session_id
+    assert payload["dry_run_default"] is False
+    assert payload["powershell"] == {"available": True}
+
+
+def test_devices_payload_contract(client, monkeypatch):
+    c, st = client
+    devices = [
+        {
+            "name": "Router",
+            "ip": "192.168.1.1",
+            "mac": "00:11:22:33:44:55",
+            "type": "dynamic",
+            "vendor": "Example Networks",
+            "interface_ip": "192.168.1.25",
+            "hardware_mac": None,
+            "mac_randomized": False,
+            "mac_note": "MAC reported on the local network",
+            "connection": "Router",
+            "connection_detail": "Default gateway",
+        }
+    ]
+    monkeypatch.setattr("web.api.get_arp_devices", lambda: devices)
+    _boot(c, st)
+
+    response = c.get("/api/devices", headers={"Host": "127.0.0.1:5000"})
+
+    assert response.status_code == 200
+    assert response.get_json() == {"devices": devices}
+    assert set(response.get_json()["devices"][0]) == {
+        "name",
+        "ip",
+        "mac",
+        "type",
+        "vendor",
+        "interface_ip",
+        "hardware_mac",
+        "mac_randomized",
+        "mac_note",
+        "connection",
+        "connection_detail",
+    }
+
+
+def test_packet_loss_payload_contract(client, monkeypatch):
+    c, st = client
+    network = {"gateway": "192.168.1.1"}
+    ping_stats = {
+        "1.1.1.1": {
+            "host": "1.1.1.1",
+            "latency_ms": 14.0,
+            "online": True,
+            "packet_loss_percent": 10.0,
+            "packets_sent": 10,
+            "packets_received": 9,
+        },
+        "192.168.1.1": {
+            "host": "192.168.1.1",
+            "latency_ms": 1.0,
+            "online": True,
+            "packet_loss_percent": 0.0,
+            "packets_sent": 10,
+            "packets_received": 10,
+        },
+    }
+    calls = []
+
+    def fake_ping_host_stats(host, count):
+        calls.append((host, count))
+        return ping_stats[host]
+
+    monkeypatch.setattr("web.api.get_network_info", lambda: network)
+    monkeypatch.setattr("web.api.ping_host_stats", fake_ping_host_stats)
+    _boot(c, st)
+
+    response = c.get("/api/packet-loss", headers={"Host": "127.0.0.1:5000"})
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "count": 10,
+        "internet": ping_stats["1.1.1.1"],
+        "gateway": ping_stats["192.168.1.1"],
+    }
+    assert sorted(calls) == [("1.1.1.1", 10), ("192.168.1.1", 10)]
+
+
 def test_checks_endpoint_lists_planned_check_descriptions(client):
     c, st = client
     c.get(f'/__boot__?token={st.security.boot_token}', headers={'Host': '127.0.0.1:5000'})

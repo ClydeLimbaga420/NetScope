@@ -22,6 +22,10 @@ deferred for now by request; it is a release-confidence item, not a code or
 test blocker. Phase 7 and GUI launch follow-up changes are uncommitted; nothing
 is pushed.
 
+**Legacy-dashboard removal:** Phase 1 is complete. The secured localhost
+`/api/status`, `/api/devices`, and `/api/packet-loss` successful payload
+contracts are characterized in `tests/test_web_api.py`; Phase 2 is next.
+
 ## Run / environment
 - The Flask dashboard still works: `python app.py` â†’ http://127.0.0.1:5000
   locally, or `http://<LAN-IP>:5000` from another device. It binds
