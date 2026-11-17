@@ -85,17 +85,21 @@ def _valid_native(value: Any) -> bool:
 def _valid_payload(payload: Any) -> bool:
     if not isinstance(payload, dict) or payload.get("version") != CACHE_VERSION:
         return False
+    if not isinstance(payload.get("captured_at"), str):
+        return False
+    body = payload.get("snapshot")
+    if not isinstance(body, dict):
+        return False
     return (
-        isinstance(payload.get("captured_at"), str)
-        and _is_bool(payload.get("is_windows"))
-        and isinstance(payload.get("language_mode"), str)
-        and _is_bool(payload.get("ps_available"))
-        and _is_bool(payload.get("constrained"))
-        and (payload.get("gateway") is None or isinstance(payload.get("gateway"), str))
-        and _valid_errors(payload.get("errors"))
-        and _valid_sections(payload.get("sections"))
-        and _valid_pings(payload.get("pings"))
-        and _valid_native(payload.get("native"))
+        _is_bool(body.get("is_windows"))
+        and isinstance(body.get("language_mode"), str)
+        and _is_bool(body.get("ps_available"))
+        and _is_bool(body.get("constrained"))
+        and (body.get("gateway") is None or isinstance(body.get("gateway"), str))
+        and _valid_errors(body.get("errors"))
+        and _valid_sections(body.get("sections"))
+        and _valid_pings(body.get("pings"))
+        and _valid_native(body.get("native"))
     )
 
 
@@ -114,6 +118,7 @@ def load_with_reason(path: Path) -> tuple[Snapshot | None, str | None]:
         return None, "unsupported_version"
     if not _valid_payload(payload):
         return None, "invalid_payload"
+    body = payload["snapshot"]
 
     pings = {
         host: PingResult(
@@ -123,7 +128,7 @@ def load_with_reason(path: Path) -> tuple[Snapshot | None, str | None]:
             returncode=raw["returncode"],
             error=raw["error"],
         )
-        for host, raw in payload["pings"].items()
+        for host, raw in body["pings"].items()
     }
     native = {
         name: CommandResult(
@@ -135,20 +140,20 @@ def load_with_reason(path: Path) -> tuple[Snapshot | None, str | None]:
             timed_out=raw["timed_out"],
             error=raw["error"],
         )
-        for name, raw in payload["native"].items()
+        for name, raw in body["native"].items()
     }
 
     return (
         Snapshot(
-            is_windows=payload["is_windows"],
-            language_mode=payload["language_mode"],
-            ps_available=payload["ps_available"],
-            constrained=payload["constrained"],
-            data=payload["sections"],
-            errors=payload["errors"],
+            is_windows=body["is_windows"],
+            language_mode=body["language_mode"],
+            ps_available=body["ps_available"],
+            constrained=body["constrained"],
+            data=body["sections"],
+            errors=body["errors"],
             native=native,
             pings=pings,
-            gateway=payload["gateway"],
+            gateway=body["gateway"],
             captured_at=payload["captured_at"],
         ),
         None,
@@ -169,29 +174,31 @@ def save(snapshot: Snapshot, path: Path) -> None:
     payload: dict[str, Any] = {
         "version": CACHE_VERSION,
         "captured_at": snapshot.captured_at,
-        "is_windows": snapshot.is_windows,
-        "language_mode": snapshot.language_mode,
-        "ps_available": snapshot.ps_available,
-        "constrained": snapshot.constrained,
-        "gateway": snapshot.gateway,
-        "errors": dict(snapshot.errors),
-        "sections": {key: value for key, value in snapshot.data.items()},
-        "pings": {host: result.to_dict() for host, result in snapshot.pings.items()},
-        "native": {
-            name: (
-                result.to_dict()
-                if isinstance(result, CommandResult)
-                else {
-                    "args": [],
-                    "returncode": getattr(result, "returncode", 0),
-                    "stdout": getattr(result, "stdout", "") or "",
-                    "stderr": getattr(result, "stderr", "") or "",
-                    "duration_seconds": getattr(result, "duration_seconds", 0.0) or 0.0,
-                    "timed_out": bool(getattr(result, "timed_out", False)),
-                    "error": getattr(result, "error", None),
-                }
-            )
-            for name, result in snapshot.native.items()
+        "snapshot": {
+            "is_windows": snapshot.is_windows,
+            "language_mode": snapshot.language_mode,
+            "ps_available": snapshot.ps_available,
+            "constrained": snapshot.constrained,
+            "gateway": snapshot.gateway,
+            "errors": dict(snapshot.errors),
+            "sections": {key: value for key, value in snapshot.data.items()},
+            "pings": {host: result.to_dict() for host, result in snapshot.pings.items()},
+            "native": {
+                name: (
+                    result.to_dict()
+                    if isinstance(result, CommandResult)
+                    else {
+                        "args": [],
+                        "returncode": getattr(result, "returncode", 0),
+                        "stdout": getattr(result, "stdout", "") or "",
+                        "stderr": getattr(result, "stderr", "") or "",
+                        "duration_seconds": getattr(result, "duration_seconds", 0.0) or 0.0,
+                        "timed_out": bool(getattr(result, "timed_out", False)),
+                        "error": getattr(result, "error", None),
+                    }
+                )
+                for name, result in snapshot.native.items()
+            },
         },
     }
 

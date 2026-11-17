@@ -23,6 +23,19 @@ def test_snapshot_cache_round_trip_preserves_native_and_pings(snapshot_factory, 
     assert loaded.pings["1.1.1.1"].latency_ms == 12.0
 
 
+def test_snapshot_cache_uses_versioned_envelope(tmp_path, snapshot_factory):
+    snapshot = snapshot_factory()
+    path = tmp_path / "snapshot.json"
+
+    save(snapshot, path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+
+    assert set(payload) == {"version", "captured_at", "snapshot"}
+    assert payload["captured_at"] == snapshot.captured_at
+    assert "pings" in payload["snapshot"]
+    assert "native" in payload["snapshot"]
+
+
 def test_snapshot_cache_rejects_bad_version_and_malformed_json(tmp_path):
     path = tmp_path / "snapshot.json"
     path.write_text('{"version": 99}', encoding="utf-8")
@@ -36,12 +49,12 @@ def test_snapshot_cache_rejects_bad_version_and_malformed_json(tmp_path):
 @pytest.mark.parametrize(
     "mutation",
     [
-        lambda p: p.update(is_windows=1),
-        lambda p: p["sections"].update(adapters="not-a-list"),
-        lambda p: p["sections"].update(adapters=[1]),
-        lambda p: p["errors"].update(dns=1),
-        lambda p: p["pings"].update(host=1),
-        lambda p: p["pings"].update(
+        lambda p: p["snapshot"].update(is_windows=1),
+        lambda p: p["snapshot"]["sections"].update(adapters="not-a-list"),
+        lambda p: p["snapshot"]["sections"].update(adapters=[1]),
+        lambda p: p["snapshot"]["errors"].update(dns=1),
+        lambda p: p["snapshot"]["pings"].update(host=1),
+        lambda p: p["snapshot"]["pings"].update(
             host={
                 "host": "host",
                 "online": True,
@@ -50,7 +63,7 @@ def test_snapshot_cache_rejects_bad_version_and_malformed_json(tmp_path):
                 "error": None,
             }
         ),
-        lambda p: p["native"].update(
+        lambda p: p["snapshot"]["native"].update(
             winsock={
                 "args": [],
                 "returncode": 0,
@@ -59,7 +72,7 @@ def test_snapshot_cache_rejects_bad_version_and_malformed_json(tmp_path):
                 "error": None,
             }
         ),
-        lambda p: p["native"].update(
+        lambda p: p["snapshot"]["native"].update(
             winsock={
                 "args": [1],
                 "returncode": 0,
@@ -77,15 +90,17 @@ def test_snapshot_cache_rejects_malformed_fields(tmp_path, mutation):
     payload = {
         "version": CACHE_VERSION,
         "captured_at": "2026-01-01T00:00:00+00:00",
-        "is_windows": True,
-        "language_mode": "FullLanguage",
-        "ps_available": True,
-        "constrained": False,
-        "gateway": None,
-        "errors": {},
-        "sections": {},
-        "pings": {},
-        "native": {},
+        "snapshot": {
+            "is_windows": True,
+            "language_mode": "FullLanguage",
+            "ps_available": True,
+            "constrained": False,
+            "gateway": None,
+            "errors": {},
+            "sections": {},
+            "pings": {},
+            "native": {},
+        },
     }
     mutation(payload)
     path.write_text(json.dumps(payload), encoding="utf-8")

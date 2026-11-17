@@ -83,7 +83,7 @@ frozen smoke, and a built wheel contains `core/oui_vendors.json`.
 - This checkout currently has no `.venv`.
   Recreate with `py -m venv .venv`, then
   `.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt`.
-- Run tests: `.\.venv\Scripts\python.exe -m pytest` (latest full run: 332 passed,
+- Run tests: `.\.venv\Scripts\python.exe -m pytest` (latest full run: 346 passed,
   2 skipped, 2026-11-17; Phase 5/6 verification used system Python 3.14.7).
   Coverage gate (latest: 83.50%):
   `.\.venv\Scripts\python.exe -m pytest --cov=core --cov=fixes --cov=powershell --cov-fail-under=80`.

@@ -317,7 +317,6 @@ class MonitoringService:
     DEVICE_CACHE_SECONDS = 15.0
     PACKET_LOSS_CACHE_SECONDS = 30.0
     SNAPSHOT_CACHE_SECONDS = 15.0
-    SNAPSHOT_WAIT_SECONDS = 30.0
 
     def __init__(
         self,
