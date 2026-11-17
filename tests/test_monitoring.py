@@ -7,23 +7,33 @@ from types import SimpleNamespace
 
 import pytest
 
-from core import native
+import config
+from core import native, snapshot_cache
 from core.monitoring import MonitoringService, NetworkCounters
 from core.native import PingResult
 from core.runner import CommandResult, FakeRunner
+
+
+@pytest.fixture(autouse=True)
+def isolated_snapshot_cache(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "snapshot_cache_path", lambda: tmp_path / "snapshot.json")
 
 
 def _service(snapshot, counters, timestamps, runner=None, clock=None):
     counter_samples = iter(counters)
     clock_samples = iter(timestamps)
     engine = SimpleNamespace(collect_snapshot=lambda: snapshot)
-    return MonitoringService(
+    service = MonitoringService(
         engine,
         runner or FakeRunner(),
         None,
         counter_provider=lambda: next(counter_samples),
         clock=clock or (lambda: next(clock_samples)),
     )
+    deadline = time.monotonic() + 2.0
+    while service.get_snapshot() is None and time.monotonic() < deadline:
+        time.sleep(0.01)
+    return service
 
 
 def test_status_uses_snapshot_info_and_ping_results(snapshot_factory, monkeypatch):
@@ -45,6 +55,7 @@ def test_status_uses_snapshot_info_and_ping_results(snapshot_factory, monkeypatc
         "internet_ping",
         "gateway_ping",
         "problems",
+        "data_freshness",
     }
     assert status["network"] == {
         "hostname": "fixture-host",
@@ -197,8 +208,9 @@ def test_status_propagates_snapshot_collection_errors():
         clock=lambda: 1.0,
     )
 
-    with pytest.raises(RuntimeError, match="snapshot unavailable"):
-        service.get_status()
+    status = service.get_status()
+
+    assert status["data_freshness"]["state"] == "unavailable"
 
 
 def test_parse_ping_stats_reads_windows_summary_and_average():
@@ -399,6 +411,63 @@ def test_background_tasks_are_independent_deduplicated_and_nonblocking(
     assert devices.value == [{"ip": "192.168.1.20"}]
     assert packet_loss.value["count"] == 10
     assert discovery_calls[0][1] is True
+
+
+def test_cache_loaded_at_startup_is_stale_and_refreshed_in_background(
+    snapshot_factory, tmp_path
+):
+    snapshot = snapshot_factory()
+    snapshot_cache.save(snapshot, tmp_path / "snapshot.json")
+    collect_calls = []
+    engine = SimpleNamespace(
+        collect_snapshot=lambda: collect_calls.append(1)
+        or snapshot_factory(gateway="10.0.0.1")
+    )
+    service = MonitoringService(
+        engine,
+        FakeRunner(),
+        None,
+        counter_provider=lambda: NetworkCounters(0, 0),
+        clock=lambda: 10.0,
+    )
+
+    status = service.get_status()
+
+    assert status["data_freshness"]["state"] == "stale"
+    assert status["network"]["gateway"] == "192.168.1.1"
+    assert collect_calls == []
+
+    deadline = time.monotonic() + 2
+    while service.freshness()["state"] != "fresh" and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert service.freshness()["state"] == "fresh"
+
+
+def test_cold_start_returns_pending_status_without_blocking(snapshot_factory):
+    started = threading.Event()
+    fresh = snapshot_factory()
+
+    def slow_snapshot():
+        started.set()
+        time.sleep(0.5)
+        return fresh
+
+    service = MonitoringService(
+        SimpleNamespace(collect_snapshot=slow_snapshot),
+        FakeRunner(),
+        None,
+        counter_provider=lambda: NetworkCounters(0, 0),
+        clock=lambda: 10.0,
+    )
+
+    begin = time.monotonic()
+    status = service.get_status()
+
+    assert time.monotonic() - begin < 0.2
+    assert status["data_freshness"]["state"] == "collecting"
+    assert status["network"]["interfaces"] == []
+    assert status["internet_ping"]["online"] is False
+    assert started.wait(1)
 
 
 def test_status_reuses_collected_snapshot(snapshot_factory):

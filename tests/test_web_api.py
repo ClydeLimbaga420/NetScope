@@ -7,6 +7,7 @@ import time
 
 import pytest
 
+import config
 from core.checks.descriptors import CHECK_DESCRIPTORS
 from core.monitoring import MonitorTaskResult, MonitoringService, NetworkCounters
 from core.runner import CommandResult, FakeRunner, SubprocessRunner
@@ -129,6 +130,11 @@ def web_state(monkeypatch):
                 "internet_ping": {},
                 "gateway_ping": {},
                 "problems": [],
+                "data_freshness": {
+                    "state": "fresh",
+                    "captured_at": None,
+                    "age_seconds": None,
+                },
             }
         ),
     )
@@ -454,8 +460,9 @@ def test_monitoring_packet_loss_failure_is_logged_and_explicit(client):
 
 
 def test_monitoring_api_status_returns_while_workers_are_blocked(
-    client, snapshot_factory
+    client, snapshot_factory, tmp_path, monkeypatch
 ):
+    monkeypatch.setattr(config, "snapshot_cache_path", lambda: tmp_path / "snapshot.json")
     c, st = client
     snapshot = snapshot_factory()
     devices_started = threading.Event()
@@ -495,6 +502,10 @@ def test_monitoring_api_status_returns_while_workers_are_blocked(
         devices_started.set()
         release_devices.wait(2)
         return []
+
+    deadline = time.monotonic() + 2.0
+    while monitoring.get_snapshot() is None and time.monotonic() < deadline:
+        time.sleep(0.01)
 
     monitoring.device_discovery.discover = blocked_discovery
     st.runtime.monitoring = monitoring
