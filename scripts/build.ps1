@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Uses the project's virtual environment when present. The build is a
-    one-file, console-subsystem executable that bundles web templates/static and
+    one-file, windowed-subsystem executable that bundles web templates/static and
     the fix catalog.
 
 .PARAMETER Python

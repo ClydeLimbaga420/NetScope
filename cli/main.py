@@ -12,14 +12,21 @@ from cli.parser import apply_defaults, build_parser
 from cli.shell import run_shell
 from core.logging_config import flush_logging
 from core.models import new_session_id
-from cli.launch import GUI_INTERNAL, detach_console, launch_detached_gui, owns_console
+from cli.launch import (
+    GUI_INTERNAL,
+    attach_parent_console,
+    detach_console,
+    launch_detached_gui,
+    owns_console,
+)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    attach_parent_console()
     args_in = list(sys.argv[1:] if argv is None else argv)
     if args_in and args_in[0] == GUI_INTERNAL:
         return _run_gui_process(args_in[1:])
-    if not args_in and owns_console():
+    if not args_in and (owns_console() or getattr(sys, "frozen", False)):
         return _open_gui_from_owned_console()
     parser = build_parser()
     try:
@@ -29,7 +36,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     apply_defaults(args)
 
     if getattr(args, "command", None) is None:
-        if owns_console():
+        if owns_console() or getattr(sys, "frozen", False):
             return _open_gui_from_owned_console()
         if not _stdin_is_tty():
             parser.print_help(sys.stderr)

@@ -33,8 +33,9 @@ PowerShell executable.
 
 The outputs are:
 
-- `dist\NetScope.exe` — the console-subsystem executable, which supports both
-  the CLI and the GUI launch behavior
+- `dist\NetScope.exe` — the windowed-subsystem executable: double-click opens the
+  GUI with no console/taskbar button; terminal launches keep CLI output via
+  `AttachConsole`
 - `dist\installer\NetScope-Setup.exe` — the per-user Inno Setup installer
 
 The script recreates `dist` if needed and overwrites the build outputs. You do

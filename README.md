@@ -339,7 +339,7 @@ never prompts: pass `--yes` where confirmation is needed.
 See [docs/build.md](docs/build.md) for Git Bash requirements, environment
 overrides, output paths, and post-build verification.
 
-The one-file, console-subsystem build bundles the web templates/static files,
+The one-file, windowed-subsystem build bundles the web templates/static files,
 the fix catalog, pywebview, pythonnet, and the CLR loader:
 
 ```powershell
@@ -386,12 +386,12 @@ PyInstaller (`pip install pyinstaller`). `NetScope.spec` excludes tkinter and
 unused GUI/scientific packages, collects the pywebview/pythonnet runtime files,
 and `web/paths.py` resolves bundled assets through `sys._MEIPASS`.
 
-The exe intentionally stays console-subsystem so the CLI works from any
-terminal. On double-click, the app hides its owned console as soon as startup
-code runs, then detaches before starting the GUI; Windows may still show a brief
-console flash before Python starts. `netscope gui` from a terminal detaches
-immediately and returns the prompt. A terminal with no arguments still opens
-the `netscope>` shell.
+The exe is a windowed-subsystem build: a double-click opens the GUI directly,
+with no console window, terminal tab, taskbar button or startup flash. When run
+from cmd or PowerShell, it attaches to the parent console so CLI output (for
+example `NetScope.exe --version`) still works. `netscope gui` from a terminal
+detaches immediately and returns the prompt. A terminal with no arguments still
+opens the `netscope>` shell.
 
 ## Install and uninstall
 

@@ -8,7 +8,7 @@ this file and `task.md` Notes at the end of every phase.
 **Current status: Phase 5, Phase 6 D/E, the Phase 7 desktop-installer follow-up,
 and the single-executable GUI-launch/window-fit follow-up are complete.**
 tkinter is removed. `dist/NetScope.exe` is a one-file
-console-subsystem build (20.0 MB) bundling web templates/static, the fix
+windowed-subsystem build (20.0 MB) bundling web templates/static, the fix
 catalog, pywebview/WebView2 and pythonnet; `dist/installer/NetScope-Setup.exe`
 (21.6 MB, Inno Setup 6.7.3) is a per-user installer with PATH/App Paths/Start
 Menu/desktop shortcuts, uninstaller, WebView2 handling, and a `.netscope-inno`
@@ -42,10 +42,11 @@ is pushed.
   The hidden `__gui__` entry serves the UI in-process. tkinter is gone;
   `cli/launch.py` owns console detection/detach/relaunch and `web/window.py`
   owns WebView2 detection/window hosting.
-- Double-clicking `NetScope.exe` (no args, own console) hides that console with
-  `ShowWindow(SW_HIDE)`, detaches, and opens the GUI; Windows may show a brief
-  console flash before Python starts. `netscope` with no args in a shared
-  terminal opens the shell.
+- Double-clicking `NetScope.exe` (windowed build, no args) opens the GUI
+  directly: no console window, no Windows Terminal tab, no taskbar button and
+  no flash. `cli.launch.attach_parent_console()` reattaches CLI output when the
+  exe is run from a terminal; source runs are unaffected. `netscope` with no
+  args in a shared terminal opens the shell.
 - PowerShell is required for diagnostics (Windows PowerShell 5.1).
 - Run `app.py` as a script: imports are flat/absolute (`from config ...`,
   `from modules...`, `from core...`), not a package.
@@ -180,8 +181,9 @@ is pushed.
   detection, fix, or validation logic in `web/` â€” extend `core/` or `fixes/`.
 - `cli/launch.py` â€” `GUI_INTERNAL = "__gui__"`, `owns_console()`
   (`GetConsoleProcessList == 1`, or 2 for the frozen one-file
-  bootloader parent/child pair), `detach_console()` (`ShowWindow(SW_HIDE)`
-  followed by `FreeConsole`),
+  bootloader parent/child pair), `attach_parent_console()` (windowed build
+  reattaches to the launching terminal), `detach_console()` (tool-window style +
+  `ShowWindow(SW_HIDE)` followed by `FreeConsole`, for source-console launches),
   `launch_detached_gui()` (`DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP`,
   devnull stdio, cwd = project root), `gui_relaunch_argv()` (source:
   `[netscope.py, "__gui__"]`; frozen: `["__gui__"]`).
@@ -198,9 +200,9 @@ is pushed.
 - `web/run.py` owns the single-instance lock, port file, `/health` reuse,
   bounded boot URL, bind-failure logging, heartbeat/idle shutdown, and clean
   `POST /api/shutdown`.
-- Launcher tradeoff: the exe stays console-subsystem, so Windows may briefly
-  flash a console before app code hides it; the GUI process itself is detached
-  and shows no console. A double-clicked `.py` via `py.exe` shares a console, so
+- Launcher tradeoff: the exe is windowed, so a double-click shows no console at
+  all; CLI output is restored with `AttachConsole(ATTACH_PARENT_PROCESS)` when
+  launched from a terminal. A double-clicked `.py` via `py.exe` shares a console, so
   `owns_console()` is False and it opens the shell â€” the frozen exe behaves as
   specified.
 - `tests/test_launch.py` covers the retained launch helpers. `tests/test_gui.py`
@@ -503,7 +505,7 @@ runtime = build_runtime()  # same engine/catalog as the CLI, web-mode logging
   default (DETECT-ONLY or second confirmation only).
 
 ## Packaging / installer / CI (Phase 5, Phase 6 D/E, Phase 7)
-- `NetScope.spec` is a one-file console-subsystem PyInstaller build (UPX off)
+- `NetScope.spec` is a one-file windowed-subsystem PyInstaller build (UPX off)
   bundling `web/templates`, `web/static`, `fixes/fixes.json`, pywebview,
   pythonnet, and clr_loader; tkinter and heavy optional libs are excluded.
   `scripts/build.ps1` builds it with the venv interpreter (`-Clean` wipes

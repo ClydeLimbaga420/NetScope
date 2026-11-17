@@ -1,9 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller one-file, console-subsystem build for NetScope.
+"""PyInstaller one-file, windowed-subsystem build for NetScope.
 
-The executable stays console-subsystem so the CLI works, and detaches its own
-console when it opens the web UI (see cli/launch.py). Web templates/static and
-the fix catalog are bundled next to the extracted package; web/paths.py resolves
+A double-click opens the web UI without creating a console (so Windows Terminal
+never adds a taskbar button for it). ``cli.launch.attach_parent_console()``
+reattaches CLI output when the exe is run from a terminal, and redirected
+stdout/stderr pipes keep working for smoke tests. Web templates/static and the
+fix catalog are bundled next to the extracted package; web/paths.py resolves
 them through sys._MEIPASS.
 """
 
@@ -101,7 +103,7 @@ exe = EXE(
     upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

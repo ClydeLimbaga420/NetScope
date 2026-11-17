@@ -66,8 +66,8 @@ that setting because it weakens SMB guest security.
 
 ## Compatibility notes for maintainers
 
-- The exe is console-subsystem on purpose. Double-clicking briefly shows a
-  console before the GUI child detaches; this is a documented tradeoff.
+- The exe is windowed-subsystem: a double-click shows no console at all. CLI
+  output from a terminal is restored with `AttachConsole(ATTACH_PARENT_PROCESS)`.
 - `fixes/catalog.py` validates catalog text at load time. Adding a repair with a
   new parameter source or validator requires updating both the validator and
   the executor, plus a test.
