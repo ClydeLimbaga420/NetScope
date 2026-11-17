@@ -144,9 +144,9 @@
 }
 
 .layer-status-value.warn {
-    border-color: var(--amber-border);
-    background: var(--amber-soft);
-    color: var(--amber);
+    border-color: var(--orange-border);
+    background: var(--orange-soft);
+    color: var(--orange);
 }
 
 .layer-status-value.fail,
@@ -1412,6 +1412,10 @@
 
 .engine-step-status.error {
     color: var(--red);
+}
+
+.engine-step-status.warn {
+    color: var(--orange);
 }
 
 .engine-step-desc {

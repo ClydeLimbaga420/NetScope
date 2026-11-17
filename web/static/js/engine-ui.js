@@ -291,7 +291,8 @@
 
   function statusClass(status) {
     if (["pass", "resolved", "success", "done"].includes(status)) return "success";
-    if (["fail", "error", "warn", "warning", "cancelled"].includes(status)) return "error";
+    if (["warn", "warning"].includes(status)) return "warn";
+    if (["fail", "error", "cancelled"].includes(status)) return "error";
     if (status === "running") return "running";
     return "idle";
   }
@@ -322,7 +323,7 @@
       const button = element("button", `diag-item ${kind} ${status}${item.id === state.selectedId ? " selected" : ""}`);
       button.type = "button";
       button.dataset.engineItem = item.id;
-      const marker = status === "success" ? "\u2713" : status === "error" ? "\u2715" : status === "running" ? "\u2026" : String(index + 1).padStart(2, "0");
+      const marker = status === "success" ? "\u2713" : status === "error" ? "\u2715" : status === "warn" ? "\u0021" : status === "running" ? "\u2026" : String(index + 1).padStart(2, "0");
       const number = element("span", "diag-item-index", marker);
       const text = element("span", "diag-item-text");
       text.append(element("strong", "", resultTitle(item)));
