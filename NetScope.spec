@@ -15,6 +15,7 @@ project_root = Path(SPECPATH)
 
 web = project_root / "web"
 fixes = project_root / "fixes"
+core = project_root / "core"
 
 webview_datas, webview_binaries, webview_hiddenimports = collect_all("webview")
 webview_hiddenimports = [
@@ -31,12 +32,6 @@ hiddenimports = [
     "jinja2",
     "psutil",
     "requests",
-    "modules.network_info",
-    "modules.bandwidth",
-    "modules.ping_monitor",
-    "modules.device_scanner",
-    "modules.diagnostics",
-    "modules.oui_vendors",
     "fixes.gateway_config",
     "web.api",
     "web.jobs",
@@ -76,6 +71,7 @@ a = Analysis(
         (str(web / "templates"), "web/templates"),
         (str(web / "static"), "web/static"),
         (str(fixes / "fixes.json"), "fixes"),
+        (str(core / "oui_vendors.json"), "core"),
     ] + webview_datas + pythonnet_datas + clr_loader_datas,
     hiddenimports=hiddenimports,
     hookspath=[],

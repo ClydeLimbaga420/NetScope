@@ -66,6 +66,24 @@ def test_web_scripts_remove_legacy_diagnostics_and_handler_workarounds():
     assert "MutationObserver" not in engine_ui
 
 
+def test_standalone_dashboard_and_legacy_modules_are_removed():
+    for relative_path in ("app.py", "templates", "static", "modules"):
+        assert not (ROOT / relative_path).exists(), relative_path
+
+    source_dirs = ("core", "cli", "fixes", "powershell", "scripts", "tests", "web")
+    python_files = [*ROOT.glob("*.py")]
+    for directory in source_dirs:
+        python_files.extend((ROOT / directory).rglob("*.py"))
+    legacy_import = re.compile(
+        r"^\s*(?:from\s+modules\b|import\s+modules\b|import\s+app\b)",
+        re.M,
+    )
+    for path in python_files:
+        assert not legacy_import.search(text(path)), path
+
+    spec = text(ROOT / "NetScope.spec")
+    assert '(str(core / "oui_vendors.json"), "core")' in spec
+    assert '"modules.' not in spec
 
 
 def test_design_tokens_and_breakpoints_are_preserved():

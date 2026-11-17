@@ -101,6 +101,9 @@ def run(exe: Path) -> list[str]:
             errors="replace",
             creationflags=flags,
         )
+        origin = f"http://127.0.0.1:{port}"
+        token = None
+        shutdown_accepted = False
         try:
             line = _read_line(process, timeout=60)
             expected_prefix = f"http://127.0.0.1:{port}/__boot__?"
@@ -120,16 +123,35 @@ def run(exe: Path) -> list[str]:
 
             _, session_body = _get(opener, f"http://127.0.0.1:{port}/__session__")
             token = json.loads(session_body.decode("utf-8"))["token"]
-            status, status_body = _get(opener, f"http://127.0.0.1:{port}/api/status")
+            status, status_body = _get(
+                opener,
+                f"http://127.0.0.1:{port}/api/status",
+                timeout=30.0,
+            )
             payload = json.loads(status_body.decode("utf-8"))
             assert status == 200 and isinstance(payload, dict) and payload, "status API empty"
             checks.append("status API served")
 
-            origin = f"http://127.0.0.1:{port}"
+            status, devices_body = _get(
+                opener,
+                f"http://127.0.0.1:{port}/api/devices",
+                timeout=15.0,
+            )
+            devices = json.loads(devices_body.decode("utf-8"))
+            assert status in {200, 202}, f"devices API status {status}"
+            if status == 202:
+                assert devices.get("state") == "pending", "devices API pending state missing"
+            else:
+                assert isinstance(devices.get("devices"), list), (
+                    "devices API payload invalid"
+                )
+            checks.append("devices API served")
+
             status = _post(
                 opener, f"{origin}/api/shutdown", {"action": "frozen-smoke"}, token, origin
             )
             assert status == 200, f"shutdown status {status}"
+            shutdown_accepted = True
             checks.append("shutdown accepted")
 
             process.wait(timeout=15)
@@ -161,17 +183,46 @@ def run(exe: Path) -> list[str]:
                 record.get("fields", {}).get("source") == "web" for record in records
             ), "no source:web records in structured log"
             checks.append("structured web logging")
+            assert any(
+                record.get("event") == "oui_map_loaded"
+                and record.get("fields", {}).get("prefix_count", 0) > 0
+                for record in records
+            ), "OUI map load was not recorded"
+            checks.append("bundled OUI resource loaded")
 
             lock = Path(temp) / "NetScope" / "web-ui.json"
             assert not lock.exists(), f"port lock not removed: {lock}"
             checks.append("port lock removed")
         finally:
+            if process.poll() is None and token and not shutdown_accepted:
+                try:
+                    shutdown_accepted = (
+                        _post(
+                            opener,
+                            f"{origin}/api/shutdown",
+                            {"action": "frozen-smoke-cleanup"},
+                            token,
+                            origin,
+                        )
+                        == 200
+                    )
+                except (OSError, urllib.error.URLError) as exc:
+                    print(
+                        f"frozen smoke cleanup shutdown failed: {exc}",
+                        file=sys.stderr,
+                    )
+            if process.poll() is None and shutdown_accepted:
+                try:
+                    process.wait(timeout=15)
+                except subprocess.TimeoutExpired:
+                    pass
             if process.poll() is None:
                 process.terminate()
                 try:
                     process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     process.kill()
+                    process.wait(timeout=5)
     return checks
 
 

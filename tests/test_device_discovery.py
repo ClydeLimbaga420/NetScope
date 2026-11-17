@@ -1,15 +1,42 @@
 from __future__ import annotations
 
+import importlib
+import io
 import threading
 import time
 from pathlib import Path
 
 import pytest
 
-from core.device_discovery import DeviceDiscovery
+from core.device_discovery import (
+    DeviceDiscovery,
+    _normalize_mac,
+    _wireless_interface,
+)
 from core.runner import CommandResult
 from powershell import scripts
 from powershell.runner import PowerShellLayer
+
+
+def _vendors_module():
+    if importlib.util.find_spec("core.vendors") is None:
+        pytest.fail("core.vendors resource loader is not implemented")
+    return importlib.import_module("core.vendors")
+
+
+class _FakeVendorResource:
+    def __init__(self, content=None, error=None):
+        self.content = content
+        self.error = error
+
+    def joinpath(self, name):
+        assert name == "oui_vendors.json"
+        return self
+
+    def open(self, _mode, encoding):
+        if self.error:
+            raise self.error
+        return io.StringIO(self.content)
 
 
 def _adapter(name, mac="3C-22-FB-AA-BB-CC", **overrides):
@@ -324,3 +351,63 @@ Interface: 10.0.0.2 --- 0x7
 
 def test_adapter_snapshot_query_includes_permanent_mac_address():
     assert "PermanentAddress" in scripts.ADAPTERS
+
+
+def test_wireless_interface_hints():
+    assert _wireless_interface("Wi-Fi 2")
+    assert _wireless_interface("WLAN")
+    assert not _wireless_interface("Ethernet")
+
+
+def test_mac_normalization_accepts_compact_and_dashed_addresses():
+    assert _normalize_mac("3052CB020E0D") == "30:52:cb:02:0e:0d"
+    assert _normalize_mac("DA-1E-6F-D1-02-33") == "da:1e:6f:d1:02:33"
+    assert _normalize_mac("not-a-mac") is None
+
+
+def test_oui_resource_resolves_vendor_from_normalized_mac():
+    vendors = _vendors_module()
+
+    assert vendors.load_oui_vendors()["00000C"] == "Cisco Systems, Inc"
+    assert vendors.lookup_vendor("00-00-0C-12-34-56") == "Cisco Systems, Inc"
+
+
+def test_vendor_resource_missing_file_is_reported(monkeypatch):
+    vendors = _vendors_module()
+    monkeypatch.setattr(
+        vendors,
+        "files",
+        lambda _package: _FakeVendorResource(error=FileNotFoundError("missing")),
+    )
+
+    with pytest.raises(RuntimeError, match="OUI vendor resource"):
+        vendors.load_oui_vendors()
+
+
+def test_vendor_resource_malformed_json_is_reported(monkeypatch):
+    vendors = _vendors_module()
+    monkeypatch.setattr(
+        vendors,
+        "files",
+        lambda _package: _FakeVendorResource(content="{not json"),
+    )
+
+    with pytest.raises(RuntimeError, match="OUI vendor resource"):
+        vendors.load_oui_vendors()
+
+
+def test_device_discovery_logs_loaded_oui_prefix_count(tmp_path):
+    class RecordingLogger:
+        def __init__(self):
+            self.events = []
+
+        def event(self, event, **fields):
+            self.events.append((event, fields))
+
+    runner = DiscoveryRunner()
+    logger = RecordingLogger()
+    DeviceDiscovery(runner, PowerShellLayer(runner, temp_root=tmp_path), logger)
+
+    assert len(logger.events) == 1
+    assert logger.events[0][0] == "oui_map_loaded"
+    assert logger.events[0][1]["prefix_count"] > 0

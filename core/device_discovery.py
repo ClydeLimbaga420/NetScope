@@ -14,7 +14,7 @@ from typing import Any, Callable
 from core.native import ping_args
 from core.runner import CommandResult
 from core.snapshot import Snapshot
-from modules.oui_vendors import OUI_VENDORS
+from core.vendors import load_oui_vendors, lookup_vendor
 from powershell import scripts
 from powershell.validation import validate_ip
 
@@ -140,12 +140,10 @@ def _clean_name(value: str | None, ip: str) -> str | None:
     return name
 
 
-def _vendor_for_mac(mac: str | None) -> str | None:
+def _vendor_for_mac(mac: str | None, mapping: dict[str, str]) -> str | None:
     if _locally_administered(mac):
         return "Private MAC"
-    if not mac:
-        return None
-    return OUI_VENDORS.get(mac.replace(":", "").upper()[:6])
+    return lookup_vendor(mac, mapping)
 
 
 def _in_networks(ip: str, networks: list[ipaddress.IPv4Network]) -> bool:
@@ -153,7 +151,11 @@ def _in_networks(ip: str, networks: list[ipaddress.IPv4Network]) -> bool:
     return any(address in network for network in networks)
 
 
-def _parse_arp(output: str, networks: list[ipaddress.IPv4Network]) -> list[dict[str, Any]]:
+def _parse_arp(
+    output: str,
+    networks: list[ipaddress.IPv4Network],
+    vendor_mapping: dict[str, str],
+) -> list[dict[str, Any]]:
     devices: list[dict[str, Any]] = []
     seen: set[str] = set()
     interface_ip: str | None = None
@@ -199,7 +201,7 @@ def _parse_arp(output: str, networks: list[ipaddress.IPv4Network]) -> list[dict[
                 "ip": str(address),
                 "mac": mac,
                 "type": entry_type.lower(),
-                "vendor": _vendor_for_mac(mac),
+                "vendor": _vendor_for_mac(mac, vendor_mapping),
                 "interface_ip": interface_ip,
             }
         )
@@ -387,6 +389,12 @@ class DeviceDiscovery:
         self.ps = ps
         self.logger = logger
         self.clock = clock
+        self.oui_vendors = load_oui_vendors()
+        if self.logger is not None:
+            self.logger.event(
+                "oui_map_loaded",
+                prefix_count=len(self.oui_vendors),
+            )
         self._scan_lock = threading.Lock()
         self._cached_at: float | None = None
         self._cached_devices: list[dict[str, Any]] | None = None
@@ -478,7 +486,11 @@ class DeviceDiscovery:
             if targets:
                 self._warm_arp_cache(targets)
                 self._probe_hosts(targets)
-            entries = _parse_arp(self._read_arp(), networks)
+            entries = _parse_arp(
+                self._read_arp(),
+                networks,
+                self.oui_vendors,
+            )
             entries = [
                 device
                 for device in entries
@@ -487,7 +499,10 @@ class DeviceDiscovery:
             _add_local_devices(entries, context)
             for device in entries:
                 if device.get("type") != "local":
-                    device["vendor"] = _vendor_for_mac(device.get("mac"))
+                    device["vendor"] = _vendor_for_mac(
+                        device.get("mac"),
+                        self.oui_vendors,
+                    )
                 label, detail = _classify_connection(device, context, snapshot.gateway)
                 device["connection"] = label
                 device["connection_detail"] = detail

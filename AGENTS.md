@@ -22,37 +22,43 @@ deferred for now by request; it is a release-confidence item, not a code or
 test blocker. Phase 7 and GUI launch follow-up changes are uncommitted; nothing
 is pushed.
 
-**Legacy-dashboard removal:** Phases 1-4 are complete. The secured localhost
+**Legacy-dashboard removal:** Phases 1-5 are complete. The secured localhost
 `/api/status`, `/api/devices`, and `/api/packet-loss` successful payload
 contracts are characterized in `tests/test_web_api.py`. Phase 2 core monitoring
 and bounded device discovery are implemented in `core/monitoring.py` and
 `core/device_discovery.py`; `core/native.py` parses packet-loss summaries, and
 the adapter snapshot includes permanent MAC addresses. The focused Phase 2
 suite passed (32 passed). At Phase 2 closeout, the full suite reported 317
-passed, 1 failed, 3 skipped; the failure was the existing byte-for-byte
-legacy/shared stylesheet mismatch in untouched `static/css/style.css` and
+passed, 1 failed, 3 skipped; the failure was the then-existing byte-for-byte
+legacy/shared stylesheet mismatch in root `static/css/style.css` and
 `web/static/css/style.css`.
 Phase 3 wires one runtime-owned monitoring service into both CLI and web
 runtimes; the three monitoring endpoints delegate to it, and pending/errors are
 explicit in API responses and the Monitoring UI. The Phase 3 test command
-passes (73 passed); the latest full suite passes (325 passed, 3 skipped).
+passed (73 passed); the full suite at Phase 3 closeout passed (325 passed,
+3 skipped).
 Phase 4 removed the legacy `/api/diagnostics` routes and registry-backed
 Troubleshoot UI while preserving the engine-backed Troubleshoot and Repair
 Library. Its web/API and design tests pass (60 passed), and both web JavaScript
-files pass `node --check`. Phase 5 is next. The standalone dashboard and its
-assets/modules remain intact until the plan's deletion phase.
+files pass `node --check`. Phase 5 moved the 14,207-entry offline OUI map into
+`core/oui_vendors.json`, added the `core.vendors` resource loader, and removed
+root `app.py`, `templates/`, `static/`, `modules/`, and their legacy-only tests;
+`web/templates/` and `web/static/` remain. Phase 5 focused tests passed
+(89 passed); the full suite passed (309 passed, 3 skipped) with 83.10% coverage.
+The 19.8 MB frozen executable built successfully and its smoke test passed all
+11 checks, including `/api/devices` and the OUI load event. Phase 6 is next for
+remaining documentation and packaging-metadata cleanup.
 
 ## Run / environment
-- The Flask dashboard still works: `python app.py` â†’ http://127.0.0.1:5000
-  locally, or `http://<LAN-IP>:5000` from another device. It binds
-  `HOST`/`PORT` from `config.py` (`0.0.0.0`, `debug=False`, `threaded=True`)
-  and prints reachable LAN URLs via `_lan_urls()`. No authentication â€” keep
-  it on a trusted LAN; never port-forward it to the internet.
-- This checkout originally had **no `.venv`**. A venv now exists (Python 3.14.7).
+- The standalone Flask/LAN dashboard (`app.py`) was removed in Phase 5; there
+  is no `python app.py` entry point or LAN server. Use `netscope gui` for the
+  localhost interface.
+- This checkout currently has no `.venv`.
   Recreate with `py -m venv .venv`, then
   `.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt`.
-- Run tests: `.\.venv\Scripts\python.exe -m pytest` (latest full run: 280 passed,
-  2 skipped, 2026-11-16). Coverage gate:
+- Run tests: `.\.venv\Scripts\python.exe -m pytest` (latest full run: 309 passed,
+  3 skipped, 2026-11-17; Phase 5 verification used system Python 3.14.7).
+  Coverage gate (latest: 83.10%):
   `.\.venv\Scripts\python.exe -m pytest --cov=core --cov=fixes --cov=powershell --cov-fail-under=80`.
 - Run the CLI: `.\.venv\Scripts\python.exe netscope.py --help`
   (or `python -m cli`). `netscope.py diagnose --json` is the machine interface.
@@ -67,9 +73,6 @@ assets/modules remain intact until the plan's deletion phase.
   console flash before Python starts. `netscope` with no args in a shared
   terminal opens the shell.
 - PowerShell is required for diagnostics (Windows PowerShell 5.1).
-- Run `app.py` as a script: imports are flat/absolute (`from config ...`,
-  `from modules...`, `from core...`), not a package.
-
 ## New architecture (Phase 1)
 - `core/models.py` â€” `Status`, `Layer`, `CheckResult`, `DiagnosticReport`,
   pipeline order (`LAYER_ORDER`), exit-code logic.
@@ -443,7 +446,11 @@ runtime = build_runtime()  # same engine/catalog as the CLI, web-mode logging
 - Firewall discovery check evaluates a group as enabled if any inbound Allow rule
   is enabled (avoids false "62 rules disabled").
 
-## Legacy dashboard notes (still true, merged from main)
+## Historical legacy dashboard notes (removed in Phase 5)
+The following describes the deleted standalone app before Phase 5 and is
+retained temporarily for Phase 6 documentation cleanup; it is not available
+functionality.
+
 - `app.py` exposes `/`, `/api/status`, `/api/devices`, `/api/diagnostics`, and
   `POST /api/diagnostics/<step_id>/run`; `static/js/dashboard.js`
   polls `/api/status` every 2000 ms (`config.REFRESH_INTERVAL_MS` is unused; only
