@@ -14,24 +14,33 @@ Menu/desktop shortcuts, uninstaller, WebView2 handling, and a `.netscope-inno`
 marker. `netscope install`/`uninstall` still manage portable installs and refuse
 installer-managed copies. CI covers tests on Python 3.11/3.14, 80% coverage,
 Playwright browser smoke + screenshots, frozen exe smoke, and an Inno
-install/uninstall smoke. Latest local suite: 312 passed, 3 skipped (2026-11-17);
-coverage 83.10% over `core`/`fixes`/`powershell`. Manual validation (Windows 10
+install/uninstall smoke. Latest local suite: 332 passed, 2 skipped (2026-11-17);
+coverage 83.34% over `core`/`fixes`/`powershell`. Manual validation (Windows 10
 VM checklist, window/UAC/installer cases, and human screenshot review) is
 deferred for now by request; it is a release-confidence item, not a code or
 test blocker. Phase 7 and GUI launch follow-up changes are committed locally;
 remote CI has not been run.
 
-**Dashboard-latency / admin-elevation follow-up (2026-11-17):** `core/monitoring.py`
-now caches one shared snapshot in `MonitoringService.get_snapshot()` with
-background stale refresh and startup `prewarm()`; `/api/status`, device discovery,
-and packet-loss sampling reuse it instead of each paying for a full
-`collect_snapshot()`. Real-machine verification: one collection on first status,
-subsequent `get_status()` calls ~0.001s. `/api/elevate` now relaunches the elevated
-process in native window mode (no `--no-browser`), so the elevated process owns
-the visible window and the old process's handoff shutdown cannot close the app.
-`shutdown reason api_request` in the old process after a handoff is expected.
-Full suite: 318 passed, 2 skipped; coverage 83.19%. Live UAC handoff still needs
-manual Windows validation.
+**Dashboard-latency / cold-start / admin-elevation follow-up (2026-11-17):**
+`core/monitoring.py` still caches one shared in-memory snapshot with background
+stale refresh and startup `prewarm()`; `/api/status`, device discovery, and
+packet-loss sampling reuse it instead of each paying for a full
+`collect_snapshot()`. It now also loads a versioned disk cache from
+`%LOCALAPPDATA%\NetScope\snapshot.json` at startup, serves saved data immediately
+with `data_freshness.state = "stale"`, and returns a non-blocking pending payload
+with `state = "collecting"` on a true first launch. The Connectivity card shows a
+`#data-freshness` badge ("Showing saved data · Gathering fresh data…" or
+"Gathering data…") until the refresh is fresh. Elevation restores a headless
+elevated backend (`--no-browser` + `windowless=True`); the original WebView window
+navigates to the elevated server, stays open across the handoff, and notifies the
+elevated process through `POST /__elevate_shutdown__` when it closes. The old
+5-second handoff shutdown timer is gone, so a UAC decline or failed handoff leaves
+the original server and window running. Structured logs now include a top-level
+`pid`, bounded command output, API response `duration_ms`, and window lifecycle
+events. Full suite: 332 passed, 2 skipped; coverage 83.34%. Live UAC handoff,
+cold-start timing on a slow machine, and the badge still need manual Windows
+validation.
+
 
 **Legacy-dashboard removal:** Phases 1-6 are complete. The secured localhost
 `/api/status`, `/api/devices`, and `/api/packet-loss` successful payload
@@ -72,9 +81,9 @@ frozen smoke, and a built wheel contains `core/oui_vendors.json`.
 - This checkout currently has no `.venv`.
   Recreate with `py -m venv .venv`, then
   `.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt`.
-- Run tests: `.\.venv\Scripts\python.exe -m pytest` (latest full run: 312 passed,
-  3 skipped, 2026-11-17; Phase 5/6 verification used system Python 3.14.7).
-  Coverage gate (latest: 83.10%):
+- Run tests: `.\.venv\Scripts\python.exe -m pytest` (latest full run: 332 passed,
+  2 skipped, 2026-11-17; Phase 5/6 verification used system Python 3.14.7).
+  Coverage gate (latest: 83.34%):
   `.\.venv\Scripts\python.exe -m pytest --cov=core --cov=fixes --cov=powershell --cov-fail-under=80`.
 - Run the CLI: `.\.venv\Scripts\python.exe netscope.py --help`
   (or `python -m cli`). `netscope.py diagnose --json` is the machine interface.
