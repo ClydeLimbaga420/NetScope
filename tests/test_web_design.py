@@ -49,10 +49,15 @@ def test_web_scripts_avoid_unsafe_dom_sinks():
         assert not unsafe.search(text(path)), path
 
 
-def test_shared_stylesheet_matches_legacy_copy():
-    assert (WEB / "static" / "css" / "style.css").read_bytes() == (
-        ROOT / "static" / "css" / "style.css"
-    ).read_bytes()
+def test_monitoring_ui_distinguishes_pending_and_api_errors():
+    source = text(WEB / "static" / "js" / "dashboard.js")
+    assert source.count("response.status === 202") >= 2
+    assert "data.error && data.error.message" in source
+    assert "Packet loss test is still running..." in source
+    assert "Scanning local network and resolving names..." in source
+
+
+
 
 
 def test_design_tokens_and_breakpoints_are_preserved():

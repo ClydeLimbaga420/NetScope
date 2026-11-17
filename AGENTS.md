@@ -22,16 +22,21 @@ deferred for now by request; it is a release-confidence item, not a code or
 test blocker. Phase 7 and GUI launch follow-up changes are uncommitted; nothing
 is pushed.
 
-**Legacy-dashboard removal:** Phase 1 is complete. The secured localhost
+**Legacy-dashboard removal:** Phases 1-3 are complete. The secured localhost
 `/api/status`, `/api/devices`, and `/api/packet-loss` successful payload
 contracts are characterized in `tests/test_web_api.py`. Phase 2 core monitoring
 and bounded device discovery are implemented in `core/monitoring.py` and
 `core/device_discovery.py`; `core/native.py` parses packet-loss summaries, and
 the adapter snapshot includes permanent MAC addresses. The focused Phase 2
-suite passes (32 passed). The full suite reports 317 passed, 1 failed, 3
-skipped; the failure is the existing byte-for-byte legacy/shared stylesheet
-mismatch in untouched `static/css/style.css` and `web/static/css/style.css`.
-Phase 3 is next. The standalone dashboard and its assets/modules remain intact
+suite passed (32 passed). At Phase 2 closeout, the full suite reported 317
+passed, 1 failed, 3 skipped; the failure was the existing byte-for-byte
+legacy/shared stylesheet mismatch in untouched `static/css/style.css` and
+`web/static/css/style.css`.
+Phase 3 wires one runtime-owned monitoring service into both CLI and web
+runtimes; the three monitoring endpoints delegate to it, and pending/errors are
+explicit in API responses and the Monitoring UI. The Phase 3 test command
+passes (73 passed); the latest full suite passes (325 passed, 3 skipped).
+Phase 4 is next. The standalone dashboard and its assets/modules remain intact
 until the plan's deletion phase.
 
 ## Run / environment

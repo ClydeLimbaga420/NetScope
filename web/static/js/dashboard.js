@@ -842,6 +842,20 @@ function setRefreshDevicesBusy(busy) {
 }
 
 
+function renderDeviceMessage(message) {
+
+    const body = $("device-rows");
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 6;
+    td.className = "empty";
+    td.textContent = message;
+    tr.appendChild(td);
+    body.replaceChildren(tr);
+
+}
+
+
 async function refreshDevices({ retry = true, silent = false } = {}) {
 
     const body = $("device-rows");
@@ -853,14 +867,7 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
     setRefreshDevicesBusy(true);
 
     if (!silent) {
-        body.replaceChildren();
-        const tr = document.createElement("tr");
-        const td = document.createElement("td");
-        td.colSpan = 6;
-        td.className = "empty";
-        td.textContent = "Scanning local network and resolving names...";
-        tr.appendChild(td);
-        body.appendChild(tr);
+        renderDeviceMessage("Scanning local network and resolving names...");
     }
 
     try {
@@ -884,7 +891,25 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
 
 
         const data = await response.json() || {};
-        const devices = Array.isArray(data.devices) ? data.devices : [];
+        if (response.status === 202 && data.state === "pending") {
+            renderDeviceMessage("Scanning local network and resolving names...");
+            updateDeviceCount(null);
+            applyDeviceScrollHeight();
+            alignPendingSection();
+            setRefreshDevicesBusy(false);
+            scheduleDeviceNameRetry();
+            return;
+        }
+        if (!response.ok) {
+            throw new Error(
+                (data.error && data.error.message) ||
+                "Could not retrieve device list."
+            );
+        }
+        if (!Array.isArray(data.devices)) {
+            throw new Error("Device list response was invalid.");
+        }
+        const devices = data.devices;
 
         const aliases = loadDeviceAliases();
 
@@ -992,14 +1017,11 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
     }
 
     catch (error) {
-        body.replaceChildren();
-        const tr = document.createElement("tr");
-        const td = document.createElement("td");
-        td.colSpan = 6;
-        td.className = "empty";
-        td.textContent = "Could not retrieve device list.";
-        tr.appendChild(td);
-        body.appendChild(tr);
+        renderDeviceMessage(
+            error instanceof Error && error.message
+                ? error.message
+                : "Could not retrieve device list."
+        );
 
         updateDeviceCount(null);
         applyDeviceScrollHeight();
@@ -1893,12 +1915,21 @@ async function refreshPacketLoss() {
     try {
 
         const response = await fetch("/api/packet-loss");
-
-        if (!response.ok) {
-            throw new Error("Packet loss request failed");
-        }
-
         const data = await response.json();
+        if (response.status === 202 && data.state === "pending") {
+            value.textContent = "\u2014";
+            detail.textContent = "Packet loss test is still running...";
+            return;
+        }
+        if (!response.ok) {
+            throw new Error(
+                (data.error && data.error.message) ||
+                "Packet loss request failed"
+            );
+        }
+        if (!data.internet || !data.gateway) {
+            throw new Error("Packet-loss response was invalid.");
+        }
         const internet = data.internet || {};
         const gateway = data.gateway || {};
         const internetLoss = internet.packet_loss_percent;
@@ -1934,8 +1965,11 @@ async function refreshPacketLoss() {
     }
 
     catch (error) {
-
-        detail.textContent = "Could not measure packet loss.";
+        value.textContent = "\u2014";
+        detail.textContent =
+            error instanceof Error && error.message
+                ? error.message
+                : "Could not measure packet loss.";
         console.error(error);
 
     }

@@ -27,6 +27,10 @@ from fixes.if_unresolved import build_unresolved_sections, unresolved_section
 from cli.launch import gui_relaunch_argv
 from core.checks.descriptors import CHECK_DESCRIPTORS
 from core.models import Layer
+from modules.diagnostics import (
+    list_diagnostics as legacy_list_diagnostics,
+    run_diagnostic as legacy_run_diagnostic,
+)
 
 api_bp = Blueprint("api", __name__)
 
@@ -46,86 +50,36 @@ def _json_body() -> dict[str, Any]:
     return data
 
 
-# --- dashboard compatibility (preserve main features: overview/devices/packet-loss/diagnostics) ---
-try:
-    import psutil
-    from modules.bandwidth import BandwidthMonitor
-    from modules.device_scanner import get_arp_devices
-    from modules.diagnostics import list_diagnostics as legacy_list_diagnostics, run_diagnostic as legacy_run_diagnostic
-    from modules.network_info import get_network_info
-    from modules.ping_monitor import ping_host, ping_host_stats
-except Exception:  # pragma: no cover
-    psutil = None
-    BandwidthMonitor = None
-    get_arp_devices = None
-    legacy_list_diagnostics = None
-    legacy_run_diagnostic = None
-    get_network_info = None
-    ping_host = None
-    ping_host_stats = None
-
-_dashboard_bandwidth = BandwidthMonitor() if BandwidthMonitor else None
-
-
-def _dashboard_status_payload():
-    st = _state()
-    if not get_network_info or not ping_host or _dashboard_bandwidth is None:
-        network = {}
-        traffic = {"download_kbps": 0, "upload_kbps": 0}
-        internet_ping = {"host": "1.1.1.1", "latency_ms": None, "online": False}
-        gateway_ping = {"host": None, "latency_ms": None, "online": False}
-        problems = []
-    else:
-        network = get_network_info()
-        traffic = _dashboard_bandwidth.get_rates()
-        gateway = network.get("gateway")
-        internet_ping = ping_host("1.1.1.1")
-        gateway_ping = ping_host(gateway) if gateway else {"host": None, "latency_ms": None, "online": False, "reason": "No default gateway was detected."}
-        problems = []
-        try:
-            # mirror app._status_problems logic lightly
-            diagnosis = network.get("diagnosis") or {}
-            for issue in (diagnosis.get("issues") or []):
-                problems.append({"source": "configuration", "severity": issue.get("severity", "warning"), "message": issue.get("message")})
-            if gateway and not (gateway_ping or {}).get("online"):
-                problems.append({"source": "gateway", "severity": "error", "message": f"Default gateway {gateway} did not respond."})
-            if not (internet_ping or {}).get("online"):
-                if gateway and (gateway_ping or {}).get("online"):
-                    msg = "The default gateway is reachable, but the internet is not."
-                elif gateway:
-                    msg = "Network connection problem: the internet is unreachable."
-                else:
-                    msg = "Network is down or disconnected: no default gateway was detected."
-                problems.append({"source": "internet", "severity": "error", "message": msg})
-            # dedupe
-            seen = set(); deduped=[]
-            for pr in problems:
-                k = pr.get("message")
-                if k and k not in seen:
-                    seen.add(k); deduped.append(pr)
-            problems = deduped
-        except Exception:
-            pass
-    payload = {
-        "network": network,
-        "traffic": traffic,
-        "internet_ping": internet_ping,
-        "gateway_ping": gateway_ping,
-        "problems": problems,
-        # web/engine meta (non-breaking extra keys)
-        "app": config.APP_NAME,
-        "version": config.APP_VERSION,
-        "admin": bool(is_admin()),
-        "session_id": st.session_id,
-        "dry_run_default": False,
-        "powershell": {"available": True if getattr(st.runtime, "ps", None) is not None else None},
-    }
-    return payload
+def _monitoring_failure(st, event: str, code: str, message: str):  # type: ignore[no-untyped-def]
+    st.logger.error(event, source="web", error=message)
+    return _err(code, message, 500)
 
 
 @api_bp.get("/status")
 def api_status():  # type: ignore[no-untyped-def]
-    return jsonify(_dashboard_status_payload())
+    st = _state()
+    try:
+        payload = st.runtime.monitoring.get_status()
+    except Exception as exc:  # noqa: BLE001
+        return _monitoring_failure(
+            st,
+            "monitoring_status_failed",
+            "status_failed",
+            str(exc) or "Status collection failed.",
+        )
+    payload.update(
+        {
+            "app": config.APP_NAME,
+            "version": config.APP_VERSION,
+            "admin": bool(is_admin()),
+            "session_id": st.session_id,
+            "dry_run_default": False,
+            "powershell": {
+                "available": True if getattr(st.runtime, "ps", None) is not None else None
+            },
+        }
+    )
+    return jsonify(payload)
 
 
 @api_bp.get("/checks")
@@ -774,32 +728,64 @@ def api_unresolved_answer():  # type: ignore[no-untyped-def]
 
 @api_bp.get("/devices")
 def api_devices():  # type: ignore[no-untyped-def]
-    if not get_arp_devices:
-        return jsonify({"devices": []})
+    st = _state()
     try:
-        return jsonify({"devices": get_arp_devices()})
+        result = st.runtime.monitoring.request_devices()
     except Exception as exc:  # noqa: BLE001
-        return _err("devices_failed", str(exc), 500)
+        return _monitoring_failure(
+            st,
+            "monitoring_devices_failed",
+            "devices_failed",
+            str(exc) or "Device discovery failed.",
+        )
+    if result.state == "pending":
+        return jsonify({"state": "pending"}), 202
+    if result.state == "error":
+        return _monitoring_failure(
+            st,
+            "monitoring_devices_failed",
+            "devices_failed",
+            result.error or "Device discovery failed.",
+        )
+    if result.state != "ready" or result.value is None:
+        return _monitoring_failure(
+            st,
+            "monitoring_devices_invalid_result",
+            "devices_failed",
+            "Device discovery returned an invalid result.",
+        )
+    return jsonify({"devices": result.value})
 
 
 @api_bp.get("/packet-loss")
 def api_packet_loss():  # type: ignore[no-untyped-def]
-    if not get_network_info or not ping_host_stats:
-        return jsonify({"count": 10, "internet": {}, "gateway": {}})
-    network = get_network_info()
-    gateway = network.get("gateway")
-    count = 10
-    def internet():
-        return ping_host_stats("1.1.1.1", count=count)
-    def gateway_ping():
-        if not gateway:
-            return {"host": None, "latency_ms": None, "online": False, "packet_loss_percent": None, "packets_sent": 0, "packets_received": 0, "reason": "No default gateway was detected."}
-        return ping_host_stats(gateway, count=count)
-    from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=2) as ex:
-        inf = ex.submit(internet)
-        gw = ex.submit(gateway_ping)
-        return jsonify({"count": count, "internet": inf.result(), "gateway": gw.result()})
+    st = _state()
+    try:
+        result = st.runtime.monitoring.request_packet_loss()
+    except Exception as exc:  # noqa: BLE001
+        return _monitoring_failure(
+            st,
+            "monitoring_packet_loss_failed",
+            "packet_loss_failed",
+            str(exc) or "Packet-loss collection failed.",
+        )
+    if result.state == "pending":
+        return jsonify({"state": "pending"}), 202
+    if result.state == "error":
+        return _monitoring_failure(
+            st,
+            "monitoring_packet_loss_failed",
+            "packet_loss_failed",
+            result.error or "Packet-loss collection failed.",
+        )
+    if result.state != "ready" or result.value is None:
+        return _monitoring_failure(
+            st,
+            "monitoring_packet_loss_invalid_result",
+            "packet_loss_failed",
+            "Packet-loss collection returned an invalid result.",
+        )
+    return jsonify(result.value)
 
 
 @api_bp.get("/diagnostics")

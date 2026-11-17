@@ -19,7 +19,7 @@ from core.logging_config import setup_logging
 from core.probes import NetworkProbe
 from core.runner import SubprocessRunner
 from fixes.catalog import load_catalog
-from web.runtime import AppRuntime, empty_catalog
+from web.runtime import AppRuntime, build_monitoring_service, empty_catalog
 from powershell.runner import PowerShellLayer
 from web.api import api_bp
 from web.jobs import JobManager
@@ -83,12 +83,19 @@ class WebState:
         except Exception as exc:
             self.logger.warning("fix_catalog_unavailable", source="web", error=str(exc))
             catalog = empty_catalog()
+        monitoring = build_monitoring_service(
+            engine,
+            runner,
+            ps,
+            self.logger,
+        )
         return AppRuntime(
             engine=engine,
             catalog=catalog,
             runner=runner,
             ps=ps,
             logger=self.logger,
+            monitoring=monitoring,
             admin_check=is_admin,
             session_id=self.session_id,
             backup_dir=config.backup_dir(),

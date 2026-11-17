@@ -2,11 +2,14 @@
 
 import types
 import shutil
+import threading
+import time
 
 import pytest
 
 from core.checks.descriptors import CHECK_DESCRIPTORS
-from core.runner import FakeRunner, SubprocessRunner
+from core.monitoring import MonitorTaskResult, MonitoringService, NetworkCounters
+from core.runner import CommandResult, FakeRunner, SubprocessRunner
 from fixes.catalog import load_catalog
 from fixes.executor import FixExecutor
 from web.server import WebState, create_app
@@ -55,6 +58,31 @@ class DummyEngine:
         return DummyReport()
 
 
+class FakeMonitoringService:
+    def __init__(
+        self, *, status=None, devices=None, packet_loss=None, status_error=None
+    ):
+        self.status = status
+        self.devices = devices or MonitorTaskResult("ready", value=[])
+        self.packet_loss = packet_loss or MonitorTaskResult("ready", value={})
+        self.calls = []
+        self.status_error = status_error
+
+    def get_status(self):
+        self.calls.append(("get_status",))
+        if self.status_error:
+            raise self.status_error
+        return self.status
+
+    def request_devices(self, force=False):
+        self.calls.append(("request_devices", force))
+        return self.devices
+
+    def request_packet_loss(self, force=False):
+        self.calls.append(("request_packet_loss", force))
+        return self.packet_loss
+
+
 @pytest.fixture
 def web_state(monkeypatch):
     st = WebState.__new__(WebState)
@@ -70,7 +98,10 @@ def web_state(monkeypatch):
         def event(self,*a,**k): pass
         def action(self,*a,**k): pass
         def warning(self,*a,**k): pass
-        def error(self,*a,**k): pass
+        def __init__(self):
+            self.errors = []
+        def error(self,*a,**k):
+            self.errors.append((a, k))
         def confirmation(self,*a,**k): pass
         def fix_applied(self,*a,**k): pass
         def debug(self,*a,**k): pass
@@ -89,6 +120,15 @@ def web_state(monkeypatch):
         runner=None,
         executor=lambda: None,
         logger=st.logger,
+        monitoring=FakeMonitoringService(
+            status={
+                "network": {},
+                "traffic": {},
+                "internet_ping": {},
+                "gateway_ping": {},
+                "problems": [],
+            }
+        ),
     )
     return st
 
@@ -170,9 +210,22 @@ def test_status_payload_contract(client, monkeypatch):
             "online": True,
         },
     }
-    monkeypatch.setattr("web.api.get_network_info", lambda: network)
-    monkeypatch.setattr("web.api._dashboard_bandwidth.get_rates", lambda: traffic)
-    monkeypatch.setattr("web.api.ping_host", lambda host: pings[host])
+    monitoring = FakeMonitoringService(
+        status={
+            "network": network,
+            "traffic": traffic,
+            "internet_ping": pings["1.1.1.1"],
+            "gateway_ping": pings["192.168.1.1"],
+            "problems": [
+                {
+                    "source": "configuration",
+                    "severity": "warning",
+                    "message": "A configuration warning.",
+                }
+            ],
+        }
+    )
+    st.runtime.monitoring = monitoring
     monkeypatch.setattr("web.api.is_admin", lambda: True)
     st.runtime.ps = object()
     _boot(c, st)
@@ -211,9 +264,10 @@ def test_status_payload_contract(client, monkeypatch):
     assert payload["session_id"] == st.session_id
     assert payload["dry_run_default"] is False
     assert payload["powershell"] == {"available": True}
+    assert monitoring.calls == [("get_status",)]
 
 
-def test_devices_payload_contract(client, monkeypatch):
+def test_devices_payload_contract(client):
     c, st = client
     devices = [
         {
@@ -230,7 +284,10 @@ def test_devices_payload_contract(client, monkeypatch):
             "connection_detail": "Default gateway",
         }
     ]
-    monkeypatch.setattr("web.api.get_arp_devices", lambda: devices)
+    monitoring = FakeMonitoringService(
+        devices=MonitorTaskResult("ready", value=devices)
+    )
+    st.runtime.monitoring = monitoring
     _boot(c, st)
 
     response = c.get("/api/devices", headers={"Host": "127.0.0.1:5000"})
@@ -250,9 +307,10 @@ def test_devices_payload_contract(client, monkeypatch):
         "connection",
         "connection_detail",
     }
+    assert monitoring.calls == [("request_devices", False)]
 
 
-def test_packet_loss_payload_contract(client, monkeypatch):
+def test_packet_loss_payload_contract(client):
     c, st = client
     network = {"gateway": "192.168.1.1"}
     ping_stats = {
@@ -273,14 +331,17 @@ def test_packet_loss_payload_contract(client, monkeypatch):
             "packets_received": 10,
         },
     }
-    calls = []
-
-    def fake_ping_host_stats(host, count):
-        calls.append((host, count))
-        return ping_stats[host]
-
-    monkeypatch.setattr("web.api.get_network_info", lambda: network)
-    monkeypatch.setattr("web.api.ping_host_stats", fake_ping_host_stats)
+    monitoring = FakeMonitoringService(
+        packet_loss=MonitorTaskResult(
+            "ready",
+            value={
+                "count": 10,
+                "internet": ping_stats["1.1.1.1"],
+                "gateway": ping_stats["192.168.1.1"],
+            },
+        )
+    )
+    st.runtime.monitoring = monitoring
     _boot(c, st)
 
     response = c.get("/api/packet-loss", headers={"Host": "127.0.0.1:5000"})
@@ -291,7 +352,186 @@ def test_packet_loss_payload_contract(client, monkeypatch):
         "internet": ping_stats["1.1.1.1"],
         "gateway": ping_stats["192.168.1.1"],
     }
-    assert sorted(calls) == [("1.1.1.1", 10), ("192.168.1.1", 10)]
+    assert monitoring.calls == [("request_packet_loss", False)]
+
+
+def test_monitoring_status_collection_failure_is_logged_and_returned(client):
+    c, st = client
+    monitoring = FakeMonitoringService(status_error=RuntimeError("snapshot failed"))
+    st.runtime.monitoring = monitoring
+    _boot(c, st)
+
+    response = c.get("/api/status", headers={"Host": "127.0.0.1:5000"})
+
+    assert response.status_code == 500
+    assert response.get_json() == {
+        "error": {"code": "status_failed", "message": "snapshot failed"}
+    }
+    assert st.logger.errors
+
+
+def test_monitoring_devices_pending_is_not_returned_as_an_empty_success(
+    client,
+):
+    c, st = client
+    monitoring = FakeMonitoringService(
+        devices=MonitorTaskResult("pending")
+    )
+    st.runtime.monitoring = monitoring
+    _boot(c, st)
+
+    response = c.get("/api/devices", headers={"Host": "127.0.0.1:5000"})
+
+    assert response.status_code == 202
+    assert response.get_json() == {"state": "pending"}
+
+
+def test_monitoring_devices_failure_is_logged_and_explicit(client):
+    c, st = client
+    monitoring = FakeMonitoringService(
+        devices=MonitorTaskResult("error", error="ARP table unavailable")
+    )
+    st.runtime.monitoring = monitoring
+    _boot(c, st)
+
+    response = c.get("/api/devices", headers={"Host": "127.0.0.1:5000"})
+
+    assert response.status_code == 500
+    assert response.get_json() == {
+        "error": {"code": "devices_failed", "message": "ARP table unavailable"}
+    }
+    assert st.logger.errors
+
+
+def test_monitoring_packet_loss_pending_is_not_returned_as_an_empty_success(
+    client,
+):
+    c, st = client
+    monitoring = FakeMonitoringService(
+        packet_loss=MonitorTaskResult("pending")
+    )
+    st.runtime.monitoring = monitoring
+    _boot(c, st)
+
+    response = c.get("/api/packet-loss", headers={"Host": "127.0.0.1:5000"})
+
+    assert response.status_code == 202
+    assert response.get_json() == {"state": "pending"}
+
+
+def test_monitoring_packet_loss_failure_is_logged_and_explicit(client):
+    c, st = client
+    monitoring = FakeMonitoringService(
+        packet_loss=MonitorTaskResult("error", error="ping command timed out")
+    )
+    st.runtime.monitoring = monitoring
+    _boot(c, st)
+
+    response = c.get("/api/packet-loss", headers={"Host": "127.0.0.1:5000"})
+
+    assert response.status_code == 500
+    assert response.get_json() == {
+        "error": {"code": "packet_loss_failed", "message": "ping command timed out"}
+    }
+    assert st.logger.errors
+
+
+def test_monitoring_api_status_returns_while_workers_are_blocked(
+    client, snapshot_factory
+):
+    c, st = client
+    snapshot = snapshot_factory()
+    devices_started = threading.Event()
+    release_devices = threading.Event()
+    packet_loss_started = threading.Event()
+    release_packet_loss = threading.Event()
+
+    class BlockingRunner:
+        def __init__(self):
+            self.lock = threading.Lock()
+            self.ping_calls = 0
+
+        def run(self, args, *, timeout=None, **_kwargs):
+            with self.lock:
+                self.ping_calls += 1
+                if self.ping_calls == 2:
+                    packet_loss_started.set()
+            release_packet_loss.wait(2)
+            output = (
+                "Packets: Sent = 10, Received = 10, Lost = 0 (0% loss)\n"
+                "Minimum = 1ms, Maximum = 2ms, Average = 1ms"
+            )
+            return CommandResult(tuple(args), 0, stdout=output)
+
+    runner = BlockingRunner()
+    engine = types.SimpleNamespace(collect_snapshot=lambda: snapshot)
+    monitoring = MonitoringService(
+        engine,
+        runner,
+        None,
+        counter_provider=lambda: NetworkCounters(1000, 1000),
+        clock=time.monotonic,
+        logger=st.logger,
+    )
+
+    def blocked_discovery(_snapshot, *, force=False):
+        devices_started.set()
+        release_devices.wait(2)
+        return []
+
+    monitoring.device_discovery.discover = blocked_discovery
+    st.runtime.monitoring = monitoring
+    st.runtime.ps = object()
+    _boot(c, st)
+
+    try:
+        devices = c.get("/api/devices", headers={"Host": "127.0.0.1:5000"})
+        packet_loss = c.get(
+            "/api/packet-loss", headers={"Host": "127.0.0.1:5000"}
+        )
+        assert devices.status_code == 202
+        assert packet_loss.status_code == 202
+        assert devices_started.wait(1)
+        assert packet_loss_started.wait(1)
+
+        started = time.monotonic()
+        response = c.get("/api/status", headers={"Host": "127.0.0.1:5000"})
+
+        assert response.status_code == 200
+        assert time.monotonic() - started < 0.5
+    finally:
+        release_devices.set()
+        release_packet_loss.set()
+
+
+def test_runtime_construction_owns_monitoring_service(snapshot_factory, monkeypatch):
+    import psutil
+
+    from cli.context import create_context
+    from core.logging_config import NullLogger
+    from web.runtime import build_monitoring_service, build_runtime, runtime_from_context
+
+    runtime = build_runtime()
+    assert isinstance(runtime.monitoring, MonitoringService)
+
+    context = create_context("monitoring-test", logger=NullLogger())
+    context_runtime = runtime_from_context(context)
+    assert isinstance(context_runtime.monitoring, MonitoringService)
+
+    monkeypatch.setattr(
+        psutil,
+        "net_io_counters",
+        lambda: types.SimpleNamespace(bytes_recv=1234, bytes_sent=5678),
+    )
+    monitoring = build_monitoring_service(
+        types.SimpleNamespace(collect_snapshot=snapshot_factory),
+        FakeRunner(),
+        None,
+        NullLogger(),
+    )
+    traffic = monitoring.get_status()["traffic"]
+    assert traffic["total_received_bytes"] == 1234
+    assert traffic["total_sent_bytes"] == 5678
 
 
 def test_checks_endpoint_lists_planned_check_descriptions(client):
@@ -1095,6 +1335,7 @@ def test_web_state_falls_back_to_empty_catalog(monkeypatch, tmp_path):
 
     state = server.WebState(mode="web")
     assert list(state.runtime.catalog.entries) == []
+    assert isinstance(state.runtime.monitoring, MonitoringService)
 
     state.port = 5000
     app = server.create_app(state)
