@@ -65,3 +65,7 @@ def report_dir() -> Path:
 
 def backup_dir() -> Path:
     return data_dir() / "backups"
+
+
+def snapshot_cache_path() -> Path:
+    return data_dir() / "snapshot.json"
