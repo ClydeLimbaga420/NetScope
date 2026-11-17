@@ -1788,15 +1788,10 @@
     const speedTest = $("run-speed-test");
     if (speedTest) speedTest.addEventListener("click", () => runSpeedTest(speedTest));
 
-    // Adopt the shared Troubleshoot content: replacing each node with a
-    // listener-free clone drops the legacy dashboard handlers that were
-    // registered first (registration order at the target beats capture), so a
-    // click cannot run both the legacy registry checks and the engine
-    // diagnosis at the same time.
-    const checks = adopt("check-steps");
-    const repairs = adopt("repair-steps");
-    const stage = adopt("diag-stage");
-    const gateway = adopt("auto-configure-gateway");
+    const checks = $("check-steps");
+    const repairs = $("repair-steps");
+    const stage = $("diag-stage");
+    const gateway = $("auto-configure-gateway");
     const run = $("run-engine-diagnosis");
     if (!run || !checks || !stage) return;
     addLayerControls();
@@ -1860,38 +1855,7 @@
       const button = $(id);
       if (button) button.addEventListener("click", (event) => { event.preventDefault(); handler(); });
     });
-    guardLegacyContent(checks, repairs, stage);
     render();
-  }
-
-  function adopt(id) {
-    const original = $(id);
-    if (!original) return null;
-    // cloneNode never copies event listeners, but does copy markup/children.
-    const adopted = original.cloneNode(true);
-    original.replaceWith(adopted);
-    return adopted;
-  }
-
-  function guardLegacyContent(checks, repairs, stage) {
-    if (typeof MutationObserver !== "function") return;
-    const observer = new MutationObserver(() => {
-      if (
-        !checks.childElementCount ||
-        (repairs && !repairs.childElementCount) ||
-        checks.querySelector(".diag-item:not([data-engine-item])") ||
-        (repairs && repairs.querySelector(".diag-item:not([data-engine-item])")) ||
-        stage.querySelector("#console-output, #clear-console, .step-run[data-id]")
-      ) {
-        // The legacy dashboard rendered its registry into the shared stage
-        // (late /api/diagnostics response, its error path, or the
-        // Troubleshoot nav click); re-assert the engine view.
-        render();
-      }
-    });
-    const nodes = [checks, stage];
-    if (repairs) nodes.push(repairs);
-    nodes.forEach((node) => observer.observe(node, { childList: true, subtree: true }));
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initialize, { once: true });

@@ -22,7 +22,7 @@ deferred for now by request; it is a release-confidence item, not a code or
 test blocker. Phase 7 and GUI launch follow-up changes are uncommitted; nothing
 is pushed.
 
-**Legacy-dashboard removal:** Phases 1-3 are complete. The secured localhost
+**Legacy-dashboard removal:** Phases 1-4 are complete. The secured localhost
 `/api/status`, `/api/devices`, and `/api/packet-loss` successful payload
 contracts are characterized in `tests/test_web_api.py`. Phase 2 core monitoring
 and bounded device discovery are implemented in `core/monitoring.py` and
@@ -36,8 +36,11 @@ Phase 3 wires one runtime-owned monitoring service into both CLI and web
 runtimes; the three monitoring endpoints delegate to it, and pending/errors are
 explicit in API responses and the Monitoring UI. The Phase 3 test command
 passes (73 passed); the latest full suite passes (325 passed, 3 skipped).
-Phase 4 is next. The standalone dashboard and its assets/modules remain intact
-until the plan's deletion phase.
+Phase 4 removed the legacy `/api/diagnostics` routes and registry-backed
+Troubleshoot UI while preserving the engine-backed Troubleshoot and Repair
+Library. Its web/API and design tests pass (60 passed), and both web JavaScript
+files pass `node --check`. Phase 5 is next. The standalone dashboard and its
+assets/modules remain intact until the plan's deletion phase.
 
 ## Run / environment
 - The Flask dashboard still works: `python app.py` â†’ http://127.0.0.1:5000
@@ -333,12 +336,11 @@ runtime = build_runtime()  # same engine/catalog as the CLI, web-mode logging
 - The overview card is a combined Connectivity card showing both Internet and
   Gateway status (`#internet-dot`/`#gateway-dot`), fed by `/api/status`
   `internet_ping` and `gateway_ping`.
-- `web/static/js/engine-ui.js` adopts the shared Troubleshoot controls by
-  `cloneNode(true)` + `replaceWith`, dropping the legacy dashboard handlers
-  registered first (cannot stop them with capture ordering alone). This also
-  covers `#auto-configure-gateway`, which calls `/api/gateway/configure`. A
-  `MutationObserver` re-asserts the engine view if the legacy registry renders
-  late into `#check-steps`/`#repair-steps`/`#diag-stage`.
+- `web/static/js/engine-ui.js` directly wires the shared Troubleshoot controls
+  to the template nodes; the legacy clone-and-replace and `MutationObserver`
+  workarounds are removed. `web/static/js/dashboard.js` retains Monitoring
+  behavior but no registry-backed Troubleshoot renderer or handlers. The
+  `#auto-configure-gateway` control still calls `/api/gateway/configure`.
 - The Repair Library (`data-view="repairs"`, nav below Troubleshoot) lists every
   catalog entry as a row (id/name/symptom/risk/admin) and renders its procedure
   from `/api/fixes/<id>`: plain-language steps, collapsible exact commands,

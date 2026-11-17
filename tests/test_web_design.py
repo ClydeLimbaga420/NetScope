@@ -57,6 +57,14 @@ def test_monitoring_ui_distinguishes_pending_and_api_errors():
     assert "Scanning local network and resolving names..." in source
 
 
+def test_web_scripts_remove_legacy_diagnostics_and_handler_workarounds():
+    dashboard = text(WEB / "static" / "js" / "dashboard.js")
+    engine_ui = text(WEB / "static" / "js" / "engine-ui.js")
+
+    assert "/api/diagnostics" not in dashboard
+    assert "cloneNode(true)" not in engine_ui
+    assert "MutationObserver" not in engine_ui
+
 
 
 

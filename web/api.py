@@ -27,10 +27,6 @@ from fixes.if_unresolved import build_unresolved_sections, unresolved_section
 from cli.launch import gui_relaunch_argv
 from core.checks.descriptors import CHECK_DESCRIPTORS
 from core.models import Layer
-from modules.diagnostics import (
-    list_diagnostics as legacy_list_diagnostics,
-    run_diagnostic as legacy_run_diagnostic,
-)
 
 api_bp = Blueprint("api", __name__)
 
@@ -786,26 +782,3 @@ def api_packet_loss():  # type: ignore[no-untyped-def]
             "Packet-loss collection returned an invalid result.",
         )
     return jsonify(result.value)
-
-
-@api_bp.get("/diagnostics")
-def api_diagnostics():  # type: ignore[no-untyped-def]
-    # legacy troubleshoot registry (main feature) kept intact
-    if not legacy_list_diagnostics:
-        return jsonify({"steps": [], "elevated": is_admin(), "check_count": 0, "repair_count": 0})
-    try:
-        return jsonify(legacy_list_diagnostics())
-    except Exception as exc:  # noqa: BLE001
-        return _err("diagnostics_failed", str(exc), 500)
-
-
-@api_bp.post("/diagnostics/<step_id>/run")
-def api_run_diagnostic(step_id: str):  # type: ignore[no-untyped-def]
-    if not legacy_run_diagnostic:
-        return _err("diagnostics_unavailable", "Diagnostics not available.", 500)
-    try:
-        return jsonify(legacy_run_diagnostic(step_id))
-    except KeyError:
-        return jsonify({"error": "Unknown diagnostic step"}), 404
-    except Exception as exc:  # noqa: BLE001
-        return _err("diagnostic_run_failed", str(exc), 500)

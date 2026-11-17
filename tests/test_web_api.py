@@ -548,6 +548,21 @@ def test_checks_endpoint_lists_planned_check_descriptions(client):
         assert entry['description'].strip(), f"{descriptor.id} is missing its plain-language description"
 
 
+def test_legacy_diagnostic_routes_are_removed_engine_routes_remain(client):
+    c, _st = client
+    routes = {rule.rule for rule in c.application.url_map.iter_rules()}
+
+    assert "/api/diagnostics" not in routes
+    assert "/api/diagnostics/<step_id>/run" not in routes
+    assert {
+        "/api/checks",
+        "/api/diagnose",
+        "/api/fix/plan",
+        "/api/fix/execute",
+        "/api/fix/rollback",
+    } <= routes
+
+
 def test_diagnose_job(client):
     c, st = client
     c.get(f'/__boot__?token={st.security.boot_token}', headers={'Host': '127.0.0.1:5000'})
