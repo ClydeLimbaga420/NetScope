@@ -263,17 +263,18 @@ def _open_url(url: str) -> bool:
         return False
 
 
-def _notify_elevate_handoff(
+def _post_local_callback(
     callback_url: str,
     callback_token: str,
-    port: int,
-    boot_token: str,
+    expected_path: str,
+    payload: bytes,
+    label: str,
 ) -> None:
     parsed_url = urlsplit(callback_url)
     if (
         parsed_url.scheme != "http"
         or parsed_url.hostname != "127.0.0.1"
-        or parsed_url.path != "/__elevate_complete__"
+        or parsed_url.path != expected_path
         or parsed_url.username is not None
         or parsed_url.password is not None
         or parsed_url.query
@@ -283,7 +284,6 @@ def _notify_elevate_handoff(
     ):
         raise ValueError("Elevation handoff callback must be a local NetScope URL.")
 
-    payload = json.dumps({"port": int(port), "boot_token": boot_token}).encode("utf-8")
     request = urllib.request.Request(
         callback_url,
         data=payload,
@@ -296,37 +296,33 @@ def _notify_elevate_handoff(
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     with opener.open(request, timeout=3) as response:
         if response.status != 200:
-            raise RuntimeError(f"Elevation handoff callback returned HTTP {response.status}.")
+            raise RuntimeError(f"Elevation {label} callback returned HTTP {response.status}.")
+
+
+def _notify_elevate_handoff(
+    callback_url: str,
+    callback_token: str,
+    port: int,
+    boot_token: str,
+) -> None:
+    payload = json.dumps({"port": int(port), "boot_token": boot_token}).encode("utf-8")
+    _post_local_callback(
+        callback_url,
+        callback_token,
+        "/__elevate_complete__",
+        payload,
+        "handoff",
+    )
 
 
 def _notify_elevate_shutdown(callback_url: str, callback_token: str) -> None:
-    parsed_url = urlsplit(callback_url)
-    if (
-        parsed_url.scheme != "http"
-        or parsed_url.hostname != "127.0.0.1"
-        or parsed_url.path != "/__elevate_shutdown__"
-        or parsed_url.username is not None
-        or parsed_url.password is not None
-        or parsed_url.query
-        or parsed_url.fragment
-        or parsed_url.port is None
-        or not 1 <= parsed_url.port <= 65535
-    ):
-        raise ValueError("Elevation handoff callback must be a local NetScope URL.")
-
-    request = urllib.request.Request(
+    _post_local_callback(
         callback_url,
-        data=b"{}",
-        headers={
-            "Content-Type": "application/json",
-            "X-NetScope-Handoff": callback_token,
-        },
-        method="POST",
+        callback_token,
+        "/__elevate_shutdown__",
+        b"{}",
+        "shutdown",
     )
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    with opener.open(request, timeout=3) as response:
-        if response.status != 200:
-            raise RuntimeError(f"Elevation shutdown callback returned HTTP {response.status}.")
 
 
 def _monitor(state: WebState, interval: float = 2.0) -> None:
@@ -422,6 +418,8 @@ def run_web_ui(
         return 1
 
     state = WebState(mode="web")
+    if handoff_token:
+        state.elevate_shutdown_token = handoff_token
     try:
         monitoring = getattr(getattr(state, "runtime", None), "monitoring", None)
         if monitoring is not None:

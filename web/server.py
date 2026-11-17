@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import logging
 import hmac
+import logging
 import os
 import sys
 import threading
@@ -73,6 +73,7 @@ class WebState:
         self.last_report: Any = None
         self.instance_lock_handle: Any = None
         self.elevate_handoff: dict[str, Any] | None = None
+        self.elevate_shutdown_token: str | None = None
 
     def _build_runtime(self) -> AppRuntime:
         runner = SubprocessRunner(self.logger)
@@ -240,12 +241,13 @@ def create_app(state: WebState | None = None) -> Flask:
     def _elevate_shutdown():  # type: ignore[no-untyped-def]
         st: WebState = app.extensions["netscope_state"]
         handoff = getattr(st, "elevate_handoff", None)
+        handoff_token = handoff.get("callback_token", "") if handoff and handoff.get("active") else ""
+        expected_token = getattr(st, "elevate_shutdown_token", None) or handoff_token
         provided_token = request.headers.get("X-NetScope-Handoff", "")
         if (
-            not handoff
-            or not handoff.get("active")
-            or not provided_token
-            or not hmac.compare_digest(provided_token, handoff.get("callback_token", ""))
+            not provided_token
+            or not expected_token
+            or not hmac.compare_digest(provided_token, expected_token)
         ):
             return jsonify({"error": {"code": "invalid_handoff", "message": "Invalid elevation handoff."}}), 403
 

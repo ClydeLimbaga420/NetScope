@@ -136,6 +136,32 @@ def test_elevation_callback_rejects_non_local_url():
         )
 
 
+def test_notify_elevate_shutdown_sends_token_without_proxy(monkeypatch):
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+    class Opener:
+        def open(self, request, timeout):
+            assert request.full_url == "http://127.0.0.1:54322/__elevate_shutdown__"
+            assert request.get_header("X-netscope-handoff") == "one-time-secret"
+            assert request.data == b"{}"
+            assert timeout == 3
+            return Response()
+
+    monkeypatch.setattr(run.urllib.request, "build_opener", lambda *_args: Opener())
+
+    run._notify_elevate_shutdown(
+        "http://127.0.0.1:54322/__elevate_shutdown__",
+        "one-time-secret",
+    )
+
+
 def test_notify_elevate_shutdown_rejects_non_local_url():
     with pytest.raises(ValueError, match="local NetScope URL"):
         run._notify_elevate_shutdown(
@@ -427,6 +453,43 @@ def test_run_web_ui_serves_until_keyboard_interrupt(monkeypatch, tmp_path, capsy
     handle = run._acquire_instance_lock()
     assert handle is not None
     run._release_instance_lock(handle)
+
+
+def test_run_web_ui_stores_elevated_shutdown_token(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "data_dir", lambda: tmp_path)
+    states = []
+
+    class State:
+        def __init__(self):
+            class Security:
+                boot_token = "boot-token"
+
+            self.security = Security()
+            self.logger = _BindRecorder()
+            self.shutdown_event = threading.Event()
+            self.port = None
+            states.append(self)
+
+        def should_shutdown(self):
+            return False
+
+    class Srv:
+        def serve_forever(self):
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(run, "WebState", lambda mode="web": State())
+    monkeypatch.setattr(run, "create_app", lambda state: object())
+    monkeypatch.setattr(run, "make_server", lambda *_args, **_kwargs: Srv())
+    monkeypatch.setattr(run, "_notify_elevate_handoff", lambda *_args, **_kwargs: None)
+
+    assert run.run_web_ui(
+        port=run._find_free_port(),
+        no_browser=True,
+        handoff_url="http://127.0.0.1:54321/__elevate_complete__",
+        handoff_token="one-time-secret",
+    ) == 0
+
+    assert states[0].elevate_shutdown_token == "one-time-secret"
 
 
 def test_source_cli_starts_local_web_server(tmp_path):

@@ -84,6 +84,11 @@ class FakeMonitoringService:
         return self.packet_loss
 
 
+@pytest.fixture(autouse=True)
+def isolated_snapshot_cache(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "snapshot_cache_path", lambda: tmp_path / "snapshot.json")
+
+
 @pytest.fixture
 def web_state(monkeypatch):
     st = WebState.__new__(WebState)
@@ -557,6 +562,10 @@ def test_runtime_construction_owns_monitoring_service(snapshot_factory, monkeypa
         None,
         NullLogger(),
     )
+    monitoring.prewarm()
+    deadline = time.monotonic() + 2.0
+    while monitoring.get_snapshot() is None and time.monotonic() < deadline:
+        time.sleep(0.01)
     traffic = monitoring.get_status()["traffic"]
     assert traffic["total_received_bytes"] == 1234
     assert traffic["total_sent_bytes"] == 5678
@@ -1121,6 +1130,15 @@ def test_elevate_shutdown_route_requires_valid_handoff_token(client):
     c, st = client
     st.elevate_handoff = {"active": True, "callback_token": "one-time-secret"}
 
+    missing = c.post(
+        "/__elevate_shutdown__",
+        headers={"Host": "127.0.0.1:5000"},
+        json={},
+    )
+
+    assert missing.status_code == 403
+    assert not st.shutdown_event.is_set()
+
     wrong = c.post(
         "/__elevate_shutdown__",
         headers={
@@ -1142,6 +1160,28 @@ def test_elevate_shutdown_route_requires_valid_handoff_token(client):
         json={},
     )
 
+    assert right.status_code == 200
+    assert st.shutdown_event.is_set()
+
+
+def test_elevate_shutdown_route_accepts_elevated_token_without_active_handoff(client):
+    c, st = client
+    st.elevate_shutdown_token = "elevated-secret"
+    st.elevate_handoff = None
+
+    wrong = c.post(
+        "/__elevate_shutdown__",
+        headers={"Host": "127.0.0.1:5000", "X-NetScope-Handoff": "one-time-secret"},
+        json={},
+    )
+    assert wrong.status_code == 403
+    assert not st.shutdown_event.is_set()
+
+    right = c.post(
+        "/__elevate_shutdown__",
+        headers={"Host": "127.0.0.1:5000", "X-NetScope-Handoff": "elevated-secret"},
+        json={},
+    )
     assert right.status_code == 200
     assert st.shutdown_event.is_set()
 
