@@ -219,7 +219,13 @@ def test_status_propagates_snapshot_collection_errors():
 
     status = service.get_status()
 
+    deadline = time.monotonic() + 2
+    while status["data_freshness"]["state"] == "collecting" and time.monotonic() < deadline:
+        time.sleep(0.01)
+        status = service.get_status()
+
     assert status["data_freshness"]["state"] == "unavailable"
+    assert status["data_freshness"]["error"] == "snapshot unavailable"
 
 
 def test_parse_ping_stats_reads_windows_summary_and_average():

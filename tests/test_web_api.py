@@ -157,6 +157,12 @@ def test_host_rejected(client):
     c, st = client
     r = c.get('/api/status', headers={'Host': 'evil.example.com'})
     assert r.status_code == 403
+    api_responses = [
+        fields for name, fields in st.logger.events
+        if name == "api_response" and fields["path"] == "/api/status"
+    ]
+    assert api_responses
+    assert isinstance(api_responses[-1]["duration_ms"], float)
 
 
 def test_api_requires_cookie(client):

@@ -417,6 +417,7 @@ class MonitoringService:
             "state": state,
             "captured_at": captured_at,
             "age_seconds": _snapshot_age_seconds(captured_at, self.wall_clock()),
+            "error": error if state == "unavailable" else None,
         }
 
     def prewarm(self) -> None:

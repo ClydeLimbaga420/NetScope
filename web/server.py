@@ -145,15 +145,16 @@ def create_app(state: WebState | None = None) -> Flask:
     @app.before_request
     def _before() -> Any:
         st: WebState = app.extensions["netscope_state"]
+        path = request.path or ""
+        if path.startswith("/api/"):
+            g.api_started = time.perf_counter()
         if not st.security.host_ok(request, st.port):
             return jsonify({"error": {"code": "host_rejected", "message": "Host not allowed."}}), 403
         # Any successful request proves the UI is still alive; keep the
         # heartbeat timer from firing while the tab is open (Chrome throttles
         # background-tab timers, so the dedicated heartbeat may be delayed).
         st.touch()
-        path = request.path or ""
         if path.startswith("/api/"):
-            g.api_started = time.perf_counter()
             try:
                 require_api_security(st.security, st.port)
             except Exception as exc:  # abort raises

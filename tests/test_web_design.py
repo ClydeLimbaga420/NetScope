@@ -72,6 +72,7 @@ def test_dashboard_js_maps_freshness_states():
     assert "data_freshness" in source
     assert "Showing saved data" in source
     assert "Gathering data\u2026" in source
+    assert "Data unavailable" in source
     assert re.search(r"freshnessBadge\.textContent\s*=", source)
 
 

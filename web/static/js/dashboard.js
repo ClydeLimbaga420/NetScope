@@ -399,10 +399,13 @@ async function refreshStatus() {
             } else {
                 freshnessBadge.hidden = false;
                 freshnessBadge.classList.add("is-stale");
-                freshnessBadge.textContent =
-                    freshness.state === "stale"
-                        ? "Showing saved data · Gathering fresh data…"
-                        : "Gathering data…";
+                if (freshness.state === "stale") {
+                    freshnessBadge.textContent = "Showing saved data · Gathering fresh data…";
+                } else if (freshness.state === "unavailable") {
+                    freshnessBadge.textContent = "Data unavailable";
+                } else {
+                    freshnessBadge.textContent = "Gathering data…";
+                }
             }
 
         }
