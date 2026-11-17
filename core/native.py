@@ -78,6 +78,94 @@ def parse_ping(host: str, output: str, returncode: int) -> PingResult:
     return PingResult(host=host, online=online, latency_ms=latency, returncode=returncode, raw=output or "")
 
 
+def parse_ping_stats(
+    host: str,
+    output: str,
+    returncode: int,
+    *,
+    count: int = 10,
+) -> dict[str, Any]:
+    """Parse packet counts and average latency from a multi-packet ping."""
+
+    if not isinstance(count, int) or count < 1:
+        raise ValueError("ping count must be a positive integer")
+    text = output or ""
+    summaries = (
+        re.compile(
+            r"(?:sent|gesendet|enviados?|envoy[ée]s?)\s*=\s*(\d+)"
+            r".*?(?:received|empfangen|recibidos?|re[cç]us?)\s*=\s*(\d+)",
+            re.I | re.S,
+        ),
+        re.compile(
+            r"(\d+)\s+packets?\s+transmitted\s*,\s*(\d+)\s+"
+            r"(?:packets?\s+)?received",
+            re.I,
+        ),
+    )
+    sent_received = next(
+        (match for pattern in summaries if (match := pattern.search(text))),
+        None,
+    )
+    if sent_received is None:
+        lowered = text.lower()
+        no_reply_markers = (
+            "request timed out",
+            "request timeout",
+            "destination host unreachable",
+            "general failure",
+            "zeitüberschreitung",
+            "zielhost nicht erreichbar",
+            "tiempo de espera agotado",
+            "délai d’attente",
+            "délai d'attente",
+            "100% packet loss",
+            "100% loss",
+            "100% verlust",
+            "100% perdidos",
+        )
+        if any(marker in lowered for marker in no_reply_markers):
+            return {
+                "host": host,
+                "latency_ms": None,
+                "online": False,
+                "packet_loss_percent": 100.0,
+                "packets_sent": count,
+                "packets_received": 0,
+            }
+        raise ValueError(
+            f"could not parse ping statistics for {host} (exit code {returncode})"
+        )
+
+    sent, received = (int(value) for value in sent_received.groups())
+    if sent < 1 or received > sent:
+        raise ValueError(f"invalid ping packet counts for {host}")
+    loss = round((sent - received) * 100.0 / sent, 1)
+
+    latency_patterns = (
+        re.compile(r"(?:average|mittelwert|media)\s*=\s*([0-9.]+)\s*ms", re.I),
+        re.compile(r"rtt [^=]*=\s*[0-9.]+/([0-9.]+)/", re.I),
+    )
+    latency = None
+    for pattern in latency_patterns:
+        match = pattern.search(text)
+        if match:
+            latency = float(match.group(1))
+            break
+    if latency is None:
+        samples = re.findall(r"time[=<]\s*([0-9.]+)\s*ms", text, re.I)
+        if samples:
+            latency = sum(float(sample) for sample in samples) / len(samples)
+
+    return {
+        "host": host,
+        "latency_ms": latency,
+        "online": received > 0,
+        "packet_loss_percent": loss,
+        "packets_sent": sent,
+        "packets_received": received,
+    }
+
+
 _GATEWAY_PATTERNS = (
     re.compile(r"Default Gateway[ .]*:\s*([0-9.]+)", re.I),
     re.compile(r"Passerelle par d[ée]faut[ .]*:\s*([0-9.]+)", re.I),

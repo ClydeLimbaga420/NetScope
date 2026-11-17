@@ -10,7 +10,8 @@ from __future__ import annotations
 ADAPTERS = (
     "Get-NetAdapter -ErrorAction SilentlyContinue | "
     "Select-Object Name,InterfaceAlias,InterfaceDescription,Status,LinkSpeed,"
-    "MacAddress,ifIndex,MediaType,PhysicalMediaType,Virtual,ConnectorPresent"
+    "MacAddress,PermanentAddress,ifIndex,MediaType,PhysicalMediaType,Virtual,"
+    "ConnectorPresent"
 )
 
 IP_ADDRESSES = (
@@ -120,6 +121,22 @@ VPN_CONNECTIONS = (
     "Select-Object Name,ServerAddress,TunnelType,ConnectionStatus,SplitTunneling,"
     "DnsSuffix,InterfaceIndex"
 )
+
+ARP_CACHE_WARMING = """\
+param([Parameter(Mandatory = $true)][string]$Targets)
+$ErrorActionPreference = 'Stop'
+$client = New-Object System.Net.Sockets.UdpClient
+$payload = [byte[]]@()
+try {
+    foreach ($target in $Targets.Split(',')) {
+        [void]$client.Send($payload, $payload.Length, $target, 33434)
+    }
+}
+finally {
+    $client.Dispose()
+}
+'ARP cache warmed'
+"""
 
 LANGUAGE_MODE = "$ExecutionContext.SessionState.LanguageMode"
 

@@ -24,7 +24,15 @@ is pushed.
 
 **Legacy-dashboard removal:** Phase 1 is complete. The secured localhost
 `/api/status`, `/api/devices`, and `/api/packet-loss` successful payload
-contracts are characterized in `tests/test_web_api.py`; Phase 2 is next.
+contracts are characterized in `tests/test_web_api.py`. Phase 2 core monitoring
+and bounded device discovery are implemented in `core/monitoring.py` and
+`core/device_discovery.py`; `core/native.py` parses packet-loss summaries, and
+the adapter snapshot includes permanent MAC addresses. The focused Phase 2
+suite passes (32 passed). The full suite reports 317 passed, 1 failed, 3
+skipped; the failure is the existing byte-for-byte legacy/shared stylesheet
+mismatch in untouched `static/css/style.css` and `web/static/css/style.css`.
+Phase 3 is next. The standalone dashboard and its assets/modules remain intact
+until the plan's deletion phase.
 
 ## Run / environment
 - The Flask dashboard still works: `python app.py` â†’ http://127.0.0.1:5000
