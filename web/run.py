@@ -377,6 +377,9 @@ def run_web_ui(
 
     state = WebState(mode="web")
     try:
+        monitoring = getattr(getattr(state, "runtime", None), "monitoring", None)
+        if monitoring is not None:
+            monitoring.prewarm()
         app = create_app(state)
         port = int(port) if port else _find_free_port()
         state.port = port

@@ -21,6 +21,18 @@ deferred for now by request; it is a release-confidence item, not a code or
 test blocker. Phase 7 and GUI launch follow-up changes are committed locally;
 remote CI has not been run.
 
+**Dashboard-latency / admin-elevation follow-up (2026-11-17):** `core/monitoring.py`
+now caches one shared snapshot in `MonitoringService.get_snapshot()` with
+background stale refresh and startup `prewarm()`; `/api/status`, device discovery,
+and packet-loss sampling reuse it instead of each paying for a full
+`collect_snapshot()`. Real-machine verification: one collection on first status,
+subsequent `get_status()` calls ~0.001s. `/api/elevate` now relaunches the elevated
+process in native window mode (no `--no-browser`), so the elevated process owns
+the visible window and the old process's handoff shutdown cannot close the app.
+`shutdown reason api_request` in the old process after a handoff is expected.
+Full suite: 318 passed, 2 skipped; coverage 83.19%. Live UAC handoff still needs
+manual Windows validation.
+
 **Legacy-dashboard removal:** Phases 1-6 are complete. The secured localhost
 `/api/status`, `/api/devices`, and `/api/packet-loss` successful payload
 contracts are characterized in `tests/test_web_api.py`. Phase 2 core monitoring

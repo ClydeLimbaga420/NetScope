@@ -6,6 +6,7 @@ import ipaddress
 import os
 import re
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any, Callable, Generic, Literal, TypeVar
@@ -272,6 +273,8 @@ def _status_problems(
 class MonitoringService:
     DEVICE_CACHE_SECONDS = 15.0
     PACKET_LOSS_CACHE_SECONDS = 30.0
+    SNAPSHOT_CACHE_SECONDS = 15.0
+    SNAPSHOT_WAIT_SECONDS = 30.0
 
     def __init__(
         self,
@@ -295,6 +298,68 @@ class MonitoringService:
         self._previous_time: float | None = None
         self._devices_task: _BackgroundTask[list[dict[str, Any]]] = _BackgroundTask()
         self._packet_loss_task: _BackgroundTask[dict[str, Any]] = _BackgroundTask()
+        self._snapshot_lock = threading.Lock()
+        self._snapshot_refresh_lock = threading.Lock()
+        self._snapshot: Snapshot | None = None
+        self._snapshot_at: float = 0.0
+        self._snapshot_error: str | None = None
+        self._snapshot_refreshing = False
+
+    def get_snapshot(self) -> Snapshot:
+        """Return the shared snapshot, refreshing stale data in the background."""
+        now = time.monotonic()
+        snapshot = self._snapshot
+        if (
+            snapshot is not None
+            and (now - self._snapshot_at) < self.SNAPSHOT_CACHE_SECONDS
+        ):
+            return snapshot
+
+        self._request_snapshot_refresh()
+        if snapshot is not None:
+            return snapshot
+
+        deadline = time.monotonic() + self.SNAPSHOT_WAIT_SECONDS
+        while (
+            self._snapshot is None
+            and self._snapshot_error is None
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.05)
+        if self._snapshot is None:
+            raise RuntimeError(self._snapshot_error or "Snapshot collection failed.")
+        return self._snapshot
+
+    def prewarm(self) -> None:
+        """Start collecting the first snapshot without blocking the caller."""
+        self._request_snapshot_refresh()
+
+    def _request_snapshot_refresh(self) -> None:
+        with self._snapshot_refresh_lock:
+            if self._snapshot_refreshing:
+                return
+            self._snapshot_refreshing = True
+        with self._snapshot_lock:
+            self._snapshot_error = None
+        threading.Thread(
+            target=self._refresh_snapshot,
+            name="netscope-snapshot-refresh",
+            daemon=True,
+        ).start()
+
+    def _refresh_snapshot(self) -> None:
+        try:
+            snapshot = self.engine.collect_snapshot()
+            with self._snapshot_lock:
+                self._snapshot = snapshot
+                self._snapshot_at = time.monotonic()
+                self._snapshot_error = None
+        except Exception as exc:  # noqa: BLE001
+            with self._snapshot_lock:
+                self._snapshot_error = str(exc)
+        finally:
+            with self._snapshot_refresh_lock:
+                self._snapshot_refreshing = False
 
     def _traffic(self) -> dict[str, float | int]:
         with self._rates_lock:
@@ -325,7 +390,7 @@ class MonitoringService:
         }
 
     def get_status(self) -> dict[str, Any]:
-        snapshot = self.engine.collect_snapshot()
+        snapshot = self.get_snapshot()
         info = build_info(snapshot)
         network = _network_payload(snapshot, info)
         internet_host = config.INTERNET_PING_HOSTS[0]
@@ -431,7 +496,7 @@ class MonitoringService:
         self, force: bool = False
     ) -> MonitorTaskResult[list[dict[str, Any]]]:
         def discover() -> list[dict[str, Any]]:
-            snapshot = self.engine.collect_snapshot()
+            snapshot = self.get_snapshot()
             return self.device_discovery.discover(snapshot, force=True)
 
         return self._request_task(
@@ -446,7 +511,7 @@ class MonitoringService:
         self, force: bool = False
     ) -> MonitorTaskResult[dict[str, Any]]:
         def collect() -> dict[str, Any]:
-            snapshot = self.engine.collect_snapshot()
+            snapshot = self.get_snapshot()
             return self._collect_packet_loss(snapshot)
 
         return self._request_task(

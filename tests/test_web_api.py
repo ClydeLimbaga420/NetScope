@@ -1067,6 +1067,8 @@ def test_elevate_requests_restart(client, monkeypatch):
     assert calls[2][0] == "launch"
     assert calls[2][1][0].endswith("netscope.py")
     assert calls[2][2] is True
+    assert "--no-browser" not in calls[2][1]
+    assert "--browser" not in calls[2][1]
     assert "--handoff-url" in calls[2][1]
     assert calls[2][1][calls[2][1].index("--handoff-url") + 1] == (
         f"http://127.0.0.1:{st.port}/__elevate_complete__"

@@ -401,6 +401,51 @@ def test_background_tasks_are_independent_deduplicated_and_nonblocking(
     assert discovery_calls[0][1] is True
 
 
+def test_status_reuses_collected_snapshot(snapshot_factory):
+    snapshot = snapshot_factory()
+    collect_calls = []
+
+    def collect():
+        collect_calls.append(1)
+        return snapshot
+
+    engine = SimpleNamespace(collect_snapshot=collect)
+    service = MonitoringService(
+        engine,
+        FakeRunner(),
+        None,
+        counter_provider=lambda: NetworkCounters(0, 0),
+        clock=lambda: 10.0,
+    )
+
+    service.get_status()
+    service.get_status()
+
+    assert len(collect_calls) == 1
+
+
+def test_device_discovery_reuses_cached_snapshot(snapshot_factory):
+    snapshot = snapshot_factory()
+    collect_calls = []
+    engine = SimpleNamespace(
+        collect_snapshot=lambda: collect_calls.append(1) or snapshot
+    )
+    service = MonitoringService(
+        engine,
+        FakeRunner(),
+        None,
+        counter_provider=lambda: NetworkCounters(0, 0),
+        clock=lambda: 10.0,
+    )
+    service.get_snapshot()
+    service.device_discovery.discover = lambda _snap, **_kwargs: []
+
+    result = _wait_for_result(service.request_devices, "ready")
+
+    assert result.value == []
+    assert collect_calls == [1]
+
+
 def test_background_discovery_failure_is_returned_as_error(snapshot_factory):
     service = _service(
         snapshot_factory(),
