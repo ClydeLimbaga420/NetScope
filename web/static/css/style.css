@@ -1126,6 +1126,68 @@ body.nav-open .nav-toggle .icon-close {
     white-space: nowrap;
 }
 
+.freshness-badge {
+    align-self: center;
+
+    margin-left: auto;
+
+    padding: 4px 9px;
+
+    border: 1px solid
+        color-mix(
+            in srgb,
+            var(--muted) 28%,
+            transparent
+        );
+
+    border-radius: 999px;
+
+    background:
+        color-mix(
+            in srgb,
+            var(--muted) 10%,
+            transparent
+        );
+
+    color: var(--muted);
+
+    font-size: 10px;
+    font-weight: 600;
+
+    white-space: nowrap;
+}
+
+.freshness-badge.is-stale {
+    border-color:
+        color-mix(
+            in srgb,
+            var(--amber) 38%,
+            transparent
+        );
+
+    background:
+        color-mix(
+            in srgb,
+            var(--amber) 12%,
+            transparent
+        );
+
+    color: var(--amber);
+
+    animation: freshnessPulse 2s ease-in-out infinite;
+}
+
+@keyframes freshnessPulse {
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.62;
+    }
+}
+
 .metric-line {
     display: flex;
     align-items: center;

@@ -388,6 +388,25 @@ async function refreshStatus() {
 
         const data = await response.json() || {};
 
+        const freshness = data.data_freshness || {};
+        const freshnessBadge = $("data-freshness");
+
+        if (freshnessBadge) {
+
+            if (freshness.state === "fresh") {
+                freshnessBadge.hidden = true;
+                freshnessBadge.classList.remove("is-stale");
+            } else {
+                freshnessBadge.hidden = false;
+                freshnessBadge.classList.add("is-stale");
+                freshnessBadge.textContent =
+                    freshness.state === "stale"
+                        ? "Showing saved data · Gathering fresh data…"
+                        : "Gathering data…";
+            }
+
+        }
+
         const network = data.network || {};
         const traffic = data.traffic || {};
         const ping = data.internet_ping || {};

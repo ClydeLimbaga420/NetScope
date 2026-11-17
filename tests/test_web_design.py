@@ -57,6 +57,21 @@ def test_monitoring_ui_distinguishes_pending_and_api_errors():
     assert "Scanning local network and resolving names..." in source
 
 
+def test_status_card_has_freshness_badge():
+    source = text(WEB / "templates" / "index.html")
+    assert 'id="data-freshness"' in source
+    assert "Checking data\u2026" in source
+    assert not re.search(r"\son[a-z]+\s*=", source, re.I), source
+
+
+def test_dashboard_js_maps_freshness_states():
+    source = text(WEB / "static" / "js" / "dashboard.js")
+    assert "data_freshness" in source
+    assert "Showing saved data" in source
+    assert "Gathering data\u2026" in source
+    assert re.search(r"freshnessBadge\.textContent\s*=", source)
+
+
 def test_web_scripts_remove_legacy_diagnostics_and_handler_workarounds():
     dashboard = text(WEB / "static" / "js" / "dashboard.js")
     engine_ui = text(WEB / "static" / "js" / "engine-ui.js")
