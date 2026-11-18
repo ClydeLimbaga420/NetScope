@@ -14,12 +14,36 @@ Menu/desktop shortcuts, uninstaller, WebView2 handling, and a `.netscope-inno`
 marker. `netscope install`/`uninstall` still manage portable installs and refuse
 installer-managed copies. CI covers tests on Python 3.11/3.14, 80% coverage,
 Playwright browser smoke + screenshots, frozen exe smoke, and an Inno
-install/uninstall smoke. Latest local suite: 350 passed, 2 skipped (2026-11-17);
-coverage 83.49% over `core`/`fixes`/`powershell`. Manual validation (Windows 10
+install/uninstall smoke. Latest local suite: 366 passed, 3 skipped (2026-11-18,
+excluding an untracked WIP `tests/test_stop.py` that imports a not-yet-added
+`cli.commands.cmd_stop`); coverage 83.67% over `core`/`fixes`/`powershell`.
+Manual validation (Windows 10
 VM checklist, window/UAC/installer cases, and human screenshot review) is
 deferred for now by request; it is a release-confidence item, not a code or
 test blocker. Phase 7 and GUI launch follow-up changes are committed locally;
 remote CI has not been run.
+
+**Low-end-device / request-storm follow-up (2026-11-18):** `config.py` now owns
+env-overridable resource caps (`NETSCOPE_MAX_CONCURRENT_COMMANDS` = 8,
+`NETSCOPE_SCAN_MAX_HOSTS` = 256, `NETSCOPE_SCAN_MAX_WORKERS` = 8,
+`NETSCOPE_NAME_MAX_WORKERS` = 4, `NETSCOPE_SCAN_CACHE_SECONDS` = 60,
+`NETSCOPE_NAME_CACHE_SECONDS` = 600, `NETSCOPE_SNAPSHOT_CACHE_SECONDS` = 30,
+`NETSCOPE_DEVICE_CACHE_SECONDS` = 60, `NETSCOPE_PACKET_LOSS_CACHE_SECONDS` = 60,
+`NETSCOPE_MAX_REMOTE_PINGS` = 2). `core/runner.py` enforces one global bounded
+semaphore around `SubprocessRunner` child processes (cancel-aware while waiting),
+so bursts from discovery, monitoring and UI routes cannot spawn unbounded
+commands. `core/device_discovery.py` uses the smaller caps and an IP+MAC name
+cache (positive TTL 600s, negative 120s) so repeated refreshes stop re-running
+NetBIOS/`ping -a`/DNS. `core/monitoring.py` uses the longer cache windows and
+`core/snapshot.py` caps remote-LAN pings. `web/api.py` has a serialized
+`_shared_snapshot(st)` helper: `/api/info`, `/api/report` and `/api/fix/plan`
+reuse `st.last_snapshot` or the monitoring snapshot instead of each starting a
+full collection; the diagnose job still forces one fresh collection but does so
+under the same lock, so concurrent jobs cannot double-spawn. `dashboard.js`
+skips status/packet-loss polls in hidden tabs, refreshes both on
+`visibilitychange`, and samples packet loss every 60s. Focused tests: 125 passed; `node --check` clean; full suite: 366 passed,
+3 skipped; coverage 83.67%. Crash reproduction on the user's low-end machine
+and a slow-machine timing check remain manual validation items.
 
 **Dashboard-latency / cold-start / admin-elevation follow-up (2026-11-17):**
 `core/monitoring.py` still caches one shared in-memory snapshot with background
@@ -143,9 +167,10 @@ frozen smoke, and a built wheel contains `core/oui_vendors.json`.
 - This checkout currently has no `.venv`.
   Recreate with `py -m venv .venv`, then
   `.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt`.
-- Run tests: `.\.venv\Scripts\python.exe -m pytest` (latest full run: 350 passed,
-  2 skipped, 2026-11-17; Phase 5/6 verification used system Python 3.14.7).
-  Coverage gate (latest: 83.49%):
+- Run tests: `.\.venv\Scripts\python.exe -m pytest` (latest full run: 366 passed,
+  3 skipped, 2026-11-18, excluding untracked WIP `tests/test_stop.py`; Phase 5/6
+  verification used system Python 3.14.7).
+  Coverage gate (latest: 83.67%):
   `.\.venv\Scripts\python.exe -m pytest --cov=core --cov=fixes --cov=powershell --cov-fail-under=80`.
 - Run the CLI: `.\.venv\Scripts\python.exe netscope.py --help`
   (or `python -m cli`). `netscope.py diagnose --json` is the machine interface.

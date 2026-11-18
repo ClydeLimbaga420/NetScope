@@ -314,9 +314,9 @@ def _snapshot_age_seconds(captured_at: str | None, now: float) -> float | None:
 
 
 class MonitoringService:
-    DEVICE_CACHE_SECONDS = 15.0
-    PACKET_LOSS_CACHE_SECONDS = 30.0
-    SNAPSHOT_CACHE_SECONDS = 15.0
+    DEVICE_CACHE_SECONDS = float(config.MONITORING_DEVICE_CACHE_SECONDS)
+    PACKET_LOSS_CACHE_SECONDS = float(config.MONITORING_PACKET_LOSS_CACHE_SECONDS)
+    SNAPSHOT_CACHE_SECONDS = float(config.MONITORING_SNAPSHOT_CACHE_SECONDS)
 
     def __init__(
         self,

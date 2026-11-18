@@ -555,6 +555,64 @@ def test_monitoring_api_status_returns_while_workers_are_blocked(
         release_packet_loss.set()
 
 
+def test_info_reuses_the_cached_snapshot_between_requests(client, monkeypatch):
+    c, st = client
+    snapshot = DummySnap()
+    calls = {"monitoring": 0, "engine": 0}
+
+    class CachedMonitoring:
+        def get_snapshot(self):
+            calls["monitoring"] += 1
+            return snapshot
+
+    class CountingEngine(DummyEngine):
+        def collect_snapshot(self):
+            calls["engine"] += 1
+            return snapshot
+
+    st.runtime.monitoring = CachedMonitoring()
+    st.runtime.engine = CountingEngine()
+    monkeypatch.setattr("web.api.build_info", lambda _snapshot: {"adapters": []})
+    monkeypatch.setattr("web.api.is_admin", lambda: False)
+    _boot(c, st)
+
+    first = c.get("/api/info", headers={"Host": "127.0.0.1:5000"})
+    second = c.get("/api/info", headers={"Host": "127.0.0.1:5000"})
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert calls == {"monitoring": 1, "engine": 0}
+
+
+def test_info_falls_back_to_a_direct_snapshot_when_monitoring_is_not_ready(
+    client, monkeypatch
+):
+    c, st = client
+    snapshot = DummySnap()
+    calls = {"monitoring": 0, "engine": 0}
+
+    class NotReadyMonitoring:
+        def get_snapshot(self):
+            calls["monitoring"] += 1
+            return None
+
+    class CountingEngine(DummyEngine):
+        def collect_snapshot(self):
+            calls["engine"] += 1
+            return snapshot
+
+    st.runtime.monitoring = NotReadyMonitoring()
+    st.runtime.engine = CountingEngine()
+    monkeypatch.setattr("web.api.build_info", lambda _snapshot: {"adapters": []})
+    monkeypatch.setattr("web.api.is_admin", lambda: False)
+    _boot(c, st)
+
+    assert c.get("/api/info", headers={"Host": "127.0.0.1:5000"}).status_code == 200
+    assert c.get("/api/info", headers={"Host": "127.0.0.1:5000"}).status_code == 200
+
+    assert calls == {"monitoring": 1, "engine": 1}
+
+
 def test_runtime_construction_owns_monitoring_service(snapshot_factory, monkeypatch):
     import psutil
 

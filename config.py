@@ -17,6 +17,51 @@ PING_COMMAND_TIMEOUT_SECONDS = 5.0
 POWERSHELL_TIMEOUT_SECONDS = 30.0
 POWERSHELL_EXE = "powershell.exe"
 
+# --- resource limits (low-end device safety) -----------------------------
+#
+# A local scan or a burst of UI requests used to be able to spawn dozens of
+# child processes at once, which stalls or crashes low-memory machines. Every
+# cap below is deliberately conservative but can be raised with an environment
+# variable, e.g. NETSCOPE_MAX_CONCURRENT_COMMANDS=16.
+
+def _int_env(name: str, default: int, *, minimum: int = 1, maximum: int = 4096) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return max(minimum, min(maximum, value))
+
+
+# Global ceiling on simultaneously running child processes (all sources).
+MAX_CONCURRENT_COMMANDS = _int_env("NETSCOPE_MAX_CONCURRENT_COMMANDS", 8, maximum=64)
+
+# Device discovery: scan a bounded portion of the local subnet with a small
+# worker pool. 256 hosts covers a typical home /24; larger prefixes are capped.
+DEVICE_SCAN_MAX_HOSTS = _int_env("NETSCOPE_SCAN_MAX_HOSTS", 256, maximum=4096)
+DEVICE_SCAN_MAX_WORKERS = _int_env("NETSCOPE_SCAN_MAX_WORKERS", 8, maximum=64)
+DEVICE_NAME_MAX_WORKERS = _int_env("NETSCOPE_NAME_MAX_WORKERS", 4, maximum=32)
+DEVICE_SCAN_CACHE_SECONDS = _int_env("NETSCOPE_SCAN_CACHE_SECONDS", 60, maximum=3600)
+DEVICE_NAME_CACHE_SECONDS = _int_env("NETSCOPE_NAME_CACHE_SECONDS", 600, maximum=86400)
+
+# Monitoring refresh intervals. Longer windows mean fewer snapshots and far
+# fewer spawned processes while the dashboard stays open.
+MONITORING_SNAPSHOT_CACHE_SECONDS = _int_env(
+    "NETSCOPE_SNAPSHOT_CACHE_SECONDS", 30, maximum=3600
+)
+MONITORING_DEVICE_CACHE_SECONDS = _int_env(
+    "NETSCOPE_DEVICE_CACHE_SECONDS", 60, maximum=3600
+)
+MONITORING_PACKET_LOSS_CACHE_SECONDS = _int_env(
+    "NETSCOPE_PACKET_LOSS_CACHE_SECONDS", 60, maximum=3600
+)
+
+# Each unreachable remote-LAN next hop can cost a full ping timeout before the
+# dashboard snapshot completes, so keep this small on low-end machines.
+SNAPSHOT_MAX_REMOTE_PINGS = _int_env("NETSCOPE_MAX_REMOTE_PINGS", 2, maximum=32)
+
 # --- diagnostic pipeline -------------------------------------------------
 
 # Local device first, outward. Keep this order stable: the engine reports the

@@ -11,6 +11,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
 
+import config
 from core.native import ping_args
 from core.runner import CommandResult
 from core.snapshot import Snapshot
@@ -18,14 +19,16 @@ from core.vendors import load_oui_vendors, lookup_vendor
 from powershell import scripts
 from powershell.validation import validate_ip
 
-SCAN_CACHE_SECONDS = 15.0
-SCAN_MAX_HOSTS = 1024
-SCAN_MAX_WORKERS = 64
+SCAN_CACHE_SECONDS = float(config.DEVICE_SCAN_CACHE_SECONDS)
+SCAN_MAX_HOSTS = config.DEVICE_SCAN_MAX_HOSTS
+SCAN_MAX_WORKERS = config.DEVICE_SCAN_MAX_WORKERS
 SCAN_PING_TIMEOUT_SECONDS = 1.5
 SCAN_PING_TIMEOUT_MS = 500
 ARP_TIMEOUT_SECONDS = 3.0
 NAME_RESOLVE_TIMEOUT_SECONDS = 1.5
-NAME_RESOLVE_MAX_WORKERS = 10
+NAME_RESOLVE_MAX_WORKERS = config.DEVICE_NAME_MAX_WORKERS
+NAME_RESOLVE_CACHE_SECONDS = float(config.DEVICE_NAME_CACHE_SECONDS)
+NAME_RESOLVE_NEGATIVE_CACHE_SECONDS = float(min(config.DEVICE_NAME_CACHE_SECONDS, 120))
 NAME_CACHE_TIMEOUT_SECONDS = 1.5
 NAME_CACHE_MAX_BYTES = 512 * 1024
 SCAN_PORT = 33434
@@ -476,6 +479,11 @@ class DeviceDiscovery:
         self._scan_lock = threading.Lock()
         self._cached_at: float | None = None
         self._cached_devices: list[dict[str, Any]] | None = None
+        # IP+MAC -> (resolved name or None, cached-at). Reusing names across
+        # scans avoids re-running NetBIOS/ping/DNS for every device each time.
+        self._name_cache: dict[
+            tuple[str, str | None], tuple[str | None, float]
+        ] = {}
 
     def _warm_arp_cache(self, targets: list[str]) -> None:
         if not self.ps:
@@ -621,7 +629,25 @@ class DeviceDiscovery:
         return _nslookup_name(result.stdout, ip)
 
     def _resolve_names(self, devices: list[dict[str, Any]], is_windows: bool) -> None:
-        pending = [device for device in devices if not device.get("name") and device.get("type") != "local"]
+        now = self.clock()
+        pending: list[dict[str, Any]] = []
+        for device in devices:
+            if device.get("name") or device.get("type") == "local":
+                continue
+            key = (str(device.get("ip")), device.get("mac"))
+            cached = self._name_cache.get(key)
+            if cached is not None:
+                name, cached_at = cached
+                ttl = (
+                    NAME_RESOLVE_CACHE_SECONDS
+                    if name
+                    else NAME_RESOLVE_NEGATIVE_CACHE_SECONDS
+                )
+                if now - cached_at < ttl:
+                    device["name"] = name
+                    continue
+            pending.append(device)
+
         if not pending:
             return
         hints = self._name_hints(is_windows)
@@ -639,7 +665,7 @@ class DeviceDiscovery:
             }
             for future, device in futures.items():
                 try:
-                    device["name"] = future.result()
+                    name = future.result()
                 except Exception as exc:  # name resolution is best-effort
                     if self.logger is not None:
                         self.logger.debug(
@@ -647,7 +673,12 @@ class DeviceDiscovery:
                             ip=device.get("ip"),
                             error=str(exc),
                         )
-                    device["name"] = None
+                    name = None
+                device["name"] = name
+                self._name_cache[(str(device.get("ip")), device.get("mac"))] = (
+                    name,
+                    now,
+                )
 
     def discover(
         self,

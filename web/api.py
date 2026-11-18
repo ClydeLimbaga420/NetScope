@@ -30,9 +30,38 @@ from core.models import Layer
 
 api_bp = Blueprint("api", __name__)
 
+# Snapshot collection spawns a burst of child processes. Serialising it and
+# reusing the monitoring service's cached snapshot keeps a single UI open from
+# triggering several full collections at the same time.
+_SNAPSHOT_LOCK = threading.Lock()
+
 
 def _state():  # type: ignore[no-untyped-def]
     return current_app.extensions["netscope_state"]
+
+
+def _shared_snapshot(st, *, fresh=False):  # type: ignore[no-untyped-def]
+    if not fresh:
+        snap = getattr(st, "last_snapshot", None)
+        if snap is not None:
+            return snap
+    with _SNAPSHOT_LOCK:
+        snap = None
+        if not fresh:
+            snap = getattr(st, "last_snapshot", None)
+            if snap is not None:
+                return snap
+            monitoring = getattr(getattr(st, "runtime", None), "monitoring", None)
+            getter = getattr(monitoring, "get_snapshot", None)
+            if callable(getter):
+                try:
+                    snap = getter()
+                except Exception:  # noqa: BLE001 - fall back to a direct collection
+                    snap = None
+        if snap is None:
+            snap = st.runtime.engine.collect_snapshot()
+        st.last_snapshot = snap
+        return snap
 
 
 def _err(code: str, message: str, status: int = 400):  # type: ignore[no-untyped-def]
@@ -114,8 +143,7 @@ def api_diagnose():  # type: ignore[no-untyped-def]
 
     def work(job_obj):  # type: ignore[no-untyped-def]
         st.logger.action("web", "diagnose_start", layers=layers, checks=checks)
-        snap = runtime.engine.collect_snapshot()
-        st.last_snapshot = snap
+        snap = _shared_snapshot(st, fresh=True)
 
         def on_check(result):  # type: ignore[no-untyped-def]
             job_obj.events.put({"type": "check", "result": result.to_dict()})
@@ -207,14 +235,11 @@ def api_fix_detail(fix_id: str):  # type: ignore[no-untyped-def]
 @api_bp.get("/info")
 def api_info():  # type: ignore[no-untyped-def]
     st = _state()
-    snap = st.last_snapshot
-    if snap is None:
-        try:
-            snap = st.runtime.engine.collect_snapshot()
-            st.last_snapshot = snap
-        except Exception as exc:  # noqa: BLE001
-            st.logger.error("web_info_failed", source="web", error=str(exc), exc_info=True)
-            return _err("info_failed", str(exc), 500)
+    try:
+        snap = _shared_snapshot(st)
+    except Exception as exc:  # noqa: BLE001
+        st.logger.error("web_info_failed", source="web", error=str(exc), exc_info=True)
+        return _err("info_failed", str(exc), 500)
     info = build_info(snap)
     info["admin"] = bool(is_admin())
     return jsonify(info)
@@ -355,8 +380,7 @@ def api_report():  # type: ignore[no-untyped-def]
     snap = st.last_snapshot
     if report is None or snap is None:
         try:
-            snap = st.runtime.engine.collect_snapshot()
-            st.last_snapshot = snap
+            snap = _shared_snapshot(st)
             report = st.runtime.engine.diagnose(snapshot=snap, mode="report")
             st.last_report = report
         except Exception as exc:  # noqa: BLE001
@@ -515,8 +539,7 @@ def api_fix_plan():  # type: ignore[no-untyped-def]
     except Exception:
         return _err("unknown_fix_id", f"Unknown fix id: {fix_id}", 404)
     try:
-        snap = st.last_snapshot or st.runtime.engine.collect_snapshot()
-        st.last_snapshot = snap
+        snap = _shared_snapshot(st)
     except Exception as exc:  # noqa: BLE001
         return _err("snapshot_failed", str(exc), 500)
     executor = st.runtime.executor()

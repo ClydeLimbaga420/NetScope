@@ -14,16 +14,46 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from threading import Event
+from threading import BoundedSemaphore, Event, Lock
 from typing import Any, Iterator, Mapping, Sequence
 
 import config
 
 _CANCEL_EVENT: ContextVar[Event | None] = ContextVar("netscope_cancel_event", default=None)
 
+_COMMAND_SLOTS_LOCK = Lock()
+_COMMAND_SLOTS: BoundedSemaphore | None = None
+_COMMAND_SLOTS_SIZE: int | None = None
+
 
 class CommandCancelled(Exception):
     """Raised when the active background job cancels a running command."""
+
+
+def _command_slots() -> BoundedSemaphore:
+    """Return the process-wide child-process limit, creating it on first use."""
+
+    global _COMMAND_SLOTS, _COMMAND_SLOTS_SIZE
+    size = max(1, int(config.MAX_CONCURRENT_COMMANDS))
+    with _COMMAND_SLOTS_LOCK:
+        if _COMMAND_SLOTS is None or _COMMAND_SLOTS_SIZE != size:
+            _COMMAND_SLOTS = BoundedSemaphore(size)
+            _COMMAND_SLOTS_SIZE = size
+        return _COMMAND_SLOTS
+
+
+@contextmanager
+def _command_slot(cancel_event: Event | None) -> Iterator[None]:
+    """Wait for a free child-process slot, staying responsive to cancellation."""
+
+    slots = _command_slots()
+    while not slots.acquire(timeout=0.1):
+        if cancel_event is not None and cancel_event.is_set():
+            raise CommandCancelled("job cancelled")
+    try:
+        yield
+    finally:
+        slots.release()
 
 
 @contextmanager
@@ -222,6 +252,28 @@ class SubprocessRunner(CommandRunner):
         if env:
             process_env = {**os.environ, **dict(env)}
 
+        with _command_slot(cancel_event):
+            return self._execute(
+                argv,
+                effective_timeout=effective_timeout,
+                started=started,
+                cancel_event=cancel_event,
+                cwd=cwd,
+                process_env=process_env,
+                stdin_data=stdin_data,
+            )
+
+    def _execute(
+        self,
+        argv: list[str],
+        *,
+        effective_timeout: float | None,
+        started: float,
+        cancel_event: Event | None,
+        cwd: str | os.PathLike[str] | None,
+        process_env: dict[str, str] | None,
+        stdin_data: str | None,
+    ) -> CommandResult:
         try:
             process = subprocess.Popen(
                 argv,

@@ -154,7 +154,7 @@ def collect_snapshot(
         for remote in remote_lan_routes(
             snapshot.data.get("ip_addresses", []),
             snapshot.data.get("routes", []),
-        )[:8]:
+        )[: config.SNAPSHOT_MAX_REMOTE_PINGS]:
             if remote.next_hop and remote.next_hop not in hosts:
                 hosts.append(remote.next_hop)
         for host in hosts:

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import sys
+import threading
+import time
 
 import pytest
 
+import core.runner as runner_module
 from core.runner import CommandResult, FakeRunner, SubprocessRunner
 
 
@@ -38,6 +41,53 @@ def test_subprocess_runner_timeout():
     assert result.timed_out
     assert not result.ok
     assert result.returncode == 124
+
+
+def test_subprocess_runner_bounds_concurrent_child_processes(monkeypatch):
+    monkeypatch.setattr(runner_module.config, "MAX_CONCURRENT_COMMANDS", 2)
+
+    active = 0
+    peak = 0
+    lock = threading.Lock()
+
+    class FakeProcess:
+        returncode = 0
+
+        def communicate(self, input=None, timeout=None):
+            nonlocal active
+            time.sleep(0.1)
+            with lock:
+                active -= 1
+            return "", ""
+
+    def fake_popen(*args, **kwargs):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        return FakeProcess()
+
+    monkeypatch.setattr(runner_module.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(runner_module, "_attach_kill_on_close_job", lambda p: None)
+    monkeypatch.setattr(runner_module, "_close_kill_on_close_job", lambda job: None)
+
+    runner = SubprocessRunner(default_timeout=5)
+    start = threading.Barrier(4)
+    results = []
+
+    def work():
+        start.wait()
+        results.append(runner.run(["fake-child"]))
+
+    threads = [threading.Thread(target=work) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert len(results) == 4
+    assert all(result.ok for result in results)
+    assert peak == 2
 
 
 def test_fake_runner_records_and_returns():

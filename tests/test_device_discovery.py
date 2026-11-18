@@ -9,6 +9,9 @@ from pathlib import Path
 import pytest
 
 from core.device_discovery import (
+    SCAN_CACHE_SECONDS,
+    SCAN_MAX_HOSTS,
+    SCAN_MAX_WORKERS,
     DeviceDiscovery,
     _normalize_mac,
     _parse_dns_cache,
@@ -238,7 +241,7 @@ def test_discovery_falls_back_to_the_local_slash_24_for_large_prefix(
     assert "10.0.0.1" not in hosts
 
 
-def test_discovery_caps_targets_at_1024_and_workers_at_64(
+def test_discovery_caps_targets_and_workers_for_low_end_devices(
     snapshot_factory, tmp_path
 ):
     names_and_ips = [
@@ -258,12 +261,12 @@ def test_discovery_caps_targets_at_1024_and_workers_at_64(
 
     discovery.discover(snapshot)
 
-    assert len(_ping_hosts(runner)) == 1024
-    assert runner.max_active_pings <= 64
+    assert len(_ping_hosts(runner)) == SCAN_MAX_HOSTS
+    assert runner.max_active_pings <= SCAN_MAX_WORKERS
     assert runner.max_active_pings > 1
 
 
-def test_discovery_caches_results_for_fifteen_seconds(snapshot_factory, tmp_path):
+def test_discovery_caches_results_for_a_minute(snapshot_factory, tmp_path):
     snapshot = _snapshot(
         snapshot_factory,
         [_adapter("Ethernet")],
@@ -278,7 +281,7 @@ def test_discovery_caches_results_for_fifteen_seconds(snapshot_factory, tmp_path
 
     first = discovery.discover(snapshot)
     call_count = len(runner.calls)
-    current_time[0] += 14.0
+    current_time[0] += SCAN_CACHE_SECONDS - 1.0
     cached = discovery.discover(snapshot)
 
     assert cached == first
@@ -423,6 +426,46 @@ Interface: 192.168.1.10 --- 0x5
 
     assert devices[0]["name"] == "living-room-tv"
     assert any("-a" in args for args, _timeout in runner.calls)
+
+
+def test_discovery_reuses_resolved_names_between_scans(snapshot_factory, tmp_path):
+    arp_output = """
+Interface: 192.168.1.10 --- 0x5
+  192.168.1.9          00-00-0c-00-00-01     dynamic
+"""
+    current_time = [0.0]
+    runner = DiscoveryRunner(
+        arp_output=arp_output,
+        nbt_names={"192.168.1.9": "OFFICE-PC"},
+    )
+    discovery, _runner = _discovery(
+        tmp_path,
+        runner,
+        clock=lambda: current_time[0],
+    )
+    snapshot = _snapshot(
+        snapshot_factory,
+        [_adapter("Ethernet")],
+        [_address("192.168.1.10", 29, "Ethernet")],
+    )
+
+    first = discovery.discover(snapshot)
+    assert first[0]["name"] == "OFFICE-PC"
+    nbt_calls = len(
+        [call for call in runner.calls if call[0][0].lower() == "nbtstat"]
+    )
+    assert nbt_calls
+
+    # Past the scan cache but still inside the name cache: the scan reruns,
+    # but the already-resolved device name is reused without another lookup.
+    current_time[0] += SCAN_CACHE_SECONDS + 1.0
+    second = discovery.discover(snapshot)
+
+    assert second[0]["name"] == "OFFICE-PC"
+    assert (
+        len([call for call in runner.calls if call[0][0].lower() == "nbtstat"])
+        == nbt_calls
+    )
 
 
 def test_nbt_cache_parser_maps_private_addresses_to_names():

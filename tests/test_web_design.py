@@ -109,6 +109,17 @@ def test_traffic_chart_skips_overlapping_status_polls():
     assert guard < fetch < finally_block
 
 
+def test_dashboard_pauses_polling_in_background_tabs():
+    source = text(WEB / "static" / "js" / "dashboard.js")
+    # A hidden dashboard should not keep spawning status/packet-loss work.
+    assert 'if (document.visibilityState === "hidden") {' in source
+    assert "setInterval(refreshPacketLoss, 60000)" in source
+    visible = source.index('addEventListener("visibilitychange"')
+    section = source[visible : visible + 400]
+    assert "refreshStatus();" in section
+    assert "refreshPacketLoss();" in section
+
+
 def test_status_card_has_freshness_badge():
     source = text(WEB / "templates" / "index.html")
     badge = re.search(r'<span[^>]*id="data-freshness"[^>]*>', source)

@@ -478,6 +478,10 @@ function setStatus(element, online) {
 
 async function refreshStatus() {
 
+    if (document.visibilityState === "hidden") {
+        return;
+    }
+
     // Never let a slow request overlap the next poll: two concurrent updates
     // would push duplicate samples and cancel each other's chart animations.
     if (statusInFlight) {
@@ -1211,6 +1215,7 @@ document.addEventListener("visibilitychange", () => {
     if (chart) chart.update("none");
 
     refreshStatus();
+    refreshPacketLoss();
 
 });
 
@@ -1416,6 +1421,10 @@ let packetLossInFlight = false;
 
 async function refreshPacketLoss() {
 
+    if (document.visibilityState === "hidden") {
+        return;
+    }
+
     if (packetLossInFlight) {
         return;
     }
@@ -1532,5 +1541,5 @@ refreshPacketLoss();
 // SAMPLE TRAFFIC OFTEN ENOUGH FOR A CONTINUOUS, HEARTBEAT-LIKE TRACE
 
 setInterval(refreshStatus, STATUS_POLL_INTERVAL_MS);
-setInterval(refreshPacketLoss, 30000);
+setInterval(refreshPacketLoss, 60000);
 
