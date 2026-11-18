@@ -71,17 +71,38 @@ device data shape / `Unnamed device` rename behavior are unchanged. Focused
 tests: device discovery, web API, monitoring and web design 112 passed.
 
 **Live-traffic smoothness follow-up (2026-11-18):** `web/static/js/dashboard.js`
-samples `/api/status` every 1s (was 2s) and sets the Chart.js animation duration
+samples `/api/status` every 5s (was 1s) and sets the Chart.js animation duration
 to that same `STATUS_POLL_INTERVAL_MS` with linear easing, so the Live Network
-Traffic area trace slides continuously instead of jumping once and then idling.
-EMA smoothing is 0.28, the rolling window is 60 samples (~60s), and a top-level
-`livePointPlugin` draws a soft halo plus bright glowing tip on the newest sample
-of each dataset (the "heartbeat monitor" look). `prefers-reduced-motion` disables
-the chart animation. `tests/test_web_design.py::test_traffic_chart_flows_continuously`
-locks the cadence/glow contract; `node --check` clean, focused web tests 69 passed.
-Full suite: 358 passed, 2 failed, 2 skipped; the two failures remain the known
+Traffic area trace slides continuously instead of jumping and then idling. A
+`statusInFlight` guard prevents slow status requests from overlapping the next
+poll and cancelling the animation (the long-uptime "flow disappears" bug); an
+`AbortController` timeout releases that guard if a request stalls, and a
+`visibilitychange` handler redraws/refreshes immediately when a backgrounded tab
+is restored. EMA smoothing is 0.28 and the rolling window is 60 samples (~5
+minutes at the current cadence); a top-level `livePointPlugin` draws a soft halo
+plus bright glowing tip on the newest sample of each dataset (the "heartbeat
+monitor" look). `prefers-reduced-motion` disables the chart animation.
+`tests/test_web_design.py::test_traffic_chart_flows_continuously` and
+`test_traffic_chart_skips_overlapping_status_polls` lock the cadence/glow/concurrency
+contract; `node --check` clean, focused web/API/monitoring tests 93 passed. Full
+suite: 359 passed, 2 failed, 2 skipped; the two failures remain the known
 environment-only WSL/Git Bash and Job Object ones. Visual review of the trace in
 a browser (including high-DPI) is still open.
+
+**Idle-traffic visibility follow-up (2026-11-18):** a disconnected internet
+drops the traffic rate to zero, and a flat `y = 0` trace was drawn on the chart's
+bottom axis so the graph line looked like it vanished. `dashboard.js` now plots
+a small `TRAFFIC_FLOOR_MBPS = 0.05` floor with a
+`TRAFFIC_MIN_CEILING_MBPS = 1` y-axis minimum so the idle line stays just above
+the baseline; real rates are kept in parallel `realDownloads`/`realUploads`
+arrays so tooltips and the speed cards still show the true value. A shared
+`pushTrafficSample()` adds a sample on every poll — including failed/disconnected
+ones — and trims all six arrays together, so the rolling trace neither freezes
+nor disappears. `test_traffic_chart_stays_visible_when_disconnected` locks the
+contract; `node --check` clean, focused web-design tests 19 passed. Full suite:
+360 passed, 2 failed, 2 skipped (the same known environment-only WSL/Git Bash
+and Job Object failures). Visual confirmation of the idle line in a browser is
+still open.
 
 **Legacy-dashboard removal:** Phases 1-6 are complete. The secured localhost
 `/api/status`, `/api/devices`, and `/api/packet-loss` successful payload

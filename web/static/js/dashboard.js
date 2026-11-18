@@ -4,17 +4,31 @@ const labels = [];
 const downloads = [];
 const uploads = [];
 
-// Sample twice as often as before and let each chart animation run for the
-// whole gap between samples, so the line slides continuously instead of
-// jumping once every two seconds and then sitting still.
-const STATUS_POLL_INTERVAL_MS = 1000;
-const TRAFFIC_HISTORY_LENGTH = 60;
+// Real (unfloored) rates, kept in sync with the plotted arrays so tooltips keep
+// reporting the true speed while the line stays visible at zero traffic.
+const realDownloads = [];
+const realUploads = [];
+
+// A flat zero trace is drawn on top of the x-axis and looks like the chart
+// disappeared when the internet drops. Plot a tiny floor and reserve a minimum
+// y-axis ceiling so an idle line sits just above the baseline instead.
+const TRAFFIC_FLOOR_MBPS = 0.05;
+const TRAFFIC_MIN_CEILING_MBPS = 1;
+
+// Let each chart animation run for the whole gap between samples so the line
+// slides continuously instead of jumping and then sitting still. A five-second
+// cadence also gives slow /api/status responses time to finish: overlapping
+// refreshes used to interrupt the animation and make the trace disappear after
+// the dashboard had been open a while.
+const STATUS_POLL_INTERVAL_MS = 5000;
+const TRAFFIC_HISTORY_LENGTH = 60; // five minutes at the five-second cadence
 const SMOOTHING_FACTOR = 0.28;
 
 const REDUCED_MOTION =
     typeof window.matchMedia === "function" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+let statusInFlight = false;
 let smoothedDownload = null;
 let smoothedUpload = null;
 
@@ -46,6 +60,41 @@ function formatSpeed(value) {
     }
 
     return value.toFixed(0);
+
+}
+
+
+function visibleTraffic(value) {
+
+    return Math.max(Number.isFinite(value) ? value : 0, TRAFFIC_FLOOR_MBPS);
+
+}
+
+
+// Every poll contributes a sample, including failed/disconnected ones, so the
+// trace never freezes or vanishes. Only the plotted value is floored; the real
+// rate lives in the parallel arrays for tooltips.
+function pushTrafficSample(download, upload) {
+
+    const now = new Date().toLocaleTimeString();
+
+    labels.push(now);
+    realDownloads.push(download);
+    realUploads.push(upload);
+    downloads.push(visibleTraffic(download));
+    uploads.push(visibleTraffic(upload));
+
+    if (labels.length > TRAFFIC_HISTORY_LENGTH) {
+
+        labels.shift();
+        realDownloads.shift();
+        realUploads.shift();
+        downloads.shift();
+        uploads.shift();
+
+    }
+
+    if (chart) chart.update();
 
 }
 
@@ -328,9 +377,13 @@ try { chart = new Chart(
 
                     callbacks: {
 
-                        label: context =>
-                            `${context.dataset.label}: ` +
-                            `${formatSpeed(context.parsed.y)} Mbps`
+                        label: context => {
+                            const values = context.datasetIndex === 0
+                                ? realDownloads
+                                : realUploads;
+                            return `${context.dataset.label}: ` +
+                                `${formatSpeed(values[context.dataIndex])} Mbps`;
+                        }
 
                     }
 
@@ -366,6 +419,10 @@ try { chart = new Chart(
                 y: {
 
                     beginAtZero: true,
+
+                    // Keep some headroom when traffic is zero so the idle line
+                    // is not glued to the bottom edge of the chart.
+                    suggestedMax: TRAFFIC_MIN_CEILING_MBPS,
 
                     grace: "10%",
 
@@ -421,9 +478,31 @@ function setStatus(element, online) {
 
 async function refreshStatus() {
 
+    // Never let a slow request overlap the next poll: two concurrent updates
+    // would push duplicate samples and cancel each other's chart animations.
+    if (statusInFlight) {
+        return;
+    }
+
+    statusInFlight = true;
+
+    // Bound the request so a stalled localhost fetch cannot hold the guard
+    // forever and freeze the trace after a long uptime.
+    const controller =
+        typeof AbortController === "function" ? new AbortController() : null;
+
+    const statusTimeout = controller
+        ? window.setTimeout(
+            () => controller.abort(),
+            STATUS_POLL_INTERVAL_MS
+        )
+        : null;
+
+    const options = controller ? { signal: controller.signal } : undefined;
+
     try {
 
-        const response = await fetch("/api/status");
+        const response = await fetch("/api/status", options);
 
         if (response.status === 401) {
             $("internet-status").textContent = "Session expired";
@@ -675,26 +754,7 @@ async function refreshStatus() {
 
         // UPDATE CHART
 
-        labels.push(now);
-
-        downloads.push(smoothedDownload);
-
-        uploads.push(smoothedUpload);
-
-
-        // KEEP A ROLLING WINDOW (60 samples at the current poll interval)
-
-        if (labels.length > TRAFFIC_HISTORY_LENGTH) {
-
-            labels.shift();
-
-            downloads.shift();
-
-            uploads.shift();
-
-        }
-
-        if (chart) chart.update();
+        pushTrafficSample(smoothedDownload, smoothedUpload);
 
     }
 
@@ -716,7 +776,19 @@ async function refreshStatus() {
 
         }
 
+        // Keep the trace alive through a failed/disconnected poll: a flat
+        // sample is far better than a line that stops or vanishes.
+        pushTrafficSample(0, 0);
+
         console.error(error);
+
+    }
+
+    finally {
+
+        if (statusTimeout !== null) window.clearTimeout(statusTimeout);
+
+        statusInFlight = false;
 
     }
 
@@ -1126,6 +1198,21 @@ window.addEventListener(
     "resize",
     applyDeviceScrollHeight
 );
+
+
+// Background tabs throttle timers; redraw and refresh as soon as the dashboard
+// is visible again so the live tip does not look frozen after a long idle.
+document.addEventListener("visibilitychange", () => {
+
+    if (document.visibilityState !== "visible") {
+        return;
+    }
+
+    if (chart) chart.update("none");
+
+    refreshStatus();
+
+});
 
 
 

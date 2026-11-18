@@ -60,8 +60,9 @@ def test_monitoring_ui_distinguishes_pending_and_api_errors():
 def test_traffic_chart_flows_continuously():
     source = text(WEB / "static" / "js" / "dashboard.js")
     # Sampling, animation duration and history window must stay in sync so the
-    # live trace slides without the old two-second jump-and-wait cadence.
-    assert "STATUS_POLL_INTERVAL_MS = 1000" in source
+    # live trace slides with a five-second cadence instead of jumping or stalling
+    # when a slow /api/status response overlaps the next refresh.
+    assert "STATUS_POLL_INTERVAL_MS = 5000" in source
     assert "TRAFFIC_HISTORY_LENGTH = 60" in source
     assert "SMOOTHING_FACTOR = 0.28" in source
     assert "duration: REDUCED_MOTION ? 0 : STATUS_POLL_INTERVAL_MS" in source
@@ -72,6 +73,40 @@ def test_traffic_chart_flows_continuously():
     assert 'id: "livePoint"' in source
     assert "plugins: [livePointPlugin]" in source
     assert 'window.matchMedia("(prefers-reduced-motion: reduce)")' in source
+    # Long-running polls must not overlap, and a restored tab must redraw now.
+    assert "let statusInFlight = false" in source
+    assert "if (statusInFlight) {" in source
+    assert "statusInFlight = false;" in source
+    assert "new AbortController()" in source
+    assert "controller.abort()" in source
+    assert "window.clearTimeout(statusTimeout)" in source
+    assert 'addEventListener("visibilitychange"' in source
+    assert 'chart.update("none")' in source
+
+
+def test_traffic_chart_stays_visible_when_disconnected():
+    source = text(WEB / "static" / "js" / "dashboard.js")
+    # An idle/zero trace must stay on screen instead of blending into the axis.
+    assert "const TRAFFIC_FLOOR_MBPS = 0.05;" in source
+    assert "const TRAFFIC_MIN_CEILING_MBPS = 1;" in source
+    assert "function visibleTraffic(value)" in source
+    assert "suggestedMax: TRAFFIC_MIN_CEILING_MBPS" in source
+    assert "function pushTrafficSample(download, upload)" in source
+    # Tooltips still report the real rate, not the plotted floor.
+    assert "const realDownloads = []" in source
+    assert "context.datasetIndex === 0" in source
+    # Every poll, including failed ones, keeps the rolling trace alive.
+    assert "pushTrafficSample(smoothedDownload, smoothedUpload)" in source
+    assert "pushTrafficSample(0, 0)" in source
+    assert "realDownloads.shift()" in source
+
+
+def test_traffic_chart_skips_overlapping_status_polls():
+    source = text(WEB / "static" / "js" / "dashboard.js")
+    guard = source.index("if (statusInFlight) {")
+    fetch = source.index('fetch("/api/status", options)')
+    finally_block = source.index("finally {", fetch)
+    assert guard < fetch < finally_block
 
 
 def test_status_card_has_freshness_badge():
