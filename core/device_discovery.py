@@ -26,6 +26,8 @@ SCAN_PING_TIMEOUT_MS = 500
 ARP_TIMEOUT_SECONDS = 3.0
 NAME_RESOLVE_TIMEOUT_SECONDS = 1.5
 NAME_RESOLVE_MAX_WORKERS = 10
+NAME_CACHE_TIMEOUT_SECONDS = 1.5
+NAME_CACHE_MAX_BYTES = 512 * 1024
 SCAN_PORT = 33434
 
 VIRTUAL_INTERFACE_HINTS = (
@@ -369,6 +371,82 @@ def _nslookup_name(output: str, ip: str) -> str | None:
     return _clean_name(match.group(1), ip) if match else None
 
 
+def _ping_hostname(output: str, ip: str) -> str | None:
+    """Extract the reverse-resolved host name from a ``ping -a`` banner.
+
+    Windows prints ``Pinging <hostname> [<ip>] with 32 bytes of data:`` when
+    reverse resolution succeeds and ``Pinging <ip> with ...`` when it does not.
+    Linux prints ``PING <hostname> (<ip>) ...``. Matching on the bracketed or
+    parenthesised IP (rather than the ``Pinging`` keyword) keeps this working
+    on localized Windows builds. ``_clean_name`` rejects the fallback case
+    where the tool echoes the IP instead of a real host name.
+    """
+    for line in (output or "").splitlines():
+        for pattern in (r"\[\s*([0-9.]+)\s*\]", r"\(\s*([0-9.]+)\s*\)"):
+            match = re.search(pattern, line)
+            if match is None or match.group(1) != ip:
+                continue
+            prefix = line[: match.start()]
+            # Last whitespace-delimited token before the address is the host.
+            token = re.search(r"(\S+)\s*$", prefix)
+            if token is not None:
+                name = _clean_name(token.group(1), ip)
+                if name:
+                    return name
+    return None
+
+
+def _parse_nbt_cache(output: str) -> dict[str, str]:
+    """Parse ``nbtstat -c`` remote-cache rows into an IP -> name mapping.
+
+    ``nbtstat -A <ip>`` only works while a device answers NetBIOS requests.
+    The local remote-name cache often still holds names for devices that have
+    gone quiet, so it is a useful second source for otherwise unnamed devices.
+    """
+    mapping: dict[str, str] = {}
+    entry = re.compile(
+        r"^\s*(\S+)\s+<[0-9a-fA-F]{2}>\s+(?:UNIQUE|GROUP)\s+([0-9.]+)",
+        re.I,
+    )
+    for line in (output or "").splitlines():
+        match = entry.match(line)
+        if match is None:
+            continue
+        name, raw_ip = match.groups()
+        address = _usable_private_ipv4(raw_ip)
+        cleaned = _clean_name(name, raw_ip)
+        if address is not None and cleaned and str(address) not in mapping:
+            mapping[str(address)] = cleaned
+    return mapping
+
+
+def _parse_dns_cache(output: str) -> dict[str, str]:
+    """Parse ``ipconfig /displaydns`` blocks into an IP -> name mapping.
+
+    Windows caches mDNS, LLMNR and DNS answers, so a phone or printer with no
+    PTR record can still have a usable name in this cache.
+    """
+    mapping: dict[str, str] = {}
+    record_name: str | None = None
+    name_line = re.compile(r"^\s*Record Name[.\s]+:\s*(\S+)", re.I)
+    address_line = re.compile(r"^\s*A\s*\(Host\)\s*Record[.\s]+:\s*([0-9.]+)", re.I)
+    for line in (output or "").splitlines():
+        name_match = name_line.match(line)
+        if name_match is not None:
+            record_name = name_match.group(1)
+            continue
+        address_match = address_line.match(line)
+        if address_match is None or not record_name:
+            continue
+        raw_ip = address_match.group(1)
+        address = _usable_private_ipv4(raw_ip)
+        cleaned = _clean_name(record_name, raw_ip)
+        if address is not None and cleaned and str(address) not in mapping:
+            mapping[str(address)] = cleaned
+        record_name = None
+    return mapping
+
+
 def _command_error(result: CommandResult, operation: str) -> RuntimeError:
     detail = result.error or result.stderr.strip() or f"exit code {result.returncode}"
     if result.timed_out:
@@ -443,13 +521,72 @@ class DeviceDiscovery:
                 detail=result.error or result.stderr.strip() or None,
             )
 
-    def _resolve_name(self, device: dict[str, Any], is_windows: bool) -> str | None:
+    def _collect_name_hints(
+        self,
+        source: str,
+        args: list[str],
+        parser: Callable[[str], dict[str, str]],
+    ) -> dict[str, str]:
+        """Read one local name cache. Failures never abort the scan."""
+        try:
+            result = self.runner.run(args, timeout=NAME_CACHE_TIMEOUT_SECONDS)
+        except Exception as exc:  # cache lookup is best-effort
+            if self.logger is not None:
+                self.logger.debug(
+                    "device_name_cache_error", source=source, error=str(exc)
+                )
+            return {}
+        if result.error or result.timed_out:
+            if self.logger is not None:
+                self.logger.debug(
+                    "device_name_cache_failed",
+                    source=source,
+                    timed_out=result.timed_out,
+                    detail=result.error or result.stderr.strip() or None,
+                )
+            return {}
+        return parser(result.stdout[:NAME_CACHE_MAX_BYTES])
+
+    def _name_hints(self, is_windows: bool) -> dict[str, str]:
+        """Collect IP -> name hints from Windows' local name caches."""
+        if not is_windows:
+            return {}
+        sources = (
+            ("netbios_cache", ["nbtstat", "-c"], _parse_nbt_cache),
+            ("dns_cache", ["ipconfig", "/displaydns"], _parse_dns_cache),
+        )
+        hints: dict[str, str] = {}
+        with ThreadPoolExecutor(max_workers=len(sources)) as pool:
+            futures = [
+                pool.submit(self._collect_name_hints, *source) for source in sources
+            ]
+            for future in futures:
+                try:
+                    hints.update(future.result())
+                except Exception as exc:  # cache lookup is best-effort
+                    if self.logger is not None:
+                        self.logger.debug(
+                            "device_name_cache_error", error=str(exc)
+                        )
+        return hints
+
+    def _resolve_name(
+        self,
+        device: dict[str, Any],
+        is_windows: bool,
+        hint: str | None = None,
+    ) -> str | None:
         """Resolve a device name on a best-effort basis.
 
         NetBIOS and reverse DNS are both optional: most devices (routers, IoT
         gear, printers) never answer ``nbtstat`` and many have no PTR record. A
         timeout or error must leave the device unnamed, never fail the whole
-        scan. If NetBIOS fails we still try reverse DNS before giving up.
+        scan. A name from a local cache is used between NetBIOS and reverse DNS
+        so devices that answer neither can still be labelled. ``ping -a`` is
+        tried before both: it reuses the OS name-resolution chain (DNS,
+        NetBIOS, LLMNR and, when installed, mDNS/Bonjour), so it recovers host
+        names for phones, printers and IoT gear that answer neither a direct
+        NetBIOS query nor a DNS PTR lookup.
         """
         ip = validate_ip(device["ip"])
         if is_windows:
@@ -463,6 +600,17 @@ class DeviceDiscovery:
                 name = _netbios_name(result.stdout, ip)
                 if name:
                     return name
+        # Reverse lookup through the OS resolver (includes LLMNR / mDNS).
+        ping_args = ["ping", "-a", "-n", "1", "-w", str(SCAN_PING_TIMEOUT_MS), ip]
+        result = self.runner.run(ping_args, timeout=NAME_RESOLVE_TIMEOUT_SECONDS)
+        if result.error or result.timed_out:
+            self._log_name_failure("ping_reverse", ip, result)
+        else:
+            name = _ping_hostname(result.stdout, ip)
+            if name:
+                return name
+        if hint:
+            return hint
         result = self.runner.run(
             ["nslookup", "-timeout=1", "-retry=0", ip],
             timeout=NAME_RESOLVE_TIMEOUT_SECONDS,
@@ -476,11 +624,17 @@ class DeviceDiscovery:
         pending = [device for device in devices if not device.get("name") and device.get("type") != "local"]
         if not pending:
             return
+        hints = self._name_hints(is_windows)
         with ThreadPoolExecutor(
             max_workers=min(NAME_RESOLVE_MAX_WORKERS, len(pending))
         ) as pool:
             futures = {
-                pool.submit(self._resolve_name, device, is_windows): device
+                pool.submit(
+                    self._resolve_name,
+                    device,
+                    is_windows,
+                    hints.get(device["ip"]),
+                ): device
                 for device in pending
             }
             for future, device in futures.items():

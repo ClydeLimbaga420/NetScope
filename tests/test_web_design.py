@@ -57,6 +57,23 @@ def test_monitoring_ui_distinguishes_pending_and_api_errors():
     assert "Scanning local network and resolving names..." in source
 
 
+def test_traffic_chart_flows_continuously():
+    source = text(WEB / "static" / "js" / "dashboard.js")
+    # Sampling, animation duration and history window must stay in sync so the
+    # live trace slides without the old two-second jump-and-wait cadence.
+    assert "STATUS_POLL_INTERVAL_MS = 1000" in source
+    assert "TRAFFIC_HISTORY_LENGTH = 60" in source
+    assert "SMOOTHING_FACTOR = 0.28" in source
+    assert "duration: REDUCED_MOTION ? 0 : STATUS_POLL_INTERVAL_MS" in source
+    assert 'easing: "linear"' in source
+    assert "setInterval(refreshStatus, STATUS_POLL_INTERVAL_MS)" in source
+    assert "labels.length > TRAFFIC_HISTORY_LENGTH" in source
+    # The glowing tip of each live trace.
+    assert 'id: "livePoint"' in source
+    assert "plugins: [livePointPlugin]" in source
+    assert 'window.matchMedia("(prefers-reduced-motion: reduce)")' in source
+
+
 def test_status_card_has_freshness_badge():
     source = text(WEB / "templates" / "index.html")
     badge = re.search(r'<span[^>]*id="data-freshness"[^>]*>', source)

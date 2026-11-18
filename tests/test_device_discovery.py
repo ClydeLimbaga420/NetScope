@@ -11,6 +11,9 @@ import pytest
 from core.device_discovery import (
     DeviceDiscovery,
     _normalize_mac,
+    _parse_dns_cache,
+    _parse_nbt_cache,
+    _ping_hostname,
     _wireless_interface,
 )
 from core.runner import CommandResult
@@ -74,10 +77,23 @@ def _snapshot(snapshot_factory, adapters, addresses, *, routes=None, gateway=Non
 
 
 class DiscoveryRunner:
-    def __init__(self, *, arp_output="", nbt_names=None, dns_names=None, delay=0.0):
+    def __init__(
+        self,
+        *,
+        arp_output="",
+        nbt_names=None,
+        dns_names=None,
+        nbt_cache_output="",
+        dns_cache_output="",
+        ping_names=None,
+        delay=0.0,
+    ):
         self.arp_output = arp_output
         self.nbt_names = dict(nbt_names or {})
         self.dns_names = dict(dns_names or {})
+        self.nbt_cache_output = nbt_cache_output
+        self.dns_cache_output = dns_cache_output
+        self.ping_names = dict(ping_names or {})
         self.delay = delay
         self.calls = []
         self.script_text = None
@@ -104,6 +120,15 @@ class DiscoveryRunner:
             try:
                 if self.delay:
                     time.sleep(self.delay)
+                if "-a" in argv:
+                    ip = argv[-1]
+                    name = self.ping_names.get(ip)
+                    banner = (
+                        f"Pinging {name} [{ip}] with 32 bytes of data:\n"
+                        if name
+                        else f"Pinging {ip} with 32 bytes of data:\n"
+                    )
+                    return CommandResult(argv, 0, stdout=banner)
                 return CommandResult(argv, 1, stdout="Request timed out.")
             finally:
                 with self.lock:
@@ -111,9 +136,13 @@ class DiscoveryRunner:
         if executable == "arp":
             return CommandResult(argv, 0, stdout=self.arp_output)
         if executable == "nbtstat":
+            if len(argv) > 1 and argv[1].lower() == "-c":
+                return CommandResult(argv, 0, stdout=self.nbt_cache_output)
             name = self.nbt_names.get(argv[-1])
             output = f"{name} <00> UNIQUE Registered\n" if name else ""
             return CommandResult(argv, 0, stdout=output)
+        if executable == "ipconfig":
+            return CommandResult(argv, 0, stdout=self.dns_cache_output)
         if executable == "nslookup":
             name = self.dns_names.get(argv[-1])
             output = f"Name: {name}\nAddress: {argv[-1]}\n" if name else ""
@@ -349,6 +378,144 @@ Interface: 192.168.1.10 --- 0x5
 
     assert devices[0]["name"] == "router.local"
     assert any(args[0].lower() == "nslookup" for args, _ in runner.calls)
+
+
+def test_ping_hostname_parser_reads_windows_and_linux_banners():
+    assert _ping_hostname(
+        "Pinging OFFICE-PC [192.168.1.9] with 32 bytes of data:\n", "192.168.1.9"
+    ) == "OFFICE-PC"
+    # Localized Windows text still carries the bracketed address.
+    assert _ping_hostname(
+        "Ping wird ausgefuehrt fuer PRINTER [192.168.1.11] mit 32 Bytes:\n",
+        "192.168.1.11",
+    ) == "PRINTER"
+    assert _ping_hostname(
+        "PING camera.local (192.168.1.12) 56(84) bytes of data.\n", "192.168.1.12"
+    ) == "camera.local"
+    # No reverse resolution: the banner echoes the IP, which must be ignored.
+    assert _ping_hostname(
+        "Pinging 192.168.1.9 with 32 bytes of data:\n", "192.168.1.9"
+    ) is None
+    assert _ping_hostname("", "192.168.1.9") is None
+
+
+def test_ping_reverse_name_used_when_netbios_and_dns_are_silent(
+    snapshot_factory, tmp_path
+):
+    arp_output = """
+Interface: 192.168.1.10 --- 0x5
+  192.168.1.9          00-00-0c-00-00-01     dynamic
+"""
+    # No NetBIOS answer, no DNS cache hint, no PTR record -- only ping -a
+    # (the OS resolver, e.g. LLMNR/mDNS) knows the host name.
+    runner = DiscoveryRunner(
+        arp_output=arp_output,
+        ping_names={"192.168.1.9": "living-room-tv"},
+    )
+    discovery, _runner = _discovery(tmp_path, runner)
+    snapshot = _snapshot(
+        snapshot_factory,
+        [_adapter("Ethernet")],
+        [_address("192.168.1.10", 29, "Ethernet")],
+    )
+
+    devices = discovery.discover(snapshot)
+
+    assert devices[0]["name"] == "living-room-tv"
+    assert any("-a" in args for args, _timeout in runner.calls)
+
+
+def test_nbt_cache_parser_maps_private_addresses_to_names():
+    output = """
+    NetBIOS Remote Cache Name Table
+
+    Name              Type       Host Address    Life [sec]
+    ------------------------------------------------------------
+    OFFICE-PC      <20>  UNIQUE          192.168.1.9        360
+    PRINTER        <00>  GROUP           192.168.1.11       120
+   STALE          <20>  UNIQUE          8.8.8.8            360
+    """
+    assert _parse_nbt_cache(output) == {
+        "192.168.1.9": "OFFICE-PC",
+        "192.168.1.11": "PRINTER",
+    }
+
+
+def test_dns_cache_parser_maps_a_records_to_names():
+    output = """
+    printer.local
+    ----------------------------------------
+    Record Name . . . . . : printer.local
+    Record Type . . . . . : 1
+    A (Host) Record . . . : 192.168.1.11
+    camera.local
+    ----------------------------------------
+    Record Name . . . . . : camera.local
+    A (Host) Record . . . : 192.168.1.12
+    """
+    assert _parse_dns_cache(output) == {
+        "192.168.1.11": "printer.local",
+        "192.168.1.12": "camera.local",
+    }
+
+
+def test_name_caches_label_devices_that_answer_no_direct_query(
+    snapshot_factory, tmp_path
+):
+    arp_output = """
+Interface: 192.168.1.10 --- 0x5
+  192.168.1.9          00-00-0c-00-00-01     dynamic
+  192.168.1.11         00-00-0c-00-00-02     dynamic
+  192.168.1.12         00-00-0c-00-00-03     dynamic
+"""
+    runner = DiscoveryRunner(
+        arp_output=arp_output,
+        nbt_cache_output="OFFICE-PC <20> UNIQUE 192.168.1.9 360\n",
+        dns_cache_output=(
+            "Record Name . . . . . : printer.local\n"
+            "A (Host) Record . . . : 192.168.1.11\n"
+        ),
+    )
+    discovery, _runner = _discovery(tmp_path, runner)
+    snapshot = _snapshot(
+        snapshot_factory,
+        [_adapter("Ethernet")],
+        [_address("192.168.1.10", 29, "Ethernet")],
+    )
+
+    devices = discovery.discover(snapshot)
+    by_ip = {device["ip"]: device for device in devices}
+
+    assert by_ip["192.168.1.9"]["name"] == "OFFICE-PC"
+    assert by_ip["192.168.1.11"]["name"] == "printer.local"
+    assert by_ip["192.168.1.12"]["name"] is None
+    assert {"nbtstat", "ipconfig"} <= {
+        args[0].lower() for args, _timeout in runner.calls
+    }
+
+
+def test_direct_netbios_name_wins_over_a_stale_cache_hint(
+    snapshot_factory, tmp_path
+):
+    arp_output = """
+Interface: 192.168.1.10 --- 0x5
+  192.168.1.9          00-00-0c-00-00-01     dynamic
+"""
+    runner = DiscoveryRunner(
+        arp_output=arp_output,
+        nbt_names={"192.168.1.9": "gateway"},
+        nbt_cache_output="OLD-GATEWAY <20> UNIQUE 192.168.1.9 360\n",
+    )
+    discovery, _runner = _discovery(tmp_path, runner)
+    snapshot = _snapshot(
+        snapshot_factory,
+        [_adapter("Ethernet")],
+        [_address("192.168.1.10", 29, "Ethernet")],
+    )
+
+    devices = discovery.discover(snapshot)
+
+    assert devices[0]["name"] == "gateway"
 
 
 def test_discovery_formats_devices_and_routes_operations_through_runner(

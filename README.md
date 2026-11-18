@@ -47,7 +47,7 @@ There is no LAN-hosted dashboard or separate legacy server.
 - Smoothed live bandwidth charts
 - Local IP, default gateway, and adapter information
 - Active device discovery through ARP
-- Automatic device names (NetBIOS / reverse DNS)
+- Automatic device names (NetBIOS / OS host-name resolution / reverse DNS)
 - Brand detection from MAC vendor data and randomized-MAC labelling
 - Custom device labels saved in the browser
 - Eight-row device table with in-panel scrolling
@@ -214,8 +214,13 @@ interfaces. It probes at most 1,024 local targets with at most 64 workers to
 populate the ARP cache, then reads the operating system's ARP table. It never
 scans public or routed networks.
 
-Device names are resolved best-effort through NetBIOS and reverse DNS. Many
-devices do not publish a name.
+Device names are resolved best-effort through several sources: a direct NetBIOS
+query (`nbtstat -A`), `ping -a` (which reuses the Windows name-resolution chain,
+including LLMNR and mDNS when available), the local NetBIOS/DNS caches, and a
+DNS reverse lookup (`nslookup`). The first source that yields a host name wins,
+so phones, printers and IoT devices that answer neither NetBIOS nor a DNS PTR
+lookup can still show a name. Many devices publish no name at all and appear as
+"Unnamed device"; double-click to supply one.
 
 Brands come from an offline OUI map covering common vendors. Devices using
 randomized or locally administered MAC addresses are shown as "Private MAC"

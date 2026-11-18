@@ -725,8 +725,13 @@ def api_unresolved_answer():  # type: ignore[no-untyped-def]
 @api_bp.get("/devices")
 def api_devices():  # type: ignore[no-untyped-def]
     st = _state()
+    force = (request.args.get("force") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
     try:
-        result = st.runtime.monitoring.request_devices()
+        result = st.runtime.monitoring.request_devices(force=force)
     except Exception as exc:  # noqa: BLE001
         return _monitoring_failure(
             st,

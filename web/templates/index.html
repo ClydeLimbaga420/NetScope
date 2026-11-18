@@ -396,14 +396,20 @@
                 <summary>How device discovery works</summary>
                 <p class="note">
                     Devices are found by probing the local subnet and reading
-                    the ARP cache; brands come from MAC vendor data. The
-                    connection column labels this PC, the router, and devices
+                    the ARP cache; brands come from MAC vendor data. Names are
+                    resolved from NetBIOS, the Windows host-name resolver
+                    (which also covers mDNS/LLMNR devices like phones and
+                    printers), and reverse DNS, with the Windows NetBIOS and
+                    DNS caches used as fallbacks for devices that do not answer
+                    those queries directly. The connection column
+                    labels this PC, the router, and devices
                     seen through a Wi-Fi adapter &mdash; phones and other
                     devices with randomized MACs are marked wireless because
                     their real hardware MAC is hidden by design. This PC shows
                     its own adapter MAC. Double-click a device name to save a
-                    friendly label in this browser. The table shows eight
-                    devices at a time; scroll inside it to see the rest.
+                    friendly label in this browser. Refresh devices runs a new
+                    scan and re-resolves names. The table shows eight devices
+                    at a time; scroll inside it to see the rest.
                 </p>
             </details>
 

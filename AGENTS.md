@@ -45,6 +45,43 @@ events. Full suite: 350 passed, 2 skipped; coverage 83.49%. Live UAC handoff,
 cold-start timing on a slow machine, and the badge still need manual Windows
 validation.
 
+**Device-name follow-up (2026-11-18):** `core/device_discovery.py` now reads the
+Windows NetBIOS remote-name cache (`nbtstat -c`) and DNS resolver cache
+(`ipconfig /displaydns`) once per scan as bounded, best-effort IP -> name hints.
+The hints are consulted after direct `nbtstat -A` but before reverse DNS, so
+devices that answer neither still get a name; failures are logged and never
+abort discovery. `GET /api/devices?force=1` bypasses both monitoring and
+discovery caches to force a fresh scan, and the web UI's **Refresh devices**
+button uses it. Device data shape and the `Unnamed device`/rename behavior are
+unchanged. Focused tests: 110 passed; `node --check` clean. Full suite: 355
+passed, 2 failed, 2 skipped; the two failures are environment-only (outdated
+WSL/Git Bash for the build-script test and a Windows Job Object descendant-kill
+test). A stale empty `modules/__pycache__` directory was removed.
+
+**Host-name-in-device-name follow-up (2026-11-18):** Device names now also use
+`ping -a <ip>` (via `CommandRunner`, bounded at `NAME_RESOLVE_TIMEOUT_SECONDS`)
+as a reverse host-name source ahead of the cache hints and `nslookup`. Because
+Windows' resolver chain includes DNS, NetBIOS, LLMNR and mDNS/Bonjour, this
+recovers host names for phones, printers and IoT gear that answer neither a
+direct `nbtstat -A` nor a DNS PTR query; `_ping_hostname()` parses the
+`Pinging <name> [<ip>]` (and Linux `PING <name> (<ip>)`) banner and ignores the
+fallback that echoes the bare IP. Resolution order is NetBIOS -> `ping -a` ->
+local cache hint -> reverse DNS; failures stay logged and non-fatal, and the
+device data shape / `Unnamed device` rename behavior are unchanged. Focused
+tests: device discovery, web API, monitoring and web design 112 passed.
+
+**Live-traffic smoothness follow-up (2026-11-18):** `web/static/js/dashboard.js`
+samples `/api/status` every 1s (was 2s) and sets the Chart.js animation duration
+to that same `STATUS_POLL_INTERVAL_MS` with linear easing, so the Live Network
+Traffic area trace slides continuously instead of jumping once and then idling.
+EMA smoothing is 0.28, the rolling window is 60 samples (~60s), and a top-level
+`livePointPlugin` draws a soft halo plus bright glowing tip on the newest sample
+of each dataset (the "heartbeat monitor" look). `prefers-reduced-motion` disables
+the chart animation. `tests/test_web_design.py::test_traffic_chart_flows_continuously`
+locks the cadence/glow contract; `node --check` clean, focused web tests 69 passed.
+Full suite: 358 passed, 2 failed, 2 skipped; the two failures remain the known
+environment-only WSL/Git Bash and Job Object ones. Visual review of the trace in
+a browser (including high-DPI) is still open.
 
 **Legacy-dashboard removal:** Phases 1-6 are complete. The secured localhost
 `/api/status`, `/api/devices`, and `/api/packet-loss` successful payload

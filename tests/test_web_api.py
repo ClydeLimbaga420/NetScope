@@ -344,6 +344,18 @@ def test_devices_payload_contract(client):
     assert monitoring.calls == [("request_devices", False)]
 
 
+def test_devices_force_query_rescans_names(client):
+    c, st = client
+    monitoring = FakeMonitoringService()
+    st.runtime.monitoring = monitoring
+    _boot(c, st)
+
+    response = c.get("/api/devices?force=1", headers={"Host": "127.0.0.1:5000"})
+
+    assert response.status_code == 200
+    assert monitoring.calls == [("request_devices", True)]
+
+
 def test_packet_loss_payload_contract(client):
     c, st = client
     network = {"gateway": "192.168.1.1"}

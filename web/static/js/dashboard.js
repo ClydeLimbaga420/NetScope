@@ -4,7 +4,16 @@ const labels = [];
 const downloads = [];
 const uploads = [];
 
-const SMOOTHING_FACTOR = 0.34;
+// Sample twice as often as before and let each chart animation run for the
+// whole gap between samples, so the line slides continuously instead of
+// jumping once every two seconds and then sitting still.
+const STATUS_POLL_INTERVAL_MS = 1000;
+const TRAFFIC_HISTORY_LENGTH = 60;
+const SMOOTHING_FACTOR = 0.28;
+
+const REDUCED_MOTION =
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 let smoothedDownload = null;
 let smoothedUpload = null;
@@ -111,6 +120,47 @@ window.NetScope.refreshChartTheme = function () {
 };
 
 
+// Draws a soft halo and a bright leading dot on the newest sample of each
+// series, like the glowing tip of a monitor trace. Chart.js keeps the actual
+// line/point rendering (pointRadius stays 0); this only adds the live tip.
+const livePointPlugin = {
+    id: "livePoint",
+    afterDatasetsDraw(instance) {
+        const context = instance.ctx;
+        const theme = chartTheme();
+
+        instance.data.datasets.forEach((dataset, index) => {
+            const meta = instance.getDatasetMeta(index);
+            if (meta.hidden) return;
+
+            const points = meta.data;
+            const tip = points[points.length - 1];
+            if (!tip || !Number.isFinite(tip.x) || !Number.isFinite(tip.y)) return;
+
+            const color = index === 0 ? theme.download : theme.upload;
+
+            context.save();
+
+            context.beginPath();
+            context.arc(tip.x, tip.y, 6, 0, Math.PI * 2);
+            context.fillStyle = color;
+            context.globalAlpha = 0.16;
+            context.fill();
+
+            context.beginPath();
+            context.arc(tip.x, tip.y, 2.6, 0, Math.PI * 2);
+            context.globalAlpha = 1;
+            context.shadowColor = color;
+            context.shadowBlur = 10;
+            context.fillStyle = color;
+            context.fill();
+
+            context.restore();
+        });
+    }
+};
+
+
 
 // =====================================
 // TRAFFIC CHART
@@ -121,6 +171,8 @@ try { chart = new Chart(
     $("traffic-chart"),
     {
         type: "line",
+
+        plugins: [livePointPlugin],
 
         data: {
             labels: labels,
@@ -203,7 +255,7 @@ try { chart = new Chart(
             maintainAspectRatio: false,
 
             animation: {
-                duration: 1800,
+                duration: REDUCED_MOTION ? 0 : STATUS_POLL_INTERVAL_MS,
                 easing: "linear"
             },
 
@@ -630,9 +682,9 @@ async function refreshStatus() {
         uploads.push(smoothedUpload);
 
 
-        // KEEP ONLY LAST 30 READINGS
+        // KEEP A ROLLING WINDOW (60 samples at the current poll interval)
 
-        if (labels.length > 30) {
+        if (labels.length > TRAFFIC_HISTORY_LENGTH) {
 
             labels.shift();
 
@@ -878,7 +930,7 @@ function renderDeviceMessage(message) {
 }
 
 
-async function refreshDevices({ retry = true, silent = false } = {}) {
+async function refreshDevices({ retry = true, silent = false, force = false } = {}) {
 
     const body = $("device-rows");
 
@@ -894,7 +946,7 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
 
     try {
 
-        const response = await fetch("/api/devices");
+        const response = await fetch(force ? "/api/devices?force=1" : "/api/devices");
 
         if (response.status === 401) {
             body.replaceChildren();
@@ -1066,7 +1118,7 @@ async function refreshDevices({ retry = true, silent = false } = {}) {
 const refreshDevicesEl = $("refresh-devices");
 if (refreshDevicesEl) refreshDevicesEl.addEventListener(
     "click",
-    () => refreshDevices()
+    () => refreshDevices({ force: true })
 );
 
 
@@ -1390,8 +1442,8 @@ refreshPacketLoss();
 
 
 
-// UPDATE EVERY 2 SECONDS
+// SAMPLE TRAFFIC OFTEN ENOUGH FOR A CONTINUOUS, HEARTBEAT-LIKE TRACE
 
-setInterval(refreshStatus, 2000);
+setInterval(refreshStatus, STATUS_POLL_INTERVAL_MS);
 setInterval(refreshPacketLoss, 30000);
 
