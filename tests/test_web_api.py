@@ -841,7 +841,7 @@ def test_tool_api_rejects_command_injection_before_runner(client, tool_name, bod
 
 def test_idle_shutdown_waits_for_cancelling_job(client):
     _client, st = client
-    st.last_heartbeat = __import__('time').monotonic() - 121
+    st.last_heartbeat = time.monotonic() - config.WEB_IDLE_SHUTDOWN_SECONDS - 1
 
     assert st.should_shutdown()
     job = st.jobs.create("fix")
@@ -1170,7 +1170,7 @@ def test_should_shutdown_during_handoff_without_native_window():
     st = WebState.__new__(WebState)
     st.elevate_handoff = {"active": True}
     st.native_window_active = False
-    st.last_heartbeat = time.monotonic() - 121
+    st.last_heartbeat = time.monotonic() - config.WEB_IDLE_SHUTDOWN_SECONDS - 1
     st.jobs = types.SimpleNamespace(has_active_jobs=lambda: False)
 
     assert st.should_shutdown() is True

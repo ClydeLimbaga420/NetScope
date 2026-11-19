@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import threading
+import time
 from types import SimpleNamespace
 
 import web.window as window
@@ -244,3 +245,27 @@ def test_replace_waits_for_lock(monkeypatch):
     monkeypatch.setattr(run.time, "monotonic", lambda: next(times))
     monkeypatch.setattr(run.time, "sleep", lambda _seconds: None)
     assert run._acquire_lock_with_wait(10.0) is token
+
+
+def test_window_session_keeps_server_alive_while_window_open(monkeypatch):
+    touched = []
+    state = SimpleNamespace(
+        shutdown_event=threading.Event(),
+        logger=WindowLogger(),
+        touch=lambda: touched.append(1),
+    )
+    srv = SimpleNamespace(serve_forever=lambda: None)
+
+    def fake_window(_url, **_kwargs):
+        deadline = time.monotonic() + 1
+        while len(touched) < 2 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        state.shutdown_event.set()
+        return True
+
+    monkeypatch.setattr(run, "run_native_window", fake_window)
+    monkeypatch.setattr(run, "WINDOW_HEARTBEAT_INTERVAL_SECONDS", 0.01)
+
+    run._run_window_session(state, srv, "http://127.0.0.1:1/boot", False)
+
+    assert len(touched) >= 2

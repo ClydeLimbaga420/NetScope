@@ -71,6 +71,15 @@ LOG_CLEAR_INTERVAL_SECONDS = _int_env(
     "NETSCOPE_LOG_CLEAR_INTERVAL_SECONDS", 180, minimum=0, maximum=86400
 )
 
+# The server used to exit silently after 120s without a browser heartbeat.
+# WebView2 throttles renderer timers on a busy or backgrounded low-end machine,
+# so a live window can miss several pings and get killed mid-scan. The native
+# window host now keeps the server alive explicitly; this longer window is a
+# second line of defence for browser-fallback launches.
+WEB_IDLE_SHUTDOWN_SECONDS = _int_env(
+    "NETSCOPE_WEB_IDLE_SHUTDOWN_SECONDS", 300, minimum=30, maximum=86400
+)
+
 # --- diagnostic pipeline -------------------------------------------------
 
 # Local device first, outward. Keep this order stable: the engine reports the

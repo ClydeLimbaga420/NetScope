@@ -60,6 +60,28 @@ passed, 3 skipped, coverage 83.40%, `node --check` clean. A stale untracked
 `modules/__pycache__` was removed again. Confirming the crash no longer
 reproduces on the user's machine is manual.
 
+**Live-traffic disappearance follow-up (2026-11-19):** `dashboard.js` no longer
+freezes the trace on a 401 (that branch used to `return` without pushing a
+sample), and all request setup now lives inside the `try` so the `statusInFlight`
+guard cannot leak on an early throw. The abort timeout is 4s, shorter than the
+5s poll, so an abort and the next poll cannot collide into a 10s animation gap.
+`updateTrafficCeiling()` drives `scales.y.max` from the current rate (grow
+immediately, ease down, snap to the 1 Mbps idle range at the floor) because
+Chart.js otherwise auto-scales to the largest value in the 60-sample window and
+leaves the 0.05 idle line sub-pixel after a burst/disconnect. Traffic also falls
+faster than it rises (`TRAFFIC_DROP_FACTOR`), visibility changes call
+`chart.resize()`, and the legend cannot hide the last visible series. Added a
+contract test; `node --check` clean, full suite 372 passed, 3 skipped. Visual
+confirmation over a long session and a real disconnect is still manual.
+
+**Silent-exit / native-crash follow-up (2026-11-19):** Windows Event Viewer showed repeated `APPCRASH` events for the **installed** `NetScope.exe` (exception `0xc0000005`, faulting module `python314.dll`, plus a .NET Runtime unhandled exception), i.e. a native pythonnet/WebView2 crash in the Python 3.14 build — not a Python exception or the idle monitor. The idle-shutdown path was still hardened: `web/run.py::_run_window_session()` now runs a `netscope-window-heartbeat` thread that calls `state.touch()` every 30s while the native window is open (interval via `WINDOW_HEARTBEAT_INTERVAL_SECONDS`), so a busy/backgrounded WebView2 renderer cannot let the 2s monitor `os._exit(0)` a live window. `config.WEB_IDLE_SHUTDOWN_SECONDS = _int_env("NETSCOPE_WEB_IDLE_SHUTDOWN_SECONDS", 300, minimum=30, maximum=86400)` replaces the old hard-coded 120s in `WebState.should_shutdown()`. The exe and installer were rebuilt with **Python 3.12.10** (venv) + pythonnet 3.2.1 / pywebview 6.2.1: `dist/NetScope.exe` 12.9 MB, `dist/installer/NetScope-Setup.exe` 14.7 MB, silently installed over the old copy. Full suite 373 passed, 3 skipped; coverage 83.40%; frozen smoke 2 passed; new build survived 95s with no new WER events. Many stale `msedgewebview2` processes from earlier crashes remain on the machine; a reboot (or targeted cleanup) is advisable.
+
+**Traffic-chart polling watchdog follow-up (2026-11-19):** added an independent
+status/watchdog heartbeat that pushes the last known real receive/transmit rate
+when no status sample arrives for one polling interval. This keeps rolling
+labels and Chart.js data moving if a status request cycle is skipped or stalls,
+without creating overlapping `/api/status` calls.
+
 **Dashboard-latency / cold-start / admin-elevation follow-up (2026-11-17):**
 `core/monitoring.py` still caches one shared in-memory snapshot with background
 stale refresh and startup `prewarm()`; `/api/status`, device discovery, and

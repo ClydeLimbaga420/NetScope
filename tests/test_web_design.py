@@ -82,6 +82,8 @@ def test_traffic_chart_flows_continuously():
     assert "window.clearTimeout(statusTimeout)" in source
     assert 'addEventListener("visibilitychange"' in source
     assert 'chart.update("none")' in source
+    assert "lastTrafficSampleAt" in source
+    assert "Keep the chart moving when a status poll is skipped" in source
 
 
 def test_traffic_chart_stays_visible_when_disconnected():
@@ -107,6 +109,33 @@ def test_traffic_chart_skips_overlapping_status_polls():
     fetch = source.index('fetch("/api/status", options)')
     finally_block = source.index("finally {", fetch)
     assert guard < fetch < finally_block
+
+
+def test_traffic_chart_recovers_from_session_expiry_and_idle_stalls():
+    source = text(WEB / "static" / "js" / "dashboard.js")
+
+    # Request setup must be inside the try so a throw cannot leak the guard.
+    in_flight = source.index("statusInFlight = true;")
+    try_block = source.index("try {", in_flight)
+    controller = source.index("const controller =", in_flight)
+    assert try_block < controller
+
+    # A 401 must still contribute a sample instead of returning early.
+    expired = source.index("if (response.status === 401) {")
+    next_check = source.index("if (!response.ok) {", expired)
+    assert "pushTrafficSample(0, 0)" in source[expired:next_check]
+
+    assert "const STATUS_ABORT_TIMEOUT_MS = STATUS_POLL_INTERVAL_MS - 1000" in source
+    fetch = source.index("const response = await fetch", try_block)
+    assert "STATUS_ABORT_TIMEOUT_MS" in source[try_block:fetch]
+
+    # Once traffic stops, the y ceiling must shrink to the idle range so the
+    # floored line stays a visible fraction of the plot after an earlier peak.
+    assert "function updateTrafficCeiling(download, upload)" in source
+    assert "chart.options.scales.y.max = trafficCeiling" in source
+    assert "updateTrafficCeiling(download, upload);" in source
+    assert "max: TRAFFIC_MIN_CEILING_MBPS," in source
+    assert "TRAFFIC_DROP_FACTOR" in source
 
 
 def test_dashboard_pauses_polling_in_background_tabs():

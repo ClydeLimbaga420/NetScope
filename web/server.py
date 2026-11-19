@@ -113,7 +113,7 @@ class WebState:
             and getattr(self, "native_window_active", True)
         ):
             return False
-        if (time.monotonic() - self.last_heartbeat) <= 120:
+        if (time.monotonic() - self.last_heartbeat) <= config.WEB_IDLE_SHUTDOWN_SECONDS:
             return False
         return not self.jobs.has_active_jobs()
 

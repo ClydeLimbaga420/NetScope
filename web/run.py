@@ -24,6 +24,8 @@ from web.security import TOKEN_PARAM
 from web.server import WebState, create_app
 from web.window import run_native_window, webview2_available
 
+WINDOW_HEARTBEAT_INTERVAL_SECONDS = 30
+
 
 def _find_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -190,7 +192,28 @@ def _run_window_session(state: WebState, srv: object, boot_url: str, print_url: 
     server_thread.start()
     if print_url:
         _print_url(boot_url)
-    state.native_window_active = run_native_window(boot_url, logger=state.logger)
+
+    keepalive_stop = threading.Event()
+    touch = getattr(state, "touch", None)
+
+    def _window_keepalive() -> None:
+        # A busy or backgrounded WebView2 renderer can miss its JS heartbeat
+        # for minutes, which used to let the idle monitor os._exit(0) the
+        # server out from under a live window. The window host owns the server
+        # lifetime, so pulse the deadline here while the window is open.
+        while not keepalive_stop.wait(WINDOW_HEARTBEAT_INTERVAL_SECONDS):
+            if callable(touch):
+                touch()
+
+    threading.Thread(
+        target=_window_keepalive,
+        name="netscope-window-heartbeat",
+        daemon=True,
+    ).start()
+    try:
+        state.native_window_active = run_native_window(boot_url, logger=state.logger)
+    finally:
+        keepalive_stop.set()
     if not state.native_window_active:
         state.logger.warning("webview_unavailable", source="web")
         _open_url(boot_url)

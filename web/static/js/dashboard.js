@@ -23,6 +23,10 @@ const TRAFFIC_MIN_CEILING_MBPS = 1;
 const STATUS_POLL_INTERVAL_MS = 5000;
 const TRAFFIC_HISTORY_LENGTH = 60; // five minutes at the five-second cadence
 const SMOOTHING_FACTOR = 0.28;
+const TRAFFIC_DROP_FACTOR = 0.7;
+// Finish a stalled poll before the next interval fires; an abort at exactly
+// the poll interval used to produce a ten-second gap and a frozen animation.
+const STATUS_ABORT_TIMEOUT_MS = STATUS_POLL_INTERVAL_MS - 1000;
 
 const REDUCED_MOTION =
     typeof window.matchMedia === "function" &&
@@ -31,6 +35,10 @@ const REDUCED_MOTION =
 let statusInFlight = false;
 let smoothedDownload = null;
 let smoothedUpload = null;
+let trafficCeiling = TRAFFIC_MIN_CEILING_MBPS;
+let lastTrafficDownload = 0;
+let lastTrafficUpload = 0;
+let lastTrafficSampleAt = 0;
 
 
 // =====================================
@@ -71,6 +79,29 @@ function visibleTraffic(value) {
 }
 
 
+// Chart.js auto-scales to the largest value in the whole 60-sample window, so
+// after a burst the 0.05 idle floor becomes sub-pixel and the trace looks gone.
+// Drive the y ceiling from the current rate instead: grow immediately for a
+// burst, ease back down when traffic stops, and snap to the small idle range
+// once the line reaches the floor.
+function updateTrafficCeiling(download, upload) {
+
+    const current = Math.max(visibleTraffic(download), visibleTraffic(upload));
+    const target = Math.max(TRAFFIC_MIN_CEILING_MBPS, current * 1.25);
+
+    if (current <= TRAFFIC_FLOOR_MBPS + 0.001) {
+        trafficCeiling = TRAFFIC_MIN_CEILING_MBPS;
+    }
+    else {
+        const factor = target > trafficCeiling ? 1 : 0.5;
+        trafficCeiling += (target - trafficCeiling) * factor;
+    }
+
+    if (chart) chart.options.scales.y.max = trafficCeiling;
+
+}
+
+
 // Every poll contributes a sample, including failed/disconnected ones, so the
 // trace never freezes or vanishes. Only the plotted value is floored; the real
 // rate lives in the parallel arrays for tooltips.
@@ -78,6 +109,9 @@ function pushTrafficSample(download, upload) {
 
     const now = new Date().toLocaleTimeString();
 
+    lastTrafficDownload = download;
+    lastTrafficUpload = upload;
+    lastTrafficSampleAt = Date.now();
     labels.push(now);
     realDownloads.push(download);
     realUploads.push(upload);
@@ -93,6 +127,8 @@ function pushTrafficSample(download, upload) {
         uploads.shift();
 
     }
+
+    updateTrafficCeiling(download, upload);
 
     if (chart) chart.update();
 
@@ -342,6 +378,20 @@ try { chart = new Chart(
                     position: "top",
                     align: "end",
 
+                    // Keep at least one series visible: hiding both made the
+                    // whole plot look like it had vanished.
+                    onClick: (_event, item, legend) => {
+                        const instance = legend.chart;
+                        const meta = instance.getDatasetMeta(item.datasetIndex);
+                        const visible = instance.data.datasets.filter(
+                            (_dataset, index) =>
+                                !instance.getDatasetMeta(index).hidden
+                        ).length;
+                        if (!meta.hidden && visible <= 1) return;
+                        meta.hidden = !meta.hidden;
+                        instance.update();
+                    },
+
                     labels: {
                         color: chartTheme().legend,
                         usePointStyle: true,
@@ -421,8 +471,11 @@ try { chart = new Chart(
                     beginAtZero: true,
 
                     // Keep some headroom when traffic is zero so the idle line
-                    // is not glued to the bottom edge of the chart.
+                    // is not glued to the bottom edge of the chart. pushTrafficSample()
+                    // replaces max with a rate-driven ceiling after each poll.
                     suggestedMax: TRAFFIC_MIN_CEILING_MBPS,
+
+                    max: TRAFFIC_MIN_CEILING_MBPS,
 
                     grace: "10%",
 
@@ -489,22 +542,28 @@ async function refreshStatus() {
     }
 
     statusInFlight = true;
+    let statusTimeout = null;
 
-    // Bound the request so a stalled localhost fetch cannot hold the guard
-    // forever and freeze the trace after a long uptime.
-    const controller =
-        typeof AbortController === "function" ? new AbortController() : null;
-
-    const statusTimeout = controller
-        ? window.setTimeout(
-            () => controller.abort(),
-            STATUS_POLL_INTERVAL_MS
-        )
-        : null;
-
-    const options = controller ? { signal: controller.signal } : undefined;
-
+    // Everything that can throw lives inside the try so the guard and timer
+    // are always released in finally; an early throw used to freeze the chart
+    // for the rest of the session.
     try {
+
+        // Bound the request so a stalled localhost fetch cannot hold the guard
+        // forever and freeze the trace after a long uptime. Keep the timeout
+        // shorter than the poll interval so an abort and the next poll cannot
+        // collide into a ten-second animation gap.
+        const controller =
+            typeof AbortController === "function" ? new AbortController() : null;
+
+        statusTimeout = controller
+            ? window.setTimeout(
+                () => controller.abort(),
+                STATUS_ABORT_TIMEOUT_MS
+            )
+            : null;
+
+        const options = controller ? { signal: controller.signal } : undefined;
 
         const response = await fetch("/api/status", options);
 
@@ -514,6 +573,9 @@ async function refreshStatus() {
             const topStatus = $("top-status");
             if (topStatus) topStatus.dataset.live = "false";
             console.error("NetScope session expired; reopen via 'netscope gui'.");
+            // A plain return here used to skip the sample and leave the trace
+            // frozen forever once the session token changed.
+            pushTrafficSample(0, 0);
             return;
         }
 
@@ -629,19 +691,26 @@ async function refreshStatus() {
                 ? Math.max(rawUpload, 0)
                 : 0;
 
+        // Ease upward slowly but fall quickly: after a disconnection a slow
+        // decay keeps the y ceiling high and the idle line invisible for too
+        // long.
         smoothedDownload =
             smoothedDownload === null
                 ? nextDownload
                 : smoothedDownload +
                   (nextDownload - smoothedDownload) *
-                  SMOOTHING_FACTOR;
+                  (nextDownload < smoothedDownload
+                      ? TRAFFIC_DROP_FACTOR
+                      : SMOOTHING_FACTOR);
 
         smoothedUpload =
             smoothedUpload === null
                 ? nextUpload
                 : smoothedUpload +
                   (nextUpload - smoothedUpload) *
-                  SMOOTHING_FACTOR;
+                  (nextUpload < smoothedUpload
+                      ? TRAFFIC_DROP_FACTOR
+                      : SMOOTHING_FACTOR);
 
         $("download-speed").textContent =
             formatSpeed(smoothedDownload);
@@ -1212,7 +1281,10 @@ document.addEventListener("visibilitychange", () => {
         return;
     }
 
-    if (chart) chart.update("none");
+    if (chart) {
+        chart.resize();
+        chart.update("none");
+    }
 
     refreshStatus();
     refreshPacketLoss();
@@ -1542,4 +1614,16 @@ refreshPacketLoss();
 
 setInterval(refreshStatus, STATUS_POLL_INTERVAL_MS);
 setInterval(refreshPacketLoss, 60000);
+
+// Keep the chart moving when a status poll is skipped, a stall timeout loses
+// a cycle, or a request remains in flight beyond one interval. This repeats the
+// last known real rate so the UI does not appear frozen while recovery occurs.
+setInterval(() => {
+    if (document.visibilityState === "hidden") {
+        return;
+    }
+    if (Date.now() - lastTrafficSampleAt >= STATUS_POLL_INTERVAL_MS - 500) {
+        pushTrafficSample(lastTrafficDownload, lastTrafficUpload);
+    }
+}, STATUS_POLL_INTERVAL_MS);
 
