@@ -511,10 +511,23 @@ if (chart) applyChartTheme();
 // STATUS INDICATOR
 // =====================================
 
-function setStatus(element, online) {
+function setStatus(element, state) {
 
-    $(element).className =
-        `status-dot ${online ? "online" : "offline"}`;
+    const resolved =
+        state === true ? "ok" : state === false ? "failed" : state;
+    const modifier =
+        resolved === "ok" ? "online" :
+        resolved === "failed" ? "offline" : "pending";
+
+    $(element).className = `status-dot ${modifier}`;
+
+}
+
+
+function pingState(ping) {
+
+    if (ping && ping.state) return ping.state;
+    return ping && ping.online ? "ok" : "failed";
 
 }
 
@@ -594,7 +607,7 @@ async function refreshStatus() {
                 if (freshness.state === "stale") {
                     freshnessBadge.textContent = "Showing saved data · Gathering fresh data…";
                 } else if (freshness.state === "unavailable") {
-                    freshnessBadge.textContent = "Data unavailable";
+                    freshnessBadge.textContent = "Limited data \u00b7 Retrying\u2026";
                 } else {
                     freshnessBadge.textContent = "Gathering data…";
                 }
@@ -611,10 +624,13 @@ async function refreshStatus() {
 
         // INTERNET STATUS
 
-        $("internet-status").textContent =
-            ping.online ? "Connected" : "Unavailable";
+        const internetState = pingState(ping);
 
-        setStatus("internet-dot", ping.online);
+        $("internet-status").textContent =
+            internetState === "ok" ? "Connected" :
+            internetState === "pending" ? "Checking\u2026" : "Unavailable";
+
+        setStatus("internet-dot", internetState);
 
         $("internet-host").textContent =
             `Internet \u00b7 ${ping.host || "1.1.1.1"}`;
@@ -624,7 +640,9 @@ async function refreshStatus() {
         if (internetReason) {
             const internetProblem = problems.find(
                 problem => problem.source === "internet"
-            ) || (!ping.online && ping.reason ? { message: ping.reason } : null);
+            ) || (internetState === "failed" && ping.reason
+                ? { message: ping.reason }
+                : null);
 
             if (internetProblem && internetProblem.message) {
                 internetReason.textContent = internetProblem.message;
@@ -639,10 +657,13 @@ async function refreshStatus() {
 
         // GATEWAY STATUS
 
-        $("gateway-status").textContent =
-            gatewayPing.online ? "Connected" : "Unavailable";
+        const gatewayState = pingState(gatewayPing);
 
-        setStatus("gateway-dot", gatewayPing.online);
+        $("gateway-status").textContent =
+            gatewayState === "ok" ? "Connected" :
+            gatewayState === "pending" ? "Checking\u2026" : "Unavailable";
+
+        setStatus("gateway-dot", gatewayState);
 
         $("gateway-host").textContent =
             `Gateway \u00b7 ${
@@ -656,7 +677,7 @@ async function refreshStatus() {
         if (gatewayReason) {
             const gatewayProblem = problems.find(
                 problem => problem.source === "gateway"
-            ) || (!gatewayPing.online && gatewayPing.reason
+            ) || (gatewayState === "failed" && gatewayPing.reason
                 ? { message: gatewayPing.reason }
                 : null);
 

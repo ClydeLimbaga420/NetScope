@@ -58,6 +58,13 @@ MONITORING_PACKET_LOSS_CACHE_SECONDS = _int_env(
     "NETSCOPE_PACKET_LOSS_CACHE_SECONDS", 60, maximum=3600
 )
 
+# A quick, positive-only internet ping is used while the full snapshot is still
+# collecting. It is cached briefly so a stable connection can show Connected in
+# about one second without spawning a ping on every UI poll.
+MONITORING_QUICK_PING_CACHE_SECONDS = _int_env(
+    "NETSCOPE_QUICK_PING_CACHE_SECONDS", 10, maximum=300
+)
+
 # Each unreachable remote-LAN next hop can cost a full ping timeout before the
 # dashboard snapshot completes, so keep this small on low-end machines.
 SNAPSHOT_MAX_REMOTE_PINGS = _int_env("NETSCOPE_MAX_REMOTE_PINGS", 2, maximum=32)

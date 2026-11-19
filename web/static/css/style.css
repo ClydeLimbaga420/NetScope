@@ -1298,6 +1298,12 @@ body.nav-open .nav-toggle .icon-close {
     box-shadow: 0 0 0 3px var(--red-soft);
 }
 
+.status-dot.pending {
+    background: #7688a5;
+
+    box-shadow: 0 0 0 3px rgba(118, 136, 165, 0.18);
+}
+
 
  /* ---------- 9. Panels & grids ---------- */
 

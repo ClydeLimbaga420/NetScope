@@ -163,8 +163,17 @@ def test_dashboard_js_maps_freshness_states():
     assert "data_freshness" in source
     assert "Showing saved data" in source
     assert "Gathering data\u2026" in source
-    assert "Data unavailable" in source
+    assert "Limited data \\u00b7 Retrying\\u2026" in source
     assert re.search(r"freshnessBadge\.textContent\s*=", source)
+
+
+def test_dashboard_js_shows_pending_connectivity_without_claiming_outage():
+    source = text(WEB / "static" / "js" / "dashboard.js")
+    assert "function pingState(ping)" in source
+    assert 'internetState === "pending" ? "Checking\\u2026"' in source
+    assert 'gatewayState === "pending" ? "Checking\\u2026"' in source
+    assert 'setStatus("internet-dot", internetState)' in source
+    assert 'setStatus("gateway-dot", gatewayState)' in source
 
 
 def test_web_scripts_remove_legacy_diagnostics_and_handler_workarounds():

@@ -99,11 +99,15 @@ def test_status_uses_snapshot_info_and_ping_results(snapshot_factory, monkeypatc
         "host": "1.1.1.1",
         "latency_ms": 12.0,
         "online": True,
+        "state": "ok",
+        "reason": None,
     }
     assert status["gateway_ping"] == {
         "host": "192.168.1.1",
         "latency_ms": 1.0,
         "online": True,
+        "state": "ok",
+        "reason": None,
     }
     assert status["problems"] == []
 
@@ -550,7 +554,76 @@ def test_cold_start_returns_pending_status_without_blocking(snapshot_factory):
     assert status["data_freshness"]["state"] == "collecting"
     assert status["network"]["interfaces"] == []
     assert status["internet_ping"]["online"] is False
+    assert status["internet_ping"]["state"] == "pending"
+    assert status["problems"] == []
     assert started.wait(1)
+
+
+def test_cold_start_quick_ping_reports_connected_before_snapshot(snapshot_factory):
+    started = threading.Event()
+
+    def slow_snapshot():
+        started.set()
+        time.sleep(0.5)
+        return snapshot_factory()
+
+    responses = {}
+    for host, latency in (("1.1.1.1", "9"), ("8.8.8.8", "11")):
+        responses[" ".join(native.ping_args(host, config.PING_TIMEOUT_SECONDS))] = (
+            0,
+            f"Reply from {host}: time={latency}ms",
+            "",
+        )
+    runner = FakeRunner(responses)
+    service = MonitoringService(
+        SimpleNamespace(collect_snapshot=slow_snapshot),
+        runner,
+        None,
+        counter_provider=lambda: NetworkCounters(0, 0),
+        clock=lambda: 10.0,
+    )
+
+    begin = time.monotonic()
+    status = service.get_status()
+
+    assert time.monotonic() - begin < 0.2
+    assert status["data_freshness"]["state"] == "collecting"
+    assert status["internet_ping"] == {
+        "host": "1.1.1.1",
+        "latency_ms": 9.0,
+        "online": True,
+        "state": "ok",
+        "reason": None,
+    }
+    assert status["problems"] == []
+
+    pings_after_first = [call for call in runner.calls if call[0] == "ping"]
+    service.get_status()
+    assert [call for call in runner.calls if call[0] == "ping"] == pings_after_first
+    assert started.wait(1)
+
+
+def test_status_uses_any_reachable_internet_host(snapshot_factory):
+    snapshot = snapshot_factory(
+        pings={
+            "192.168.1.1": PingResult("192.168.1.1", True, 1.0),
+            "1.1.1.1": PingResult("1.1.1.1", False, returncode=1),
+            "8.8.8.8": PingResult("8.8.8.8", True, 14.0),
+        }
+    )
+    service = _service(
+        snapshot,
+        [NetworkCounters(0, 0)],
+        [10.0],
+        runner=FakeRunner(),
+    )
+
+    status = service.get_status()
+
+    assert status["internet_ping"]["host"] == "8.8.8.8"
+    assert status["internet_ping"]["online"] is True
+    assert status["internet_ping"]["state"] == "ok"
+    assert status["problems"] == []
 
 
 def test_status_reuses_collected_snapshot(snapshot_factory):

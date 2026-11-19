@@ -16,7 +16,7 @@ from typing import Any, Callable, Generic, Literal, TypeVar
 import config
 from core.device_discovery import DeviceDiscovery
 from core.info import build_info
-from core.native import parse_ping_stats
+from core.native import PingResult, parse_ping, parse_ping_stats, ping_args
 from core.snapshot import Snapshot
 from core.snapshot_cache import load_with_reason as load_snapshot_cache
 from core.snapshot_cache import save as save_snapshot_cache
@@ -221,13 +221,37 @@ def _network_payload(snapshot: Snapshot, info: dict[str, Any]) -> dict[str, Any]
     }
 
 
-def _ping_payload(host: str | None, snapshot: Snapshot) -> dict[str, Any]:
-    result = snapshot.pings.get(host) if host else None
+def _ping_result_payload(
+    host: str | None,
+    result: Any,
+    *,
+    state: str,
+    reason: str | None = None,
+) -> dict[str, Any]:
     return {
         "host": host,
         "latency_ms": getattr(result, "latency_ms", None),
         "online": bool(getattr(result, "online", False)),
+        "state": state,
+        "reason": reason,
     }
+
+
+def _ping_payload(
+    host: str | None,
+    snapshot: Snapshot,
+    *,
+    state: str | None = None,
+) -> dict[str, Any]:
+    result = snapshot.pings.get(host) if host else None
+    online = bool(getattr(result, "online", False))
+    state = state or ("ok" if online else "failed")
+    reason = None
+    if state == "failed":
+        reason = getattr(result, "error", None) or (
+            f"No reply from {host}." if host else "No default gateway was detected."
+        )
+    return _ping_result_payload(host, result, state=state, reason=reason)
 
 
 def _status_problems(
@@ -244,7 +268,11 @@ def _status_problems(
         for issue in network["diagnosis"]["issues"]
     ]
     gateway = network["gateway"]
-    if gateway and not gateway_ping["online"]:
+    if (
+        gateway
+        and gateway_ping.get("state") != "pending"
+        and not gateway_ping["online"]
+    ):
         problems.append(
             {
                 "source": "gateway",
@@ -252,7 +280,7 @@ def _status_problems(
                 "message": f"Default gateway {gateway} did not respond.",
             }
         )
-    if not internet_ping["online"]:
+    if internet_ping.get("state") != "pending" and not internet_ping["online"]:
         if gateway and gateway_ping["online"]:
             message = "The default gateway is reachable, but the internet is not."
         elif gateway:
@@ -297,8 +325,16 @@ def _pending_ping(host: str | None, reason: str) -> dict[str, Any]:
     }
 
 
-def _pending_status_ping(host: str | None) -> dict[str, Any]:
-    return {"host": host, "latency_ms": None, "online": False}
+def _pending_status_ping(
+    host: str | None, reason: str | None = None
+) -> dict[str, Any]:
+    return {
+        "host": host,
+        "latency_ms": None,
+        "online": False,
+        "state": "pending",
+        "reason": reason or "Checking connection…",
+    }
 
 
 def _snapshot_age_seconds(captured_at: str | None, now: float) -> float | None:
@@ -317,6 +353,7 @@ class MonitoringService:
     DEVICE_CACHE_SECONDS = float(config.MONITORING_DEVICE_CACHE_SECONDS)
     PACKET_LOSS_CACHE_SECONDS = float(config.MONITORING_PACKET_LOSS_CACHE_SECONDS)
     SNAPSHOT_CACHE_SECONDS = float(config.MONITORING_SNAPSHOT_CACHE_SECONDS)
+    QUICK_PING_CACHE_SECONDS = float(config.MONITORING_QUICK_PING_CACHE_SECONDS)
 
     def __init__(
         self,
@@ -352,6 +389,8 @@ class MonitoringService:
         self._snapshot_refreshing = False
         self._snapshot_from_cache = False
         self._snapshot_captured_at: str | None = None
+        self._quick_ping_lock = threading.Lock()
+        self._quick_pings: dict[str, tuple[float, PingResult]] = {}
         self._load_cached_snapshot()
 
     def _log(self, event: str, **fields: Any) -> None:
@@ -507,9 +546,67 @@ class MonitoringService:
             "total_sent_bytes": current.bytes_sent,
         }
 
+    def _quick_ping(self, host: str) -> PingResult:
+        """Run one bounded ping, reusing a recent successful result."""
+
+        now = time.monotonic()
+        with self._quick_ping_lock:
+            cached = self._quick_pings.get(host)
+        if cached and now - cached[0] < self.QUICK_PING_CACHE_SECONDS:
+            return cached[1]
+
+        timeout = config.PING_TIMEOUT_SECONDS
+        try:
+            result = self.runner.run(ping_args(host, timeout), timeout=timeout + 2)
+            ping = parse_ping(
+                host, f"{result.stdout}\n{result.stderr}", result.returncode
+            )
+            if getattr(result, "timed_out", False):
+                ping.online = False
+                ping.error = ping.error or "Ping timed out."
+            elif getattr(result, "error", None):
+                ping.online = False
+                ping.error = str(result.error)
+        except Exception as exc:  # a failed quick probe must not fail the API
+            ping = PingResult(host=host, online=False, error=str(exc))
+
+        if ping.online:
+            with self._quick_ping_lock:
+                self._quick_pings[host] = (time.monotonic(), ping)
+        return ping
+
+    def _quick_internet_pings(self, hosts: tuple[str, ...]) -> dict[str, PingResult]:
+        if not hosts:
+            return {}
+        with ThreadPoolExecutor(max_workers=len(hosts)) as executor:
+            futures = {host: executor.submit(self._quick_ping, host) for host in hosts}
+            return {host: future.result() for host, future in futures.items()}
+
+    def _status_internet_ping(self, snapshot: Snapshot | None) -> dict[str, Any]:
+        """Prefer positive evidence from the snapshot or a quick bounded ping."""
+
+        hosts = tuple(config.INTERNET_PING_HOSTS)
+        default_host = hosts[0] if hosts else None
+
+        if snapshot is not None:
+            for host in hosts:
+                result = snapshot.pings.get(host)
+                if result is not None and result.online:
+                    return _ping_result_payload(host, result, state="ok")
+
+        quick = self._quick_internet_pings(hosts)
+        for host in hosts:
+            result = quick.get(host)
+            if result is not None and result.online:
+                return _ping_result_payload(host, result, state="ok")
+
+        if snapshot is not None and any(host in snapshot.pings for host in hosts):
+            host = next((host for host in hosts if host in snapshot.pings), default_host)
+            return _ping_payload(host, snapshot, state="failed")
+        return _pending_status_ping(default_host)
+
     def get_status(self) -> dict[str, Any]:
         snapshot = self.get_snapshot()
-        internet_host = config.INTERNET_PING_HOSTS[0]
         if snapshot is None:
             status: dict[str, Any] = {
                 "network": {
@@ -526,14 +623,14 @@ class MonitoringService:
                     },
                 },
                 "traffic": _zero_traffic(),
-                "internet_ping": _pending_status_ping(internet_host),
+                "internet_ping": self._status_internet_ping(None),
                 "gateway_ping": _pending_status_ping(None),
                 "problems": [],
             }
         else:
             info = build_info(snapshot)
             network = _network_payload(snapshot, info)
-            internet_ping = _ping_payload(internet_host, snapshot)
+            internet_ping = self._status_internet_ping(snapshot)
             gateway_ping = _ping_payload(snapshot.gateway, snapshot)
             status = {
                 "network": network,

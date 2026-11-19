@@ -14,8 +14,8 @@ Menu/desktop shortcuts, uninstaller, WebView2 handling, and a `.netscope-inno`
 marker. `netscope install`/`uninstall` still manage portable installs and refuse
 installer-managed copies. CI covers tests on Python 3.11/3.14, 80% coverage,
 Playwright browser smoke + screenshots, frozen exe smoke, and an Inno
-install/uninstall smoke. Latest local suite: 415 passed, 3 skipped (2026-11-19);
-coverage 83.24% over `core`/`fixes`/`powershell`.
+install/uninstall smoke. Latest local suite: 418 passed, 3 skipped (2026-11-19);
+coverage 83.26% over `core`/`fixes`/`powershell`.
 Manual validation (Windows 10
 VM checklist, window/UAC/installer cases, and human screenshot review) is
 deferred for now by request; it is a release-confidence item, not a code or
@@ -98,6 +98,19 @@ Full suite: 415 passed, 3 skipped; coverage 83.24%; `node --check` clean. The
 frozen exe/installer artifacts have not been rebuilt with these changes, and live
 window/uninstall process cleanup needs manual validation.
 
+**Fast connectivity status follow-up (2026-11-19):** the Connectivity card no
+longer labels a still-collecting cold start as "Unavailable". `core/monitoring.py`
+adds a bounded, positive-only quick ping cache
+(`NETSCOPE_QUICK_PING_CACHE_SECONDS`, default 10) that pings all
+`INTERNET_PING_HOSTS` concurrently while the full snapshot is collecting, so a
+stable connection can show Connected in about one second. Status now prefers any
+reachable configured host (matching `NET-PING`) and emits explicit
+`state`/`reason` fields; `dashboard.js` renders pending probes as "Checking…"
+with a gray dot, and the freshness badge says "Limited data · Retrying…" instead
+of "Data unavailable" when only full details are missing. Full suite: 418 passed,
+3 skipped; coverage 83.26%; `node --check` clean. Live cold-start timing on a
+slow machine remains a manual validation item.
+
 **Dashboard-latency / cold-start / admin-elevation follow-up (2026-11-17):**
 `core/monitoring.py` still caches one shared in-memory snapshot with background
 stale refresh and startup `prewarm()`; `/api/status`, device discovery, and
@@ -108,7 +121,7 @@ serves saved data immediately with `data_freshness.state = "stale"`, and returns
 non-blocking pending payload with `state = "collecting"` on a true first launch;
 failed refreshes report `state = "unavailable"` and an `error`. The Connectivity
 card shows a `#data-freshness` badge ("Showing saved data · Gathering fresh
-data…", "Gathering data…", or "Data unavailable") until the refresh is fresh.
+data…", "Gathering data…", or "Limited data · Retrying…") until the refresh is fresh.
 Elevation restores a headless elevated backend (`--no-browser` + `windowless=True`);
 the original WebView window navigates to the elevated server, stays open across the
 handoff, and notifies the elevated process through `POST /__elevate_shutdown__`

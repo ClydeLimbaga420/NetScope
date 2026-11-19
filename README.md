@@ -43,6 +43,7 @@ There is no LAN-hosted dashboard or separate legacy server.
 
 ### Monitoring and device discovery
 - Combined Internet and Gateway connectivity status card
+- Fast positive-only internet status while full network details are collecting
 - Internet connectivity and ping latency monitoring
 - Packet loss monitoring for internet and gateway pings
 - Smoothed live bandwidth charts
