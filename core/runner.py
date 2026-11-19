@@ -111,6 +111,11 @@ class CommandRunner(ABC):
         raise NotImplementedError
 
 
+_CREATE_SUSPENDED = 0x00000004
+_THREAD_SUSPEND_RESUME = 0x0002
+_TH32CS_SNAPTHREAD = 0x00000004
+
+
 def _creation_flags() -> int:
     if os.name == "nt":
         return int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
@@ -215,6 +220,76 @@ def _close_kill_on_close_job(job: tuple[Any, Any] | None) -> None:
             pass
 
 
+def _resume_suspended_process(process: Any) -> bool:
+    """Resume the initial thread of a process created with CREATE_SUSPENDED.
+
+    ``subprocess.Popen`` closes the thread handle it receives from
+    ``CreateProcess``, so the thread is located through a Toolhelp snapshot
+    and reopened here.  Returning False means the process was left suspended
+    and must be killed by the caller.
+    """
+
+    if os.name != "nt" or not hasattr(process, "_handle"):
+        return True
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class ThreadEntry32(ctypes.Structure):
+            _fields_ = [
+                ("dwSize", wintypes.DWORD),
+                ("cntUsage", wintypes.DWORD),
+                ("th32ThreadID", wintypes.DWORD),
+                ("th32OwnerProcessID", wintypes.DWORD),
+                ("tpBasePri", wintypes.LONG),
+                ("tpDeltaPri", wintypes.LONG),
+                ("dwFlags", wintypes.DWORD),
+            ]
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+        kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+        kernel32.Thread32First.argtypes = [wintypes.HANDLE, ctypes.POINTER(ThreadEntry32)]
+        kernel32.Thread32First.restype = wintypes.BOOL
+        kernel32.Thread32Next.argtypes = [wintypes.HANDLE, ctypes.POINTER(ThreadEntry32)]
+        kernel32.Thread32Next.restype = wintypes.BOOL
+        kernel32.OpenThread.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel32.OpenThread.restype = wintypes.HANDLE
+        kernel32.ResumeThread.argtypes = [wintypes.HANDLE]
+        kernel32.ResumeThread.restype = wintypes.DWORD
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel32.CloseHandle.restype = wintypes.BOOL
+
+        snapshot = kernel32.CreateToolhelp32Snapshot(_TH32CS_SNAPTHREAD, 0)
+        if not snapshot or snapshot == wintypes.HANDLE(-1).value:
+            return False
+        try:
+            entry = ThreadEntry32()
+            entry.dwSize = ctypes.sizeof(entry)
+            thread_id = None
+            if kernel32.Thread32First(snapshot, ctypes.byref(entry)):
+                while True:
+                    if entry.th32OwnerProcessID == process.pid:
+                        thread_id = entry.th32ThreadID
+                        break
+                    if not kernel32.Thread32Next(snapshot, ctypes.byref(entry)):
+                        break
+            if thread_id is None:
+                return False
+            thread = kernel32.OpenThread(_THREAD_SUSPEND_RESUME, False, thread_id)
+            if not thread or thread == wintypes.HANDLE(-1).value:
+                return False
+            try:
+                previous = kernel32.ResumeThread(thread)
+                return previous != 0xFFFFFFFF
+            finally:
+                kernel32.CloseHandle(thread)
+        finally:
+            kernel32.CloseHandle(snapshot)
+    except Exception:
+        return False
+
+
 class SubprocessRunner(CommandRunner):
     """Real runner backed by :mod:`subprocess` with strict safety rules."""
 
@@ -286,7 +361,8 @@ class SubprocessRunner(CommandRunner):
                 cwd=cwd,
                 env=process_env,
                 shell=False,
-                creationflags=_creation_flags(),
+                creationflags=_creation_flags()
+                | (_CREATE_SUSPENDED if os.name == "nt" else 0),
             )
         except (OSError, ValueError) as exc:
             duration = time.monotonic() - started
@@ -300,6 +376,22 @@ class SubprocessRunner(CommandRunner):
             return result
 
         process_job = _attach_kill_on_close_job(process)
+        if not _resume_suspended_process(process):
+            _close_kill_on_close_job(process_job)
+            try:
+                process.kill()
+                process.communicate(timeout=5)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+            duration = time.monotonic() - started
+            result = CommandResult(
+                args=tuple(argv),
+                returncode=127,
+                duration_seconds=duration,
+                error="failed to resume child process",
+            )
+            self._log(argv, result, effective_timeout)
+            return result
         try:
             if cancel_event is None:
                 stdout, stderr = process.communicate(

@@ -9,6 +9,7 @@ import pytest
 from flask import Flask
 import psutil
 
+import core.runner as runner
 from core.runner import CommandCancelled, SubprocessRunner, cancellation_scope
 from web.jobs import JobManager
 
@@ -73,6 +74,49 @@ def test_cancel_kills_descendant_processes(tmp_path):
     assert not thread.is_alive()
     assert any(isinstance(error, CommandCancelled) for error in errors)
     assert not psutil.pid_exists(child_pid)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows Job Object behavior")
+def test_descendant_cannot_escape_while_job_assignment_is_delayed(tmp_path, monkeypatch):
+    real_attach = runner._attach_kill_on_close_job
+
+    def delayed_attach(process):
+        time.sleep(0.25)
+        return real_attach(process)
+
+    monkeypatch.setattr(runner, "_attach_kill_on_close_job", delayed_attach)
+
+    cancel_event = threading.Event()
+    child_pid_file = tmp_path / "child.pid"
+    errors: list[BaseException] = []
+    parent_code = (
+        "import subprocess,sys,time; "
+        "child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)']); "
+        "open(sys.argv[1],'w').write(str(child.pid)); time.sleep(30)"
+    )
+
+    def run_command():
+        try:
+            with cancellation_scope(cancel_event):
+                SubprocessRunner(default_timeout=10).run(
+                    [sys.executable, "-c", parent_code, str(child_pid_file)]
+                )
+        except BaseException as exc:
+            errors.append(exc)
+
+    thread = threading.Thread(target=run_command)
+    thread.start()
+    deadline = time.monotonic() + 5
+    while not child_pid_file.exists() and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert child_pid_file.exists()
+    child_pid = int(child_pid_file.read_text(encoding="utf-8"))
+    cancel_event.set()
+    thread.join(5)
+
+    assert not psutil.pid_exists(child_pid)
+    assert not thread.is_alive()
+    assert any(isinstance(error, CommandCancelled) for error in errors)
 
 
 def test_job_cancellation_is_not_overwritten_when_worker_finishes():
