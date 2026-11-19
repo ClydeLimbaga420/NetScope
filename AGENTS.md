@@ -45,6 +45,21 @@ skips status/packet-loss polls in hidden tabs, refreshes both on
 3 skipped; coverage 83.67%. Crash reproduction on the user's low-end machine
 and a slow-machine timing check remain manual validation items.
 
+**Log-overload follow-up (2026-11-19):** `config.LOG_CLEAR_INTERVAL_SECONDS`
+(default 180, `NETSCOPE_LOG_CLEAR_INTERVAL_SECONDS`, 0 disables) drives a daemon
+cleanup thread started by `web/run.py` for the server lifetime.
+`core/logging_config.py` owns `clear_logs()` (truncates the active log under the
+`RotatingFileHandler` lock so the live stream keeps writing at offset 0, and
+deletes rotated backups) and `start_log_cleanup()` (stops on shutdown).
+`/api/logs` reads a bounded `deque` tail rather than the whole file, and the
+Troubleshoot log view auto-refreshes every 3 minutes while open. Switching to
+administrator (`POST /api/elevate`) also calls `clear_logs()` after a successful
+launch, so the elevated session starts with an empty log; a cancelled UAC
+prompt leaves logs untouched. Added 5 tests; focused 66 passed, full suite 371
+passed, 3 skipped, coverage 83.40%, `node --check` clean. A stale untracked
+`modules/__pycache__` was removed again. Confirming the crash no longer
+reproduces on the user's machine is manual.
+
 **Dashboard-latency / cold-start / admin-elevation follow-up (2026-11-17):**
 `core/monitoring.py` still caches one shared in-memory snapshot with background
 stale refresh and startup `prewarm()`; `/api/status`, device discovery, and

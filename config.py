@@ -62,6 +62,15 @@ MONITORING_PACKET_LOSS_CACHE_SECONDS = _int_env(
 # dashboard snapshot completes, so keep this small on low-end machines.
 SNAPSHOT_MAX_REMOTE_PINGS = _int_env("NETSCOPE_MAX_REMOTE_PINGS", 2, maximum=32)
 
+# Log hygiene. Command-heavy scans (device discovery in particular) can write
+# thousands of JSON lines in a few minutes. On a low-end machine the growing
+# file and the whole-file reads behind the log view can stall the app, so the
+# live front ends clear the rotating log on this interval. Override with
+# NETSCOPE_LOG_CLEAR_INTERVAL_SECONDS; 0 disables the automatic clear.
+LOG_CLEAR_INTERVAL_SECONDS = _int_env(
+    "NETSCOPE_LOG_CLEAR_INTERVAL_SECONDS", 180, minimum=0, maximum=86400
+)
+
 # --- diagnostic pipeline -------------------------------------------------
 
 # Local device first, outward. Keep this order stable: the engine reports the

@@ -11,6 +11,7 @@ import logging
 import logging.handlers
 import os
 import sys
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -222,6 +223,101 @@ def flush_logging() -> None:
                 handler.flush()
             except Exception:
                 pass
+
+
+def clear_logs(log_dir: Path | None = None, *, include_backups: bool = True) -> bool:
+    """Truncate the active log and, by default, remove rotated backups.
+
+    The truncate happens while holding the ``RotatingFileHandler`` lock and
+    keeps its stream open, so a live handler can keep writing straight to the
+    start of the file instead of leaving a sparse hole of NUL bytes. Returns
+    ``True`` when at least one file was actually cleared.
+    """
+
+    directory = Path(log_dir) if log_dir is not None else config.log_dir()
+    active = directory / LOG_FILE_NAME
+    cleared = False
+
+    logger = logging.getLogger("netscope")
+    for handler in list(logger.handlers):
+        if not isinstance(handler, logging.handlers.RotatingFileHandler):
+            continue
+        try:
+            if Path(getattr(handler, "baseFilename", "")).resolve() != active.resolve():
+                continue
+        except Exception:
+            continue
+        handler.acquire()
+        try:
+            handler.flush()
+            stream = getattr(handler, "stream", None)
+            if stream is not None and not stream.closed:
+                stream.seek(0)
+                stream.truncate(0)
+                cleared = True
+        except Exception:
+            pass
+        finally:
+            handler.release()
+
+    # With no explicit directory and no live handler there is nothing safely
+    # addressable: avoid truncating config.log_dir() as a side effect (e.g. in
+    # tests that use a null logger) and just report that nothing was cleared.
+    if not cleared and log_dir is not None:
+        try:
+            if active.exists():
+                active.write_text("", encoding="utf-8")
+                cleared = True
+        except Exception:
+            pass
+
+    if include_backups:
+        try:
+            for path in directory.glob(f"{LOG_FILE_NAME}.*"):
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+        except Exception:
+            pass
+
+    return cleared
+
+
+def start_log_cleanup(
+    interval_seconds: float,
+    shutdown_event: threading.Event,
+    logger: StructuredLogger | None = None,
+    log_dir: Path | None = None,
+) -> threading.Thread | None:
+    """Run :func:`clear_logs` on a daemon thread until *shutdown_event* is set.
+
+    A non-positive interval disables the cleanup and returns ``None``. The
+    thread is a daemon so it never keeps the process alive on its own.
+    """
+
+    if interval_seconds <= 0:
+        return None
+
+    def _run() -> None:
+        while not shutdown_event.wait(interval_seconds):
+            try:
+                if clear_logs(log_dir) and logger is not None:
+                    logger.event(
+                        "logs_cleared",
+                        source="log_cleanup",
+                        interval_seconds=interval_seconds,
+                    )
+            except Exception:
+                pass
+
+    thread = threading.Thread(
+        target=_run,
+        name="netscope-log-cleanup",
+        daemon=True,
+    )
+    thread.start()
+    return thread
 
 
 class NullLogger:

@@ -9,6 +9,7 @@ import sys
 import threading
 import time
 import uuid
+from collections import deque
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +20,7 @@ from cli.admin import is_admin, relaunch_elevated
 from cli.render import render_report_text
 from cli.utilities import UtilityRunner
 from core.info import build_info
-from core.logging_config import LOG_FILE_NAME
+from core.logging_config import LOG_FILE_NAME, clear_logs
 from fixes.catalog import CatalogError, load_catalog
 from fixes.executor import FixExecutor
 from fixes.gateway_config import auto_configure_gateway
@@ -313,11 +314,12 @@ def api_logs():  # type: ignore[no-untyped-def]
     if not log_path.exists():
         return jsonify({"path": str(log_path), "entries": []})
     try:
-        lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        with log_path.open("r", encoding="utf-8", errors="replace") as handle:
+            lines = deque(handle, maxlen=tail_n)
     except Exception as exc:  # noqa: BLE001
         return _err("log_read_failed", str(exc), 500)
     entries = []
-    for line in lines[-tail_n:]:
+    for line in lines:
         try:
             obj = json.loads(line)
         except Exception:
@@ -477,6 +479,9 @@ def api_elevate():  # type: ignore[no-untyped-def]
             _restore_elevate_instance(st)
         return _err("elevate_cancelled", st.elevate_handoff["error"], 409)
 
+    # The administrator process logs to the same rotating file. Start its
+    # session with an empty log instead of the standard user's history.
+    clear_logs()
     st.logger.action("web", "elevate_requested")
     return jsonify({"ok": True, "handoff": True})
 

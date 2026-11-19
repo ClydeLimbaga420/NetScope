@@ -2,8 +2,15 @@ from __future__ import annotations
 
 import json
 import os
+import threading
+import time
 
-from core.logging_config import flush_logging, setup_logging
+from core.logging_config import (
+    clear_logs,
+    flush_logging,
+    setup_logging,
+    start_log_cleanup,
+)
 
 
 def _read_records(directory):
@@ -84,6 +91,87 @@ def test_logging_rotation(tmp_path):
     assert any(path.name.endswith(".1") for path in files)
     # Every file must still contain valid JSON lines.
     assert _read_records(tmp_path)
+
+
+def test_clear_logs_truncates_active_and_removes_backups(tmp_path):
+    logger = setup_logging(
+        "test", session_id="s", log_dir=tmp_path, max_bytes=200, backup_count=2
+    )
+    for index in range(40):
+        logger.event("filler", index=index, payload="x" * 30)
+    flush_logging()
+    assert (tmp_path / "netscope.log").stat().st_size > 0
+    assert list(tmp_path.glob("netscope.log.*"))
+
+    assert clear_logs(tmp_path) is True
+
+    assert (tmp_path / "netscope.log").read_text(encoding="utf-8") == ""
+    assert not list(tmp_path.glob("netscope.log.*"))
+
+    # The live handler must keep writing valid JSON at the start of the file.
+    logger.event("after_clear", value=1)
+    flush_logging()
+    records = [
+        json.loads(line)
+        for line in (tmp_path / "netscope.log").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert [record["event"] for record in records] == ["after_clear"]
+    assert records[0]["fields"]["value"] == 1
+
+
+def test_clear_logs_uses_active_handler_without_explicit_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr("core.logging_config.config.log_dir", lambda: tmp_path)
+    logger = setup_logging("test", session_id="s", log_dir=tmp_path)
+    logger.event("before")
+    flush_logging()
+    active = tmp_path / "netscope.log"
+    assert active.stat().st_size > 0
+
+    assert clear_logs() is True
+    assert active.stat().st_size == 0
+
+
+def test_clear_logs_can_keep_rotated_backups(tmp_path):
+    logger = setup_logging(
+        "test", session_id="s", log_dir=tmp_path, max_bytes=200, backup_count=2
+    )
+    for index in range(40):
+        logger.event("filler", index=index, payload="x" * 30)
+    flush_logging()
+    assert list(tmp_path.glob("netscope.log.*"))
+
+    assert clear_logs(tmp_path, include_backups=False) is True
+
+    assert (tmp_path / "netscope.log").stat().st_size == 0
+    assert list(tmp_path.glob("netscope.log.*"))
+
+
+def test_start_log_cleanup_disabled_for_nonpositive_interval():
+    stop = threading.Event()
+    assert start_log_cleanup(0, stop) is None
+    assert start_log_cleanup(-1, stop) is None
+
+
+def test_start_log_cleanup_clears_on_interval_and_stops(tmp_path):
+    logger = setup_logging("test", session_id="s", log_dir=tmp_path)
+    logger.event("before")
+    flush_logging()
+    active = tmp_path / "netscope.log"
+    assert active.stat().st_size > 0
+
+    stop = threading.Event()
+    thread = start_log_cleanup(0.05, stop, log_dir=tmp_path)
+    assert thread is not None
+    try:
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline and active.stat().st_size:
+            time.sleep(0.02)
+        assert active.stat().st_size == 0
+    finally:
+        stop.set()
+        thread.join(timeout=2)
+    assert not thread.is_alive()
 
 
 def test_reinitialising_logging_does_not_duplicate_handlers(tmp_path):

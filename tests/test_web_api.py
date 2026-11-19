@@ -1154,6 +1154,10 @@ def test_elevate_cancelled_keeps_server_running(client, monkeypatch):
     c, st = client
     token = _boot(c, st)
     monkeypatch.setattr("web.api.relaunch_elevated", lambda _argv, **_kwargs: False)
+    monkeypatch.setattr(
+        "web.api.clear_logs",
+        lambda: pytest.fail("logs must not be cleared when elevation is cancelled"),
+    )
 
     response = c.post("/api/elevate", headers=_post_headers(st, token), json={})
 
@@ -1183,6 +1187,7 @@ def test_elevate_requests_restart(client, monkeypatch):
         return True
 
     monkeypatch.setattr("web.api.relaunch_elevated", relaunch)
+    monkeypatch.setattr("web.api.clear_logs", lambda: calls.append(("clear", None)) or True)
     monkeypatch.setattr("web.run._remove_lock", lambda _pid: calls.append(("remove", None)))
     monkeypatch.setattr(
         "web.run._release_instance_lock",
@@ -1207,6 +1212,7 @@ def test_elevate_requests_restart(client, monkeypatch):
     assert calls[2][1][calls[2][1].index("--handoff-token") + 1] == (
         st.elevate_handoff["callback_token"]
     )
+    assert ("clear", None) in calls
     assert response.get_json()["handoff"] is True
     assert st.elevate_handoff["active"] is True
     assert st.instance_lock_handle is None

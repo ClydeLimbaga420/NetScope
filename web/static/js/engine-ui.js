@@ -13,6 +13,8 @@
     stack: "TCP/IP stack",
   };
   const SVG_NS = "http://www.w3.org/2000/svg";
+  const LOG_VIEW_REFRESH_MS = 180000;
+  let logsRefreshTimer = null;
 
   function element(tag, className, text) {
     const node = document.createElement(tag);
@@ -550,12 +552,36 @@
     return text.length > 240 ? `${text.slice(0, 237)}...` : text;
   }
 
+  function stopLogsRefresh() {
+    if (logsRefreshTimer !== null) {
+      clearInterval(logsRefreshTimer);
+      logsRefreshTimer = null;
+    }
+  }
+
+  function scheduleLogsRefresh() {
+    stopLogsRefresh();
+    logsRefreshTimer = setInterval(async () => {
+      const stage = $("diag-stage");
+      if (!stage || !stage.querySelector("[data-logs-view='1']")) {
+        stopLogsRefresh();
+        return;
+      }
+      try {
+        renderLogs(await api("/api/logs?tail=100"));
+      } catch (error) {
+        stopLogsRefresh();
+      }
+    }, LOG_VIEW_REFRESH_MS);
+  }
+
   function renderLogs(payload) {
     const stage = $("diag-stage");
     if (!stage) return;
     const entries = ((payload && payload.entries) || []).slice().reverse();
     stage.replaceChildren();
     const card = element("div", "engine-output");
+    card.dataset.logsView = "1";
     card.append(cardHead("RECENT LOGS", JSON.stringify(payload, null, 2)));
     card.append(element(
       "p",
@@ -583,6 +609,7 @@
     }
     stage.append(card);
     renderToolPanel(stage);
+    scheduleLogsRefresh();
   }
 
   function formatValue(value) {

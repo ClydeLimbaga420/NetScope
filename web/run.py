@@ -19,6 +19,7 @@ from urllib.parse import urlsplit, urlunsplit
 from werkzeug.serving import make_server
 
 import config
+from core.logging_config import start_log_cleanup
 from web.security import TOKEN_PARAM
 from web.server import WebState, create_app
 from web.window import run_native_window, webview2_available
@@ -438,6 +439,7 @@ def run_web_ui(
     state = WebState(mode="web")
     if handoff_token:
         state.elevate_shutdown_token = handoff_token
+    start_log_cleanup(config.LOG_CLEAR_INTERVAL_SECONDS, state.shutdown_event, state.logger)
     try:
         monitoring = getattr(getattr(state, "runtime", None), "monitoring", None)
         if monitoring is not None:
