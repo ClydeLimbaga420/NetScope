@@ -52,7 +52,7 @@ cleanup thread started by `web/run.py` for the server lifetime.
 `RotatingFileHandler` lock so the live stream keeps writing at offset 0, and
 deletes rotated backups) and `start_log_cleanup()` (stops on shutdown).
 `/api/logs` reads a bounded `deque` tail rather than the whole file, and the
-Troubleshoot log view auto-refreshes every 3 minutes while open. Switching to
+Troubleshoot log view auto-refreshes every 30 seconds while open. Switching to
 administrator (`POST /api/elevate`) also calls `clear_logs()` after a successful
 launch, so the elevated session starts with an empty log; a cancelled UAC
 prompt leaves logs untouched. Added 5 tests; focused 66 passed, full suite 371

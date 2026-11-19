@@ -13,7 +13,7 @@
     stack: "TCP/IP stack",
   };
   const SVG_NS = "http://www.w3.org/2000/svg";
-  const LOG_VIEW_REFRESH_MS = 180000;
+  const LOG_VIEW_REFRESH_MS = 30000;
   let logsRefreshTimer = null;
 
   function element(tag, className, text) {
