@@ -111,6 +111,17 @@ of "Data unavailable" when only full details are missing. Full suite: 418 passed
 3 skipped; coverage 83.26%; `node --check` clean. Live cold-start timing on a
 slow machine remains a manual validation item.
 
+**Polling/termination gap follow-up (2026-11-19):** `dashboard.js` now uses one
+`PACKET_LOSS_POLL_INTERVAL_MS = 180000` constant for both the 3-minute poll and
+the `visibilitychange` throttle; the old 60-second visibility check produced an
+extra packet-loss request on tab switches. `cli/stop.py::stop_running_ui()` now
+force-stops remaining NetScope processes in a `finally` block, so a failed
+session handshake, a rejected shutdown, or a request error cannot leave the UI
+alive during `netscope stop` or uninstall (`__stop_all__`). Both fixes were done
+test-first (three RED/GREEN cycles, each failure verified before implementation).
+Focused tests: 48 passed; full suite: 423 passed, 2 skipped; coverage 83.26%;
+`node --check` clean.
+
 **Dashboard-latency / cold-start / admin-elevation follow-up (2026-11-17):**
 `core/monitoring.py` still caches one shared in-memory snapshot with background
 stale refresh and startup `prewarm()`; `/api/status`, device discovery, and

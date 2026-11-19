@@ -109,7 +109,8 @@ def stop_running_ui() -> str:
             response.read()
             if response.status != 200:
                 return "error"
-        _force_stop_remaining(lock)
         return "stopped"
     except (OSError, urllib.error.URLError, ValueError, TypeError, KeyError):
         return "error"
+    finally:
+        _force_stop_remaining(lock)

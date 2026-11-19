@@ -131,6 +131,43 @@ def test_stop_running_ui_error_on_shutdown_rejection(lock_file, monkeypatch):
     assert stop.stop_running_ui() == "error"
 
 
+@pytest.mark.parametrize(
+    "opener",
+    [FakeOpener(session_token=""), FakeOpener(shutdown_status=403)],
+    ids=["missing-session-token", "shutdown-rejected"],
+)
+def test_stop_force_stops_after_failed_graceful_shutdown(lock_file, monkeypatch, opener):
+    monkeypatch.setattr(
+        stop.socket, "create_connection", lambda *_a, **_k: contextlib.nullcontext()
+    )
+    monkeypatch.setattr(stop.urllib.request, "build_opener", lambda *_args: opener)
+    forced = []
+    monkeypatch.setattr(
+        stop, "_force_stop_remaining", lambda lock: forced.append(lock) or 0
+    )
+
+    assert stop.stop_running_ui() == "error"
+    assert forced == [{"port": 54321, "boot_token": "boot-token"}]
+
+
+def test_stop_force_stops_on_request_error(lock_file, monkeypatch):
+    class BrokenOpener:
+        def open(self, *_args, **_kwargs):
+            raise OSError("unreachable")
+
+    monkeypatch.setattr(
+        stop.socket, "create_connection", lambda *_a, **_k: contextlib.nullcontext()
+    )
+    monkeypatch.setattr(stop.urllib.request, "build_opener", lambda *_args: BrokenOpener())
+    forced = []
+    monkeypatch.setattr(
+        stop, "_force_stop_remaining", lambda lock: forced.append(lock) or 0
+    )
+
+    assert stop.stop_running_ui() == "error"
+    assert len(forced) == 1
+
+
 def test_force_stop_only_kills_lock_pid_when_it_is_netscope(lock_file, monkeypatch):
     lock_file.write_text(
         json.dumps({"port": 54321, "boot_token": "boot-token", "pid": 4242}),

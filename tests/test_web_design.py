@@ -139,13 +139,21 @@ def test_dashboard_pauses_polling_in_background_tabs():
     source = text(WEB / "static" / "js" / "dashboard.js")
     # A hidden dashboard should not keep spawning status/packet-loss work.
     assert 'if (document.visibilityState === "hidden") {' in source
-    assert "setInterval(refreshPacketLoss, 180000)" in source
+    assert "setInterval(refreshPacketLoss, PACKET_LOSS_POLL_INTERVAL_MS)" in source
     assert "setInterval(heartbeat, 20000)" in text(WEB / "static" / "js" / "web-init.js")
     visible = source.index('addEventListener("visibilitychange"')
     section = source[visible : visible + 500]
     assert "refreshStatus();" in section
     assert "refreshPacketLoss();" in section
     assert "lastStatusRequestAt" in section
+
+
+def test_visibility_refresh_uses_packet_loss_poll_interval():
+    source = text(WEB / "static" / "js" / "dashboard.js")
+    assert "PACKET_LOSS_POLL_INTERVAL_MS = 180000" in source
+    visible = source.index('addEventListener("visibilitychange"')
+    section = source[visible : visible + 600]
+    assert "lastPacketLossRequestAt >= PACKET_LOSS_POLL_INTERVAL_MS" in section
 
 
 def test_status_card_has_freshness_badge():

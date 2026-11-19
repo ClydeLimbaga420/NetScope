@@ -20,6 +20,7 @@ const TRAFFIC_MIN_CEILING_MBPS = 1;
 // request storm that made a low-end machine unstable. The abort timeout stays
 // short so a stalled poll releases its guard well before the next interval.
 const STATUS_POLL_INTERVAL_MS = 15000;
+const PACKET_LOSS_POLL_INTERVAL_MS = 180000;
 const TRAFFIC_HISTORY_LENGTH = 40; // ten minutes at the fifteen-second cadence
 const SMOOTHING_FACTOR = 0.28;
 const TRAFFIC_DROP_FACTOR = 0.7;
@@ -1306,7 +1307,7 @@ document.addEventListener("visibilitychange", () => {
         refreshStatus();
     }
 
-    if (Date.now() - lastPacketLossRequestAt >= 60000) {
+    if (Date.now() - lastPacketLossRequestAt >= PACKET_LOSS_POLL_INTERVAL_MS) {
         refreshPacketLoss();
     }
 
@@ -1635,7 +1636,7 @@ refreshPacketLoss();
 // LOW-REQUEST SAMPLING: status every 15s, packet loss every 3 minutes.
 
 setInterval(refreshStatus, STATUS_POLL_INTERVAL_MS);
-setInterval(refreshPacketLoss, 180000);
+setInterval(refreshPacketLoss, PACKET_LOSS_POLL_INTERVAL_MS);
 
 // Keep the chart moving when a status poll is skipped, a stall timeout loses
 // a cycle, or a request remains in flight beyond one interval. This repeats the
