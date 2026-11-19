@@ -16,6 +16,7 @@ from __future__ import annotations
 import ctypes
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass, field
@@ -29,6 +30,24 @@ MARKER_NAME = ".netscope-install"
 INNO_MARKER_NAME = ".netscope-inno"
 APP_PATHS_KEY = r"Software\Microsoft\Windows\CurrentVersion\App Paths"
 USER_ENV_KEY = r"Environment"
+
+# A running executable cannot be deleted on Windows. When the uninstall command
+# itself is that executable, a detached copy of PowerShell waits for this
+# process to exit and then removes the locked files. Paths are passed as
+# separate arguments; the script text is static.
+_CLEANUP_SCRIPT = """param([int]$WaitPid, [string]$InstallDir, [string]$DataDir, [switch]$Purge)
+$deadline = (Get-Date).AddSeconds(30)
+while ((Get-Process -Id $WaitPid -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
+  Start-Sleep -Milliseconds 100
+}
+Remove-Item -LiteralPath (Join-Path $InstallDir 'NetScope.exe') -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath (Join-Path $InstallDir '.netscope-install') -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $InstallDir -Force -ErrorAction SilentlyContinue
+if ($Purge -and $DataDir) {
+  Remove-Item -LiteralPath $DataDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
+"""
 
 
 class InstallerError(RuntimeError):
@@ -59,6 +78,7 @@ class InstallResult:
     app_path_changed: bool = False
     removed: list[str] = field(default_factory=list)
     messages: list[str] = field(default_factory=list)
+    pending_cleanup: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -72,6 +92,7 @@ class InstallResult:
             "app_path_changed": self.app_path_changed,
             "removed": list(self.removed),
             "messages": list(self.messages),
+            "pending_cleanup": self.pending_cleanup,
         }
 
 
@@ -285,6 +306,60 @@ def _reject_inno_managed(install_dir: Path) -> None:
         )
 
 
+def _is_current_executable(target: Path) -> bool:
+    if not getattr(sys, "frozen", False):
+        return False
+    try:
+        return Path(sys.executable).resolve() == target.resolve()
+    except OSError:
+        return False
+
+
+def _schedule_self_cleanup(target_dir: Path, data_dir: Path, purge: bool) -> bool:
+    script: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".ps1", delete=False, encoding="utf-8-sig"
+        ) as handle:
+            handle.write(_CLEANUP_SCRIPT)
+            script = Path(handle.name)
+        argv = [
+            config.POWERSHELL_EXE,
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(script),
+            "-WaitPid",
+            str(os.getpid()),
+            "-InstallDir",
+            str(target_dir),
+            "-DataDir",
+            str(data_dir),
+        ]
+        if purge:
+            argv.append("-Purge")
+        flags = 0
+        if os.name == "nt":
+            flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
+                subprocess, "CREATE_NO_WINDOW", 0
+            )
+        subprocess.Popen(
+            argv,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=flags,
+            close_fds=True,
+        )
+        return True
+    except Exception:
+        if script is not None:
+            script.unlink(missing_ok=True)
+        return False
+
+
 def install(
     *,
     source_exe: Path | None = None,
@@ -366,6 +441,7 @@ def uninstall(
     )
 
     if dry_run:
+        result.messages.append("Would stop all running NetScope processes")
         result.messages.append(f"Would remove {target_dir} from the user PATH")
         result.messages.append("Would remove the App Paths registration")
         result.messages.append(f"Would remove Start Menu shortcut {shortcut}")
@@ -375,6 +451,17 @@ def uninstall(
             result.messages.append(f"Would remove user data at {data_dir}")
         return result
 
+    from cli.stop import stop_running_ui
+
+    stop_result = stop_running_ui()
+    if stop_result == "stopped":
+        result.messages.append("Stopped running NetScope processes.")
+    elif stop_result == "error":
+        result.ok = False
+        result.messages.append(
+            "Could not stop every running NetScope process; files may remain in use."
+        )
+
     active_registry = registry or WindowsRegistry()
     result.path_changed = active_registry.remove_from_user_path(str(target_dir))
     result.app_path_changed = active_registry.remove_app_path(APP_EXE_NAME)
@@ -383,25 +470,51 @@ def uninstall(
         shortcut.unlink()
         result.removed.append(str(shortcut))
 
+    self_uninstall = _is_current_executable(target)
+    scheduled = False
     if _is_our_install(target_dir):
         for name in (APP_EXE_NAME, MARKER_NAME):
             path = target_dir / name
-            if path.is_file():
+            if not path.is_file():
+                continue
+            if self_uninstall and name == APP_EXE_NAME:
+                continue
+            try:
                 path.unlink()
                 result.removed.append(str(path))
-        try:
-            target_dir.rmdir()
-            result.removed.append(str(target_dir))
-        except OSError:
-            result.messages.append(
-                f"Kept {target_dir}: it still contains files that were not installed by NetScope."
-            )
+            except OSError as exc:
+                result.ok = False
+                result.messages.append(f"Could not remove {path}: {exc}")
+        if self_uninstall:
+            scheduled = _schedule_self_cleanup(target_dir, data_dir, purge)
+            result.pending_cleanup = scheduled
+            if scheduled:
+                result.messages.append(
+                    "The running NetScope executable will be removed once this command exits."
+                )
+            else:
+                result.ok = False
+                result.messages.append(
+                    "Could not schedule removal of the running executable; remove it manually."
+                )
+        else:
+            try:
+                target_dir.rmdir()
+                result.removed.append(str(target_dir))
+            except OSError:
+                result.messages.append(
+                    f"Kept {target_dir}: it still contains files that were not installed by NetScope."
+                )
     else:
         result.messages.append(f"{target_dir} does not look like a NetScope install; left untouched.")
 
-    if purge and data_dir.exists():
-        shutil.rmtree(data_dir, ignore_errors=True)
-        result.removed.append(str(data_dir))
+    if purge and data_dir.exists() and not scheduled:
+        try:
+            shutil.rmtree(data_dir)
+            result.removed.append(str(data_dir))
+        except OSError as exc:
+            result.ok = False
+            result.messages.append(f"Could not fully remove {data_dir}: {exc}")
 
     active_registry.broadcast_environment_change()
     result.messages.append("Uninstalled NetScope. Open a new terminal for the PATH change to take effect.")

@@ -235,6 +235,7 @@ def exit_guard(monkeypatch, tmp_path):
         raise SystemExit(code)
 
     monkeypatch.setattr(run.os, "_exit", fake_exit)
+    monkeypatch.setattr(run, "cleanup_processes", lambda *_args: None)
     return removed
 
 
@@ -485,6 +486,44 @@ def test_run_web_ui_serves_until_keyboard_interrupt(monkeypatch, tmp_path, capsy
     handle = run._acquire_instance_lock()
     assert handle is not None
     run._release_instance_lock(handle)
+
+
+def test_run_web_ui_browser_mode_still_serves(monkeypatch, tmp_path):
+    _bind_failure_state(monkeypatch, tmp_path)
+    served = []
+
+    class Srv:
+        def serve_forever(self):
+            served.append(True)
+
+    class NoTimer:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def start(self):
+            return None
+
+    monkeypatch.setattr(run, "make_server", lambda *_args, **_kwargs: Srv())
+    monkeypatch.setattr(run.threading, "Timer", NoTimer)
+    monkeypatch.setattr(run, "cleanup_processes", lambda *_args: None)
+
+    assert run.run_web_ui(port=run._find_free_port(), browser=True) == 0
+    assert served == [True]
+
+
+def test_run_web_ui_cleans_up_owned_processes_on_exit(monkeypatch, tmp_path):
+    _bind_failure_state(monkeypatch, tmp_path)
+    calls = []
+
+    class Srv:
+        def serve_forever(self):
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(run, "make_server", lambda *_args, **_kwargs: Srv())
+    monkeypatch.setattr(run, "cleanup_processes", lambda state=None: calls.append(state))
+
+    assert run.run_web_ui(port=run._find_free_port(), no_browser=True) == 0
+    assert len(calls) == 1
 
 
 def test_run_web_ui_stores_elevated_shutdown_token(monkeypatch, tmp_path):

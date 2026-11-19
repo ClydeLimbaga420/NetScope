@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 GUI_INTERNAL = "__gui__"
+STOP_ALL_INTERNAL = "__stop_all__"
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 _ENTRY_POINT = _PROJECT_ROOT / "netscope.py"
 

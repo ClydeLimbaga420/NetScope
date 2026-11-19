@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import config
+from core import processes as process_tools
 
 _TOKEN_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
 
@@ -39,7 +40,11 @@ def read_lock() -> dict[str, Any] | None:
         or not set(boot_token) <= _TOKEN_CHARS
     ):
         return None
-    return {"port": port, "boot_token": boot_token}
+    result: dict[str, object] = {"port": port, "boot_token": boot_token}
+    pid = data.get("pid")
+    if isinstance(pid, int) and not isinstance(pid, bool) and pid > 0:
+        result["pid"] = pid
+    return result
 
 
 def _port_open(port: int) -> bool:
@@ -50,14 +55,31 @@ def _port_open(port: int) -> bool:
         return False
 
 
-def stop_running_ui() -> str:
-    """Ask the running instance to shut down.
+def _force_stop_remaining(lock: dict[str, object] | None) -> int:
+    """Kill any NetScope process that survived the graceful shutdown."""
 
+    pid = int(lock.get("pid") or 0) if lock else 0
+    if pid and process_tools.is_pid_netscope(pid):
+        if not process_tools.wait_for_exit(pid, timeout=config.PROCESS_EXIT_WAIT_SECONDS):
+            process_tools.terminate_tree(
+                pid, grace=config.PROCESS_TERMINATION_GRACE_SECONDS
+            )
+    return process_tools.terminate_netscope_processes(
+        grace=config.PROCESS_TERMINATION_GRACE_SECONDS
+    )
+
+
+def stop_running_ui() -> str:
+    """Stop the running instance and all other NetScope processes.
+
+    A graceful ``/api/shutdown`` request is attempted first so the UI can flush
+    its response and release its lock; anything still alive is terminated.
     Returns ``"stopped"``, ``"not_running"``, or ``"error"``.
     """
 
     lock = read_lock()
     if lock is None or not _port_open(lock["port"]):
+        _force_stop_remaining(lock)
         return "not_running"
 
     origin = f"http://127.0.0.1:{lock['port']}"
@@ -87,6 +109,7 @@ def stop_running_ui() -> str:
             response.read()
             if response.status != 200:
                 return "error"
+        _force_stop_remaining(lock)
         return "stopped"
     except (OSError, urllib.error.URLError, ValueError, TypeError, KeyError):
         return "error"

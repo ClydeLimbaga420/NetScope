@@ -736,8 +736,15 @@ def cmd_gui(args: Any, ctx: CliContext) -> int:
                 encoding="utf-8",
                 errors="replace",
             )
+            from core.processes import PERSISTENT_CHILD_PIDS
+
+            child_pid = getattr(proc, "pid", None)
+            if isinstance(child_pid, int) and child_pid > 0:
+                PERSISTENT_CHILD_PIDS.add(child_pid)
             line = _read_startup_line(proc)
             if not _valid_boot_url(line):
+                if child_pid is not None:
+                    PERSISTENT_CHILD_PIDS.discard(child_pid)
                 if proc.poll() is None:
                     proc.terminate()
                     try:
@@ -765,6 +772,19 @@ def cmd_gui(args: Any, ctx: CliContext) -> int:
         return exit_codes.INTERRUPTED
     except Exception as exc:
         return _failure(ctx, f"could not start web UI: {exc}", exit_codes.FAILURES)
+
+
+def cmd_stop(args: Any, ctx: CliContext) -> int:
+    from cli.stop import stop_running_ui
+
+    result = stop_running_ui()
+    if result == "stopped":
+        ctx.out("NetScope stopped.")
+        return exit_codes.OK
+    if result == "not_running":
+        ctx.out("NetScope is not running.")
+        return exit_codes.OK
+    return _failure(ctx, "could not stop NetScope", exit_codes.FAILURES)
 
 
 def cmd_install(args: Any, ctx: CliContext) -> int:
@@ -847,6 +867,8 @@ def cmd_uninstall(args: Any, ctx: CliContext) -> int:
             print(line, file=ctx.stdout)
         for removed in result.removed:
             print(f"Removed {removed}", file=ctx.stdout)
+    if not result.ok:
+        return _failure(ctx, "uninstall could not complete; see the messages above", exit_codes.FAILURES)
     return exit_codes.OK
 
 
@@ -871,6 +893,7 @@ HANDLERS: dict[str, Callable[[Any, CliContext], int]] = {
     "logs": cmd_logs,
     "report": cmd_report,
     "gui": cmd_gui,
+    "stop": cmd_stop,
     "install": cmd_install,
     "uninstall": cmd_uninstall,
 }

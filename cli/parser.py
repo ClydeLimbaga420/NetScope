@@ -166,6 +166,16 @@ def build_parser() -> argparse.ArgumentParser:
     gui.add_argument("--replace", action="store_true", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
     gui.add_argument("--port", type=int, default=argparse.SUPPRESS, metavar="N", help="bind web UI to this local port")
 
+    sub.add_parser(
+        "stop",
+        parents=[common],
+        help="stop the running NetScope UI and its processes",
+        description=(
+            "Ask the local UI to shut down gracefully, then terminate any "
+            "remaining NetScope processes owned by this user."
+        ),
+    )
+
     install = sub.add_parser(
         "install",
         parents=[common],

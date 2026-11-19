@@ -47,6 +47,10 @@ Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; Value
 [Run]
 Filename: "{app}\NetScope.exe"; Description: "{cm:LaunchProgram,NetScope}"; Flags: nowait postinstall skipifsilent
 
+[UninstallRun]
+; Stop every NetScope process before Windows tries to delete the running exe.
+Filename: "{app}\NetScope.exe"; Parameters: "__stop_all__"; Flags: runhidden waituntilterminated skipifdoesntexist
+
 [Code]
 function GetUserPath: string;
 begin

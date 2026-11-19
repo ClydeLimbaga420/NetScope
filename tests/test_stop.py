@@ -131,6 +131,53 @@ def test_stop_running_ui_error_on_shutdown_rejection(lock_file, monkeypatch):
     assert stop.stop_running_ui() == "error"
 
 
+def test_force_stop_only_kills_lock_pid_when_it_is_netscope(lock_file, monkeypatch):
+    lock_file.write_text(
+        json.dumps({"port": 54321, "boot_token": "boot-token", "pid": 4242}),
+        encoding="utf-8",
+    )
+    calls = []
+
+    def refuse(*_args, **_kwargs):
+        raise OSError("closed")
+
+    monkeypatch.setattr(stop.socket, "create_connection", refuse)
+    monkeypatch.setattr(stop.process_tools, "is_pid_netscope", lambda pid: calls.append(("check", pid)) or False)
+    monkeypatch.setattr(
+        stop.process_tools,
+        "terminate_tree",
+        lambda pid, **kwargs: calls.append(("kill", pid)),
+    )
+    monkeypatch.setattr(stop.process_tools, "terminate_netscope_processes", lambda **kwargs: 0)
+
+    assert stop.stop_running_ui() == "not_running"
+    assert ("kill", 4242) not in calls
+
+
+def test_force_stop_kills_stale_lock_pid(lock_file, monkeypatch):
+    lock_file.write_text(
+        json.dumps({"port": 54321, "boot_token": "boot-token", "pid": 4242}),
+        encoding="utf-8",
+    )
+
+    def refuse(*_args, **_kwargs):
+        raise OSError("closed")
+
+    monkeypatch.setattr(stop.socket, "create_connection", refuse)
+    killed = []
+    monkeypatch.setattr(stop.process_tools, "is_pid_netscope", lambda pid: True)
+    monkeypatch.setattr(stop.process_tools, "wait_for_exit", lambda pid, **kwargs: False)
+    monkeypatch.setattr(
+        stop.process_tools,
+        "terminate_tree",
+        lambda pid, **kwargs: killed.append(pid) or 1,
+    )
+    monkeypatch.setattr(stop.process_tools, "terminate_netscope_processes", lambda **kwargs: 0)
+
+    assert stop.stop_running_ui() == "not_running"
+    assert killed == [4242]
+
+
 @pytest.mark.parametrize(
     ("result", "expected_code", "message"),
     [

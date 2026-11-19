@@ -14,6 +14,7 @@ from core.logging_config import flush_logging
 from core.models import new_session_id
 from cli.launch import (
     GUI_INTERNAL,
+    STOP_ALL_INTERNAL,
     attach_parent_console,
     detach_console,
     launch_detached_gui,
@@ -24,6 +25,8 @@ from cli.launch import (
 def main(argv: Sequence[str] | None = None) -> int:
     attach_parent_console()
     args_in = list(sys.argv[1:] if argv is None else argv)
+    if args_in and args_in[0] == STOP_ALL_INTERNAL:
+        return _stop_all_processes()
     if args_in and args_in[0] == GUI_INTERNAL:
         return _run_gui_process(args_in[1:])
     if not args_in and (owns_console() or getattr(sys, "frozen", False)):
@@ -86,8 +89,32 @@ def main(argv: Sequence[str] | None = None) -> int:
             except Exception:
                 pass
         flush_logging()
+        finalize_processes()
 
     return code
+
+
+def finalize_processes() -> None:
+    """Terminate any child processes this CLI still owns when it exits."""
+
+    try:
+        from core.processes import PERSISTENT_CHILD_PIDS, terminate_children_of_current_process
+
+        terminate_children_of_current_process(exclude_pids=PERSISTENT_CHILD_PIDS)
+    except Exception:  # process cleanup must never change the CLI result
+        pass
+
+
+def _stop_all_processes() -> int:
+    """Hidden entry point used by the uninstaller to free running files."""
+
+    try:
+        from cli.stop import stop_running_ui
+
+        result = stop_running_ui()
+    except Exception:
+        return exit_codes.FAILURES
+    return exit_codes.OK if result in ("stopped", "not_running") else exit_codes.FAILURES
 
 
 def _stdin_is_tty() -> bool:

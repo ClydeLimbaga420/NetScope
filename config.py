@@ -80,6 +80,11 @@ WEB_IDLE_SHUTDOWN_SECONDS = _int_env(
     "NETSCOPE_WEB_IDLE_SHUTDOWN_SECONDS", 300, minimum=30, maximum=86400
 )
 
+# Full process termination. A graceful stop is given this long to let the
+# server exit before remaining NetScope processes are killed.
+PROCESS_EXIT_WAIT_SECONDS = 8.0
+PROCESS_TERMINATION_GRACE_SECONDS = 2.0
+
 # --- diagnostic pipeline -------------------------------------------------
 
 # Local device first, outward. Keep this order stable: the engine reports the

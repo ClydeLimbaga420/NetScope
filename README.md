@@ -31,7 +31,8 @@ There is no LAN-hosted dashboard or separate legacy server.
 
 ### Interfaces
 - CLI with `diagnose`, `fix`, `info`, `ping`, `trace`, `dns`, `arp`, `routes`,
-  `ports`, `mtu`, `monitor`, `logs`, `report`, `gui`, `install`, and `uninstall`
+  `ports`, `mtu`, `monitor`, `logs`, `report`, `gui`, `stop`, `install`, and
+  `uninstall`
 - Interactive `netscope>` shell with history, completion, and a numbered menu
 - Localhost web UI with per-check streaming, a repair library, and local assets
 - Native desktop window (WebView2) with browser fallback
@@ -92,9 +93,10 @@ netscope diagnose       # terminal: CLI diagnosis
 ```
 
 Uninstall from **Settings > Apps**, or use the Start Menu uninstaller. The
-uninstaller removes the app, shortcut, `PATH` entry and App Paths registration.
-It also offers to delete `%LOCALAPPDATA%\NetScope` (logs, reports, and fix
-backups); that option is selected by default.
+uninstaller first stops every NetScope process owned by this user, then removes
+the app, shortcut, `PATH` entry and App Paths registration. It also offers to
+delete `%LOCALAPPDATA%\NetScope` (logs, reports, and fix backups); that option
+is selected by default.
 
 ### Option B - portable executable
 
@@ -118,6 +120,9 @@ installer-managed copy (marked with `.netscope-inno`) and direct you to
 
 Remove a portable install with `NetScope.exe uninstall`, or
 `NetScope.exe uninstall --purge` to also delete `%LOCALAPPDATA%\NetScope`.
+Uninstall stops running NetScope processes first; if the uninstall command is
+itself the installed executable, Windows' file lock is handled by a detached
+cleanup step that runs after this command exits.
 
 ### Option C - from source
 
@@ -300,6 +305,7 @@ Global flags work before or after the subcommand: `--json`, `--no-color`,
 | `logs` | View/open/export the JSON-lines log | `--tail`, `--open`, `--export FILE` |
 | `report` | Save a diagnostic report | `--format txt\|json`, `--output FILE` (`-` = stdout) |
 | `gui` | Open the desktop window or browser UI | `--browser`, `--no-browser`, `--port N` |
+| `stop` | Stop the running UI and all NetScope processes for this user | |
 | `install` | Install the portable exe for the current user | `--source FILE`, `--dir DIR`, `--no-shortcut` |
 | `uninstall` | Remove the current-user install | `--dir DIR`, `--purge` |
 
@@ -391,8 +397,9 @@ create a Start Menu shortcut.
 
 The Inno Setup installer (`NetScope-Setup.exe`) also offers a desktop shortcut,
 writes an uninstaller and `.netscope-inno` marker, and handles WebView2 runtime
-installation. Uninstall it from **Settings > Apps**. It removes the app files,
-shortcut, PATH entry and App Paths key. Its final prompt asks whether to delete
+installation. Uninstall it from **Settings > Apps**: a hidden uninstall step
+first stops all running NetScope processes for this user, then removes the app
+files, shortcut, PATH entry and App Paths key. Its final prompt asks whether to delete
 `%LOCALAPPDATA%\NetScope` (logs, reports, fix backups); **Yes** is the default and
 hides Windows' own generic data prompt.
 
@@ -418,10 +425,12 @@ area (excluding the taskbar). Its initial size is capped at 1280x860 with
 24-pixel margins; the 900x600 minimum is reduced as needed on smaller displays.
 
 Only one web UI runs per user. A second launch waits for the owner to publish
-its endpoint, verifies `/health`, and reopens the existing instance. Closing one
-window does not stop the shared server. The server shuts down on
-`POST /api/shutdown`, on Ctrl+C, or after the browser heartbeat has been absent
-for 120 seconds with no active job or fix running.
+its endpoint, verifies `/health`, and reopens the existing instance. Closing the
+window, `netscope stop`, `POST /api/shutdown`, or Ctrl+C stops the shared server
+and terminates the processes it owns. The server also shuts down after the
+browser heartbeat has been absent for
+`NETSCOPE_WEB_IDLE_SHUTDOWN_SECONDS` (default 300) with no active job or fix
+running.
 
 If WebView2 is missing or pywebview cannot start, NetScope logs
 `webview_unavailable` and opens the browser UI instead. Running an elevated fix

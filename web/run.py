@@ -19,12 +19,18 @@ from urllib.parse import urlsplit, urlunsplit
 from werkzeug.serving import make_server
 
 import config
-from core.logging_config import start_log_cleanup
+from core.logging_config import flush_logging, start_log_cleanup
+from core.processes import (
+    PERSISTENT_CHILD_PIDS,
+    terminate_children_of_current_process,
+    terminate_tree,
+)
 from web.security import TOKEN_PARAM
 from web.server import WebState, create_app
 from web.window import run_native_window, webview2_available
 
 WINDOW_HEARTBEAT_INTERVAL_SECONDS = 30
+_browser_processes: set[int] = set()
 
 
 def _find_free_port() -> int:
@@ -222,7 +228,9 @@ def _run_window_session(state: WebState, srv: object, boot_url: str, print_url: 
         handoff = getattr(state, "elevate_handoff", None)
         if handoff and handoff.get("active") and handoff.get("url"):
             _notify_elevate_shutdown_for_state(state)
-            state.shutdown_event.set()
+        # Closing the window is an explicit exit: stop the shared server too,
+        # so no headless NetScope process is left behind.
+        state.shutdown_event.set()
 
     state.shutdown_event.wait()
 
@@ -266,7 +274,12 @@ def _open_url(url: str) -> bool:
             candidates.append(exe)
     for exe in candidates:
         try:
-            subprocess.Popen([exe, f"--app={url}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            proc = subprocess.Popen(
+                [exe, f"--app={url}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            child_pid = getattr(proc, "pid", None)
+            if isinstance(child_pid, int) and child_pid > 0:
+                _browser_processes.add(child_pid)
             return True
         except Exception:
             continue
@@ -364,6 +377,31 @@ def _notify_elevate_shutdown_for_state(state: WebState) -> None:
         )
 
 
+def cleanup_processes(state: WebState | None = None) -> None:
+    """Terminate everything this web UI owns before the process exits."""
+
+    if state is not None:
+        _notify_elevate_shutdown_for_state(state)
+    grace = config.PROCESS_TERMINATION_GRACE_SECONDS
+    try:
+        terminate_children_of_current_process(
+            grace=grace,
+            exclude_pids=PERSISTENT_CHILD_PIDS,
+        )
+    except Exception:
+        pass
+    for pid in list(_browser_processes):
+        try:
+            terminate_tree(pid, grace=grace)
+        except Exception:
+            pass
+    _browser_processes.clear()
+    try:
+        flush_logging()
+    except Exception:
+        pass
+
+
 def _monitor(state: WebState, interval: float = 2.0) -> None:
     while True:
         if state.shutdown_event.wait(interval):
@@ -372,6 +410,7 @@ def _monitor(state: WebState, interval: float = 2.0) -> None:
             time.sleep(0.5)
             _notify_elevate_shutdown_for_state(state)
             state.logger.event("server_shutdown", source="web", reason="api_request")
+            cleanup_processes()
             _remove_lock(os.getpid())
             os._exit(0)
 
@@ -411,6 +450,7 @@ def _monitor(state: WebState, interval: float = 2.0) -> None:
             _notify_elevate_shutdown_for_state(state)
             state.logger.event("server_shutdown", source="web", reason="heartbeat_timeout")
             state.shutdown_event.set()
+            cleanup_processes()
             _remove_lock(os.getpid())
             os._exit(0)
 
@@ -513,6 +553,7 @@ def run_web_ui(
             if print_url:
                 _print_url(boot_url)
             threading.Timer(0.6, lambda: _open_url(boot_url)).start()
+            srv.serve_forever()
         else:
             _print_url(boot_url)
             srv.serve_forever()
@@ -520,6 +561,7 @@ def run_web_ui(
         if state is not None:
             state.logger.event("server_shutdown", source="web", reason="keyboard_interrupt")
     finally:
+        cleanup_processes(state)
         handoff = getattr(state, "elevate_handoff", None) if state is not None else None
         if handoff and handoff.get("url"):
             _remove_lock(int(handoff.get("pid") or os.getpid()))

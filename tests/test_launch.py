@@ -16,7 +16,7 @@ from cli.admin import format_admin_command
 from cli.colors import Colorizer
 from cli.commands import cmd_gui
 from cli.context import CliContext, create_context
-from cli.launch import GUI_INTERNAL, gui_relaunch_argv, owns_console
+from cli.launch import GUI_INTERNAL, STOP_ALL_INTERNAL, gui_relaunch_argv, owns_console
 from cli.main import main
 from cli.parser import apply_defaults, build_parser
 from core.logging_config import NullLogger
@@ -388,6 +388,25 @@ def test_cmd_gui_detached_child_opens_window(monkeypatch):
     assert "--print-url" in popen_calls[0]
     assert "--browser" in popen_calls[0]
     assert "window launched" in ctx.stderr.getvalue().lower()
+
+
+def test_main_hidden_stop_all_token_stops_everything(monkeypatch):
+    calls = []
+    monkeypatch.setattr("cli.stop.stop_running_ui", lambda: calls.append(True) or "stopped")
+    assert main([STOP_ALL_INTERNAL]) == exit_codes.OK
+    assert calls == [True]
+
+
+def test_main_finalizes_child_processes_on_cli_exit(monkeypatch):
+    calls = []
+    monkeypatch.setattr("cli.main.attach_parent_console", lambda: False)
+    monkeypatch.setattr("cli.main.owns_console", lambda: False)
+    monkeypatch.setattr("cli.main._stdin_is_tty", lambda: False)
+    monkeypatch.setattr("cli.main.finalize_processes", lambda: calls.append(True))
+    monkeypatch.setattr("cli.commands.dispatch", lambda _args, _ctx: exit_codes.OK)
+
+    assert main(["info", "--json"]) == exit_codes.OK
+    assert calls == [True]
 
 
 def test_main_hidden_gui_token_passes_replace(monkeypatch):

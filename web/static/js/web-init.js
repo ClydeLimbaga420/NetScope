@@ -37,7 +37,7 @@
     if (!window.__netscope || !window.__netscope.ready) return;
     fetch('/api/heartbeat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(function(){});
   }
-  setInterval(heartbeat, 5000);
+  setInterval(heartbeat, 20000);
   // Keep heartbeating while the tab is hidden/backgrounded as well; Chrome
   // throttles timers but the dedicated endpoint plus any API activity keeps the
   // server alive. Also pulse on lifecycle events.

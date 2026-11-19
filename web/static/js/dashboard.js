@@ -15,24 +15,19 @@ const realUploads = [];
 const TRAFFIC_FLOOR_MBPS = 0.05;
 const TRAFFIC_MIN_CEILING_MBPS = 1;
 
-// Let each chart animation run for the whole gap between samples so the line
-// slides continuously instead of jumping and then sitting still. A five-second
-// cadence also gives slow /api/status responses time to finish: overlapping
-// refreshes used to interrupt the animation and make the trace disappear after
-// the dashboard had been open a while.
-const STATUS_POLL_INTERVAL_MS = 5000;
-const TRAFFIC_HISTORY_LENGTH = 60; // five minutes at the five-second cadence
+// Low-request cadence: one /api/status poll every 15s instead of every 5s.
+// Chart animation is disabled on purpose; a stepped trace is preferable to the
+// request storm that made a low-end machine unstable. The abort timeout stays
+// short so a stalled poll releases its guard well before the next interval.
+const STATUS_POLL_INTERVAL_MS = 15000;
+const TRAFFIC_HISTORY_LENGTH = 40; // ten minutes at the fifteen-second cadence
 const SMOOTHING_FACTOR = 0.28;
 const TRAFFIC_DROP_FACTOR = 0.7;
-// Finish a stalled poll before the next interval fires; an abort at exactly
-// the poll interval used to produce a ten-second gap and a frozen animation.
-const STATUS_ABORT_TIMEOUT_MS = STATUS_POLL_INTERVAL_MS - 1000;
-
-const REDUCED_MOTION =
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const STATUS_ABORT_TIMEOUT_MS = Math.min(6000, STATUS_POLL_INTERVAL_MS - 1000);
 
 let statusInFlight = false;
+let lastStatusRequestAt = 0;
+let lastPacketLossRequestAt = 0;
 let smoothedDownload = null;
 let smoothedUpload = null;
 let trafficCeiling = TRAFFIC_MIN_CEILING_MBPS;
@@ -340,19 +335,18 @@ try { chart = new Chart(
             maintainAspectRatio: false,
 
             animation: {
-                duration: REDUCED_MOTION ? 0 : STATUS_POLL_INTERVAL_MS,
-                easing: "linear"
+                duration: 0
             },
 
             transitions: {
                 active: {
                     animation: {
-                        duration: 400
+                        duration: 0
                     }
                 },
                 resize: {
                     animation: {
-                        duration: 400
+                        duration: 0
                     }
                 }
             },
@@ -542,6 +536,7 @@ async function refreshStatus() {
     }
 
     statusInFlight = true;
+    lastStatusRequestAt = Date.now();
     let statusTimeout = null;
 
     // Everything that can throw lives inside the try so the guard and timer
@@ -1286,8 +1281,13 @@ document.addEventListener("visibilitychange", () => {
         chart.update("none");
     }
 
-    refreshStatus();
-    refreshPacketLoss();
+    if (Date.now() - lastStatusRequestAt >= STATUS_POLL_INTERVAL_MS - 2000) {
+        refreshStatus();
+    }
+
+    if (Date.now() - lastPacketLossRequestAt >= 60000) {
+        refreshPacketLoss();
+    }
 
 });
 
@@ -1502,6 +1502,7 @@ async function refreshPacketLoss() {
     }
 
     packetLossInFlight = true;
+    lastPacketLossRequestAt = Date.now();
 
     const value = $("packet-loss");
     const detail = $("packet-loss-detail");
@@ -1610,10 +1611,10 @@ refreshPacketLoss();
 
 
 
-// SAMPLE TRAFFIC OFTEN ENOUGH FOR A CONTINUOUS, HEARTBEAT-LIKE TRACE
+// LOW-REQUEST SAMPLING: status every 15s, packet loss every 3 minutes.
 
 setInterval(refreshStatus, STATUS_POLL_INTERVAL_MS);
-setInterval(refreshPacketLoss, 60000);
+setInterval(refreshPacketLoss, 180000);
 
 // Keep the chart moving when a status poll is skipped, a stall timeout loses
 // a cycle, or a request remains in flight beyond one interval. This repeats the

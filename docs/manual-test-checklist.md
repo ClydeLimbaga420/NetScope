@@ -37,13 +37,14 @@ the VM is wired/Wi-Fi, and the results for each row.
       app logs `webview_unavailable` and opens the browser UI.
 - [ ] `netscope gui --no-browser --port 8765` prints a `/__boot__` URL and
       serves the UI at `http://127.0.0.1:8765/`.
-- [ ] Close the app window; the shared server keeps running for a second
-      window. Quit from the UI to stop it.
+- [ ] Close the app window; the shared server stops and no NetScope process is
+      left running. Relaunch to get a fresh window.
 - [ ] Launch a second instance while the first is running: it reuses the
       existing UI and exits 0; there is only one server process.
 - [ ] `netscope` with no arguments in a terminal opens the `netscope>` shell.
 - [ ] Close all browser tabs and wait; the UI shuts down after the heartbeat
-      timeout (120 s) with no active job.
+      timeout (`NETSCOPE_WEB_IDLE_SHUTDOWN_SECONDS`, default 300 s) with no
+      active job.
 - [ ] Start a long diagnosis and remove the heartbeat; the server stays alive
       while the job runs, then shuts down after it finishes.
 - [ ] Click Quit NetScope; `POST /api/shutdown` succeeds and the port lock file
@@ -174,8 +175,9 @@ result after applying the repair.
 - [ ] Run `python scripts\installer_smoke.py --installer dist\installer\NetScope-Setup.exe`
       in a disposable profile; it verifies shortcut, App Paths, PATH, version,
       uninstall, and default data removal.
-- [ ] Uninstall from **Settings > Apps**; the app, shortcut, PATH entry and App
-      Paths key are removed.
+- [ ] Launch NetScope, then uninstall from **Settings > Apps**; all NetScope
+      processes stop first, and the app, shortcut, PATH entry and App Paths key
+      are removed.
 - [ ] Uninstall data prompt opens with **Yes** selected; accept it and confirm
       `%LOCALAPPDATA%\NetScope` is removed. Repeat and choose **No**: data stays.
 - [ ] Reinstall over an existing Inno install; the version upgrades and user
@@ -198,8 +200,12 @@ result after applying the repair.
 - [ ] `NetScope.exe uninstall` removes PATH, App Paths, shortcut, and files.
 - [ ] `NetScope.exe uninstall --purge` also removes
       `%LOCALAPPDATA%\NetScope` (logs/reports/backups).
-- [ ] Kill the server before uninstall; uninstall still works, and a second
-      uninstall is harmless.
+- [ ] Uninstall while the app and its web server are running; all NetScope
+      processes are terminated before files are removed, and a second uninstall
+      is harmless.
+- [ ] Run `netscope stop` while the window is open; the window/server and any
+      spawned browser or WebView2 child processes exit, and no NetScope process
+      remains in Task Manager.
 - [ ] Install from a copied exe with `--source PATH`; the installed copy runs.
 - [ ] Install to a custom absolute directory with `--dir PATH`; uninstall with
       the same `--dir`.

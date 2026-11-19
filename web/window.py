@@ -125,7 +125,15 @@ def run_native_window(boot_url: str, logger: Any | None = None) -> bool:
         )
         if logger is not None:
             logger.event("window_started", source="web")
-        webview.start(gui="edgechromium", debug=False)
+        try:
+            webview.start(gui="edgechromium", debug=False)
+        finally:
+            destroy = getattr(webview, "destroy_window", None)
+            if callable(destroy):
+                try:
+                    destroy()
+                except Exception:
+                    pass
     except Exception:
         return False
     if logger is not None:

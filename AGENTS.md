@@ -14,9 +14,8 @@ Menu/desktop shortcuts, uninstaller, WebView2 handling, and a `.netscope-inno`
 marker. `netscope install`/`uninstall` still manage portable installs and refuse
 installer-managed copies. CI covers tests on Python 3.11/3.14, 80% coverage,
 Playwright browser smoke + screenshots, frozen exe smoke, and an Inno
-install/uninstall smoke. Latest local suite: 366 passed, 3 skipped (2026-11-18,
-excluding an untracked WIP `tests/test_stop.py` that imports a not-yet-added
-`cli.commands.cmd_stop`); coverage 83.67% over `core`/`fixes`/`powershell`.
+install/uninstall smoke. Latest local suite: 415 passed, 3 skipped (2026-11-19);
+coverage 83.24% over `core`/`fixes`/`powershell`.
 Manual validation (Windows 10
 VM checklist, window/UAC/installer cases, and human screenshot review) is
 deferred for now by request; it is a release-confidence item, not a code or
@@ -76,11 +75,28 @@ confirmation over a long session and a real disconnect is still manual.
 
 **Silent-exit / native-crash follow-up (2026-11-19):** Windows Event Viewer showed repeated `APPCRASH` events for the **installed** `NetScope.exe` (exception `0xc0000005`, faulting module `python314.dll`, plus a .NET Runtime unhandled exception), i.e. a native pythonnet/WebView2 crash in the Python 3.14 build — not a Python exception or the idle monitor. The idle-shutdown path was still hardened: `web/run.py::_run_window_session()` now runs a `netscope-window-heartbeat` thread that calls `state.touch()` every 30s while the native window is open (interval via `WINDOW_HEARTBEAT_INTERVAL_SECONDS`), so a busy/backgrounded WebView2 renderer cannot let the 2s monitor `os._exit(0)` a live window. `config.WEB_IDLE_SHUTDOWN_SECONDS = _int_env("NETSCOPE_WEB_IDLE_SHUTDOWN_SECONDS", 300, minimum=30, maximum=86400)` replaces the old hard-coded 120s in `WebState.should_shutdown()`. The exe and installer were rebuilt with **Python 3.12.10** (venv) + pythonnet 3.2.1 / pywebview 6.2.1: `dist/NetScope.exe` 12.9 MB, `dist/installer/NetScope-Setup.exe` 14.7 MB, silently installed over the old copy. Full suite 373 passed, 3 skipped; coverage 83.40%; frozen smoke 2 passed; new build survived 95s with no new WER events. Many stale `msedgewebview2` processes from earlier crashes remain on the machine; a reboot (or targeted cleanup) is advisable.
 
+**Low-request / stepped-chart follow-up (2026-11-19):** to protect low-end machines, `web/static/js/dashboard.js` now polls `/api/status` every 15s (was 5s), `/api/packet-loss` every 180s (was 60s), keeps a 40-sample window (was 60), and disables Chart.js animation/transitions so the trace steps instead of sliding. `visibilitychange` refreshes are throttled using `lastStatusRequestAt`/`lastPacketLossRequestAt`; `web/static/js/web-init.js` heartbeats every 20s (was 5s). `STATUS_ABORT_TIMEOUT_MS` is capped at 6s. `node --check` clean, full suite 373 passed, 3 skipped, coverage 83.40%. Exe/installer rebuilt and silently reinstalled (12.9 MB / 14.7 MB); frozen smoke 2 passed, installed app served the new assets, survived 90s, and produced no new WER events.
+
 **Traffic-chart polling watchdog follow-up (2026-11-19):** added an independent
 status/watchdog heartbeat that pushes the last known real receive/transmit rate
 when no status sample arrives for one polling interval. This keeps rolling
 labels and Chart.js data moving if a status request cycle is skipped or stalls,
 without creating overlapping `/api/status` calls.
+
+**Full process-termination follow-up (2026-11-19):** `core/processes.py` now owns
+bounded, current-user-only NetScope process discovery and terminate-then-kill
+cleanup; browser/WebView2 helpers are only killed as tracked descendants, never
+by name, and the lock PID is verified with `is_pid_netscope()` before use so a
+recycled PID is left alone. CLI exit calls `finalize_processes()`, `netscope stop`
+gracefully shuts down the server then force-stops stragglers, and the hidden
+`__stop_all__` entry lets the Inno uninstaller free running files before deletion.
+`web/run.py` tracks spawned browser processes, serves in browser mode, and now
+stops the shared server when the native window closes; `web/window.py` destroys
+the window on exit. `cli/installer.py` stops running processes before uninstall
+and schedules detached PowerShell cleanup when the installed exe removes itself.
+Full suite: 415 passed, 3 skipped; coverage 83.24%; `node --check` clean. The
+frozen exe/installer artifacts have not been rebuilt with these changes, and live
+window/uninstall process cleanup needs manual validation.
 
 **Dashboard-latency / cold-start / admin-elevation follow-up (2026-11-17):**
 `core/monitoring.py` still caches one shared in-memory snapshot with background
@@ -391,8 +407,9 @@ frozen smoke, and a built wheel contains `core/oui_vendors.json`.
 - `web/run.py` launch modes: `window` (default), `browser`, `no_browser`.
   `_acquire_lock_with_wait()` waits up to 10s for a new owner after `--replace`;
   `_show_existing()` verifies `/health` and reopens the shared server;
-  `_run_window_session()` owns the pywebview window lifecycle. Closing a window
-  does not stop the shared server; `POST /api/shutdown`/Ctrl+C/heartbeat do.
+  `_run_window_session()` owns the pywebview window lifecycle. Closing the
+  window, `netscope stop`, `POST /api/shutdown`, Ctrl+C, or the heartbeat timeout
+  stops the shared server and its owned processes.
 - CLI: `netscope gui [--browser] [--no-browser] [--port N]`; hidden
   `--print-url` for the detached child and `--replace` for the elevated
   handoff. `cmd_gui` detached child runs `__gui__ --print-url`; when run in a
@@ -714,6 +731,9 @@ not current functionality.
   `NET-11`), the WebView2 window/browser fallback, UAC replace handoff, and the
   Inno install/uninstall/data-prompt cases.
 - Review the Playwright screenshots visually and on a high-DPI display.
+- Rebuild the frozen exe/installer with the process-termination changes, then
+  verify window close, `netscope stop`, and running-app uninstall leave no
+  NetScope processes behind.
 - Keep `LAN-09` DETECT-ONLY (deliberate deviation from `prompt.txt`) and keep
   the console-flash launcher tradeoff documented.
 ## Dev install / running

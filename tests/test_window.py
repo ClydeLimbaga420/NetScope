@@ -52,6 +52,7 @@ def test_run_native_window_configures_edgechromium(monkeypatch):
     fake = SimpleNamespace(
         create_window=lambda *args, **kwargs: calls.setdefault("window", (args, kwargs)),
         start=lambda **kwargs: calls.setdefault("start", kwargs),
+        destroy_window=lambda: calls.setdefault("destroy", True),
     )
     monkeypatch.setitem(sys.modules, "webview", fake)
     monkeypatch.setattr(window, "webview2_available", lambda: True)
@@ -70,6 +71,7 @@ def test_run_native_window_configures_edgechromium(monkeypatch):
         "min_size": (900, 600),
     }
     assert calls["start"] == {"gui": "edgechromium", "debug": False}
+    assert calls["destroy"] is True
 
 
 def test_run_native_window_falls_back_when_work_area_query_fails(monkeypatch):
@@ -181,7 +183,7 @@ def test_window_session_browser_fallback_defers_handoff_notification(monkeypatch
     assert state.shutdown_event.is_set()
 
 
-def test_window_close_does_not_stop_shared_server(monkeypatch):
+def test_window_close_stops_shared_server(monkeypatch):
     class RecordingEvent:
         def __init__(self):
             self.waited = False
@@ -201,7 +203,7 @@ def test_window_close_does_not_stop_shared_server(monkeypatch):
     run._run_window_session(state, srv, "http://127.0.0.1:1/boot", False)
 
     assert event.waited is True
-    assert event.stopped is False
+    assert event.stopped is True
 
 
 def test_window_close_with_handoff_shuts_down_both(monkeypatch):
@@ -269,3 +271,39 @@ def test_window_session_keeps_server_alive_while_window_open(monkeypatch):
     run._run_window_session(state, srv, "http://127.0.0.1:1/boot", False)
 
     assert len(touched) >= 2
+
+
+def test_cleanup_processes_terminates_children_and_browser(monkeypatch):
+    children = []
+    trees = []
+    monkeypatch.setattr(
+        run,
+        "terminate_children_of_current_process",
+        lambda **kwargs: children.append(kwargs) or 1,
+    )
+    monkeypatch.setattr(run, "terminate_tree", lambda pid, **kwargs: trees.append(pid) or 1)
+    monkeypatch.setattr(run, "flush_logging", lambda: None)
+    run._browser_processes.clear()
+    run._browser_processes.add(6789)
+    try:
+        run.cleanup_processes()
+        assert children[0]["exclude_pids"] is run.PERSISTENT_CHILD_PIDS
+        assert trees == [6789]
+        assert run._browser_processes == set()
+    finally:
+        run._browser_processes.clear()
+
+
+def test_open_url_tracks_browser_process(monkeypatch):
+    monkeypatch.setattr(run.os.path, "exists", lambda path: path.endswith("msedge.exe"))
+    monkeypatch.setattr(
+        run.subprocess,
+        "Popen",
+        lambda *args, **kwargs: SimpleNamespace(pid=5678),
+    )
+    run._browser_processes.clear()
+    try:
+        assert run._open_url("http://127.0.0.1:1/__boot__?token=t") is True
+        assert 5678 in run._browser_processes
+    finally:
+        run._browser_processes.clear()

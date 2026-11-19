@@ -3,10 +3,14 @@ from __future__ import annotations
 import io
 import json
 import os
+import subprocess
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+import cli.installer as cli_installer
 import config
 from cli import exit_codes
 from cli.colors import Colorizer
@@ -95,6 +99,11 @@ def shortcut_writer(monkeypatch):
         shortcut.write_text(f"shortcut -> {target}", encoding="utf-8")
 
     monkeypatch.setattr("cli.installer.create_shortcut", write)
+
+
+@pytest.fixture(autouse=True)
+def no_real_process_kills(monkeypatch):
+    monkeypatch.setattr("cli.stop.stop_running_ui", lambda: "not_running")
 
 
 def test_install_refuses_inno_managed_install(tmp_path):
@@ -318,6 +327,82 @@ def test_uninstall_dry_run_changes_nothing(monkeypatch, tmp_path):
     assert registry.app_paths["NetScope.exe"]
 
 
+def test_uninstall_stops_running_processes_before_deleting_files(monkeypatch, tmp_path):
+    shortcut_writer(monkeypatch)
+    source = make_source(tmp_path)
+    install_dir = tmp_path / "install"
+    install(
+        source_exe=source,
+        install_dir=install_dir,
+        start_menu_dir=tmp_path / "start",
+        registry=MemoryRegistry(),
+    )
+    calls = []
+
+    def stop():
+        calls.append((install_dir / "NetScope.exe").exists())
+        return "stopped"
+
+    monkeypatch.setattr("cli.stop.stop_running_ui", stop)
+    result = uninstall(install_dir=install_dir, start_menu_dir=tmp_path / "start", registry=MemoryRegistry())
+
+    assert calls == [True]
+    assert any("Stopped running" in message for message in result.messages)
+    assert not (install_dir / "NetScope.exe").exists()
+
+
+def test_uninstall_from_running_copy_schedules_cleanup(monkeypatch, tmp_path):
+    shortcut_writer(monkeypatch)
+    source = make_source(tmp_path)
+    install_dir = tmp_path / "install"
+    install(
+        source_exe=source,
+        install_dir=install_dir,
+        start_menu_dir=tmp_path / "start",
+        registry=MemoryRegistry(),
+    )
+    target = install_dir / "NetScope.exe"
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(target))
+    scheduled = []
+    monkeypatch.setattr(
+        "cli.installer._schedule_self_cleanup",
+        lambda target_dir, data_dir, purge: scheduled.append((target_dir, data_dir, purge)) or True,
+    )
+
+    result = uninstall(install_dir=install_dir, start_menu_dir=tmp_path / "start", registry=MemoryRegistry())
+
+    assert result.pending_cleanup is True
+    assert scheduled and scheduled[0][0] == install_dir
+    assert target.exists()
+    assert any("removed once this command exits" in message for message in result.messages)
+
+
+def test_schedule_self_cleanup_launches_detached_powershell(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(
+        "cli.installer.subprocess.Popen",
+        lambda argv, **kwargs: calls.append((argv, kwargs)) or SimpleNamespace(),
+    )
+    data_dir = tmp_path / "data"
+
+    assert cli_installer._schedule_self_cleanup(tmp_path, data_dir, True) is True
+
+    argv, kwargs = calls[0]
+    assert argv[0] == config.POWERSHELL_EXE
+    assert "-File" in argv
+    assert "-WaitPid" in argv
+    assert str(tmp_path) in argv
+    assert str(data_dir) in argv
+    assert "-Purge" in argv
+    assert kwargs["stdout"] is subprocess.DEVNULL
+    script = Path(argv[argv.index("-File") + 1])
+    try:
+        assert "Remove-Item" in script.read_text(encoding="utf-8-sig")
+    finally:
+        script.unlink(missing_ok=True)
+
+
 def test_install_non_tty_requires_yes(monkeypatch):
     called = []
     monkeypatch.setattr("cli.installer.install", lambda **kwargs: called.append(kwargs))
@@ -362,6 +447,26 @@ def test_uninstall_yes_json_calls_uninstaller(monkeypatch):
     assert cmd_uninstall(args, ctx) == exit_codes.OK
     assert seen["purge"] is True
     assert json.loads(out.getvalue())["action"] == "uninstall"
+
+
+def test_uninstall_failure_still_prints_json_result(monkeypatch):
+    def fake_uninstall(**_kwargs):
+        return InstallResult(
+            action="uninstall",
+            ok=False,
+            install_dir="C:/x",
+            target_exe="C:/x/NetScope.exe",
+            messages=["Could not stop every running NetScope process."],
+        )
+
+    monkeypatch.setattr("cli.installer.uninstall", fake_uninstall)
+    out = io.StringIO()
+    args = apply_defaults(build_parser().parse_args(["uninstall", "--yes", "--json"]))
+
+    assert cmd_uninstall(args, make_ctx(stdout=out)) == exit_codes.FAILURES
+    payload = json.loads(out.getvalue())
+    assert payload["ok"] is False
+    assert "Could not stop every running NetScope process." in payload["messages"]
 
 
 def test_install_dry_run_does_not_prompt(monkeypatch):

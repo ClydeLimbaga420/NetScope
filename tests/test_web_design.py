@@ -59,20 +59,17 @@ def test_monitoring_ui_distinguishes_pending_and_api_errors():
 
 def test_traffic_chart_flows_continuously():
     source = text(WEB / "static" / "js" / "dashboard.js")
-    # Sampling, animation duration and history window must stay in sync so the
-    # live trace slides with a five-second cadence instead of jumping or stalling
-    # when a slow /api/status response overlaps the next refresh.
-    assert "STATUS_POLL_INTERVAL_MS = 5000" in source
-    assert "TRAFFIC_HISTORY_LENGTH = 60" in source
+    # Low-request cadence: fewer /api/status calls and a stepped (unanimated)
+    # trace on low-end machines instead of a continuous five-second animation.
+    assert "STATUS_POLL_INTERVAL_MS = 15000" in source
+    assert "TRAFFIC_HISTORY_LENGTH = 40" in source
     assert "SMOOTHING_FACTOR = 0.28" in source
-    assert "duration: REDUCED_MOTION ? 0 : STATUS_POLL_INTERVAL_MS" in source
-    assert 'easing: "linear"' in source
+    assert "duration: 0" in source
     assert "setInterval(refreshStatus, STATUS_POLL_INTERVAL_MS)" in source
     assert "labels.length > TRAFFIC_HISTORY_LENGTH" in source
     # The glowing tip of each live trace.
     assert 'id: "livePoint"' in source
     assert "plugins: [livePointPlugin]" in source
-    assert 'window.matchMedia("(prefers-reduced-motion: reduce)")' in source
     # Long-running polls must not overlap, and a restored tab must redraw now.
     assert "let statusInFlight = false" in source
     assert "if (statusInFlight) {" in source
@@ -125,7 +122,7 @@ def test_traffic_chart_recovers_from_session_expiry_and_idle_stalls():
     next_check = source.index("if (!response.ok) {", expired)
     assert "pushTrafficSample(0, 0)" in source[expired:next_check]
 
-    assert "const STATUS_ABORT_TIMEOUT_MS = STATUS_POLL_INTERVAL_MS - 1000" in source
+    assert "const STATUS_ABORT_TIMEOUT_MS = Math.min(6000, STATUS_POLL_INTERVAL_MS - 1000)" in source
     fetch = source.index("const response = await fetch", try_block)
     assert "STATUS_ABORT_TIMEOUT_MS" in source[try_block:fetch]
 
@@ -142,11 +139,13 @@ def test_dashboard_pauses_polling_in_background_tabs():
     source = text(WEB / "static" / "js" / "dashboard.js")
     # A hidden dashboard should not keep spawning status/packet-loss work.
     assert 'if (document.visibilityState === "hidden") {' in source
-    assert "setInterval(refreshPacketLoss, 60000)" in source
+    assert "setInterval(refreshPacketLoss, 180000)" in source
+    assert "setInterval(heartbeat, 20000)" in text(WEB / "static" / "js" / "web-init.js")
     visible = source.index('addEventListener("visibilitychange"')
-    section = source[visible : visible + 400]
+    section = source[visible : visible + 500]
     assert "refreshStatus();" in section
     assert "refreshPacketLoss();" in section
+    assert "lastStatusRequestAt" in section
 
 
 def test_status_card_has_freshness_badge():

@@ -28,6 +28,12 @@ def test_installer_creates_shortcuts_app_paths_and_path_entry():
     assert ".netscope-inno" in SCRIPT
 
 
+def test_uninstaller_stops_running_netscope_processes():
+    assert "[UninstallRun]" in SCRIPT
+    assert r'Filename: "{app}\NetScope.exe"; Parameters: "__stop_all__"' in SCRIPT
+    assert "waituntilterminated" in SCRIPT
+
+
 def test_installer_removes_path_and_offers_clean_data_removal():
     assert "CurUninstallStepChanged" in SCRIPT
     assert "RemoveFromUserPath" in SCRIPT
