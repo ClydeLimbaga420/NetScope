@@ -16,6 +16,37 @@ re-checking, and rolled back from a pre-fix snapshot.
 The desktop window and browser interface use the secured localhost web UI.
 There is no LAN-hosted dashboard or separate legacy server.
 
+## Current focus: low-storage crash hardening
+
+NetScope is being hardened against crashes that correlate with low free disk
+space. The work in progress covers:
+
+- **Bounded local data.** Reports and pre-fix snapshots are pruned before each
+  write, with the newest snapshot per fix protected for rollback. Log rotation
+  dropped from 5 MB x 5 to 2 MB x 3, and the snapshot disk cache is skipped while
+  free space is low.
+- **Fail-open disk probe.** `core/disk_space.py` checks free space with
+  `shutil.disk_usage`, emits `disk_space_status`, `disk_space_low` and
+  `optional_write_skipped` events, and never raises into a worker thread.
+- **Lifecycle guards.** Lock and log writes are protected against `OSError`, a
+  failed GUI startup releases the instance lock and exits cleanly, and the
+  window-heartbeat and shutdown-monitor threads survive transient errors.
+- **WebView2 profile.** The native window uses a dedicated
+  `%LOCALAPPDATA%\NetScope\webview` user-data folder instead of the shared
+  default location.
+
+Environment overrides: `NETSCOPE_MIN_FREE_DISK_MB` (250),
+`NETSCOPE_REPORT_MAX_FILES` (24), `NETSCOPE_REPORT_MAX_MB` (32),
+`NETSCOPE_BACKUP_MAX_FILES` (60), `NETSCOPE_BACKUP_MAX_MB` (64),
+`NETSCOPE_ARTIFACT_MAX_AGE_DAYS` (180), `NETSCOPE_LOG_MAX_MB` (2),
+`NETSCOPE_LOG_BACKUP_COUNT` (3). Set `NETSCOPE_WEBVIEW_STORAGE=0` to opt out of
+the dedicated WebView2 profile.
+
+This is Python-level hardening. The one-file PyInstaller exe still extracts to
+the system temp folder before Python starts, so reproducing the crash on a
+low-disk machine and rebuilding the exe/installer remain manual release
+validation items.
+
 ## Features
 
 ### Diagnostics and fixes
@@ -28,6 +59,7 @@ There is no LAN-hosted dashboard or separate legacy server.
 - Repair library with plain-language steps and collapsible exact commands
 - One-click **Run as administrator** (UAC) for admin-only repairs
 - Structured JSON-lines logging with secrets redacted
+- Bounded local data with low-disk detection and automatic pruning
 
 ### Interfaces
 - CLI with `diagnose`, `fix`, `info`, `ping`, `trace`, `dns`, `arp`, `routes`,
@@ -188,7 +220,7 @@ NetScope/
   .github/workflows/       # windows-latest test/build/installer CI
   installer/               # Inno Setup script
   scripts/                 # build, frozen smoke, installer build/smoke
-  core/                    # shared engine, models, runner, checks, OUI resource
+  core/                    # shared engine, models, runner, checks, disk guards, OUI resource
   powershell/              # static PS scripts, runner, input validation
   fixes/                   # catalog, executor, unresolved-cause ranking
   cli/                     # parser, dispatch, rendering, utilities, shell, monitor
@@ -248,6 +280,10 @@ Chart.js and the interface fonts are bundled locally, so the dashboard does not
 depend on a CDN or an internet connection to load.
 
 The SQLite schema in database/db.py is not currently used by the application.
+
+Reports, fix snapshots and logs are bounded and pruned automatically; see
+[Current focus](#current-focus-low-storage-crash-hardening) for the tunables and
+the remaining native-crash caveat.
 
 ## Future Improvements
 
@@ -495,7 +531,9 @@ for the remaining Win10/Win11 differences and unverified paths.
 Use [docs/manual-test-checklist.md](docs/manual-test-checklist.md) for failure
 simulation: disable the adapter, unplug the cable, use a wrong static IP, stop
 Dnscache, blackhole DNS, block the gateway, and trigger an unfixable upstream
-outage to exercise the unresolved panel. CI runs the same suite on
+outage to exercise the unresolved panel. For the current low-storage work, fill
+the disk near `NETSCOPE_MIN_FREE_DISK_MB` and confirm bounded writes, skipped
+cache writes, and no crash. CI runs the same suite on
 `windows-latest` only when `main` is updated (push or merge), runs a Playwright
 headless-browser smoke test (skipped if no Chromium/Edge is available), builds
 the exe and frozen smoke test, then builds the Inno installer and runs a silent
