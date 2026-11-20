@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Callable, Generic, Literal, TypeVar
 
 import config
+from core import disk_space
 from core.device_discovery import DeviceDiscovery
 from core.info import build_info
 from core.native import PingResult, parse_ping, parse_ping_stats, ping_args
@@ -486,15 +487,24 @@ class MonitoringService:
         self._log("snapshot_refresh_start", duration_seconds=0.0)
         try:
             snapshot = self.engine.collect_snapshot()
-            try:
-                save_snapshot_cache(snapshot, self.cache_path)
-            except OSError as exc:
+            if disk_space.should_skip_optional_write(
+                self.cache_path.parent, self.logger, kind="snapshot_cache"
+            ):
                 self._log(
-                    "snapshot_cache_invalid",
-                    reason="write_failed",
+                    "snapshot_cache_skipped",
+                    reason="low_disk",
                     duration_seconds=round(time.monotonic() - started, 4),
-                    error=str(exc),
                 )
+            else:
+                try:
+                    save_snapshot_cache(snapshot, self.cache_path)
+                except OSError as exc:
+                    self._log(
+                        "snapshot_cache_invalid",
+                        reason="write_failed",
+                        duration_seconds=round(time.monotonic() - started, 4),
+                        error=str(exc),
+                    )
             with self._snapshot_lock:
                 self._snapshot = snapshot
                 self._snapshot_at = time.monotonic()

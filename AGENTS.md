@@ -14,8 +14,8 @@ Menu/desktop shortcuts, uninstaller, WebView2 handling, and a `.netscope-inno`
 marker. `netscope install`/`uninstall` still manage portable installs and refuse
 installer-managed copies. CI covers tests on Python 3.11/3.14, 80% coverage,
 Playwright browser smoke + screenshots, frozen exe smoke, and an Inno
-install/uninstall smoke. Latest local suite: 418 passed, 3 skipped (2026-11-19);
-coverage 83.26% over `core`/`fixes`/`powershell`.
+install/uninstall smoke. Latest local suite: 439 passed, 3 skipped (2026-11-20);
+coverage 83.11% over `core`/`fixes`/`powershell`.
 Manual validation (Windows 10
 VM checklist, window/UAC/installer cases, and human screenshot review) is
 deferred for now by request; it is a release-confidence item, not a code or
@@ -121,6 +121,31 @@ alive during `netscope stop` or uninstall (`__stop_all__`). Both fixes were done
 test-first (three RED/GREEN cycles, each failure verified before implementation).
 Focused tests: 48 passed; full suite: 423 passed, 2 skipped; coverage 83.26%;
 `node --check` clean.
+
+**Low-storage / crash-hardening follow-up (2026-11-20):** the reported
+"less free space, more crashes" correlation is now handled with bounded,
+self-cleaning local data. `core/disk_space.py` adds a fail-open
+`shutil.disk_usage` probe, env-overridable threshold
+(`NETSCOPE_MIN_FREE_DISK_MB`, default 250), oldest-first `prune_files()` with
+count/age/byte caps and protected paths, and structured `disk_space_status` /
+`disk_space_low` / `optional_write_skipped` events. Reports
+(`NETSCOPE_REPORT_MAX_FILES`/`_MAX_MB`) and fix backups
+(`NETSCOPE_BACKUP_MAX_FILES`/`_MAX_MB`) are pruned before each write (the newest
+backup per fix is protected for rollback); the snapshot disk cache is skipped
+while space is low. Log rotation dropped from 5 MB x 5 to 2 MB x 3 via
+`NETSCOPE_LOG_MAX_MB`/`NETSCOPE_LOG_BACKUP_COUNT`, and CLI startup now logs disk
+status too. `web/run.py` guards lock acquire/write against `OSError`, closes the
+instance-lock leak when `WebState()` or any later startup step fails, returns a
+clean exit code instead of raising, and keeps the window-heartbeat and monitor
+threads alive through transient errors (`monitor_error`,
+`window_heartbeat_failed`), without changing the `os._exit` cleanup ordering.
+`web/window.py` gives WebView2 a dedicated `%LOCALAPPDATA%\NetScope\webview`
+profile via pywebview's `storage_path` (introspection-guarded, opt out with
+`NETSCOPE_WEBVIEW_STORAGE=0`). Added `tests/test_low_disk.py` (16 tests). Focused
+web/log/fix/monitor tests: 157 passed; full suite: 439 passed, 3 skipped;
+coverage 83.11%; `node --check` clean. Real low-disk and native-crash
+reproduction on the user's machine remains manual validation; the PyInstaller
+one-file extraction still happens before Python starts.
 
 **Dashboard-latency / cold-start / admin-elevation follow-up (2026-11-17):**
 `core/monitoring.py` still caches one shared in-memory snapshot with background

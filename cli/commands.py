@@ -26,6 +26,7 @@ from cli.render import (
     summary_lines,
 )
 from cli.utilities import UtilityRunner
+from core import disk_space
 from core.info import build_info
 from core.logging_config import LOG_FILE_NAME
 from core.models import Status
@@ -658,7 +659,11 @@ def cmd_report(args: Any, ctx: CliContext) -> int:
             return _failure(ctx, str(exc))
     else:
         directory = config.report_dir()
-        directory.mkdir(parents=True, exist_ok=True)
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            return _failure(ctx, f"could not create report directory: {exc}", exit_codes.FAILURES)
+        disk_space.prepare_report_write(directory, ctx.logger)
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         destination = directory / f"netscope-report-{stamp}.{extension}"
 

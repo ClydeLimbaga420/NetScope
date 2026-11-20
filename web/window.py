@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import ctypes
 import ctypes.wintypes
+import inspect
 import os
+from pathlib import Path
 from typing import Any
+
+import config
 
 WEBVIEW2_CLIENT_ID = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
 _SPI_GETWORKAREA = 0x0030
@@ -97,6 +101,12 @@ def webview2_available() -> bool:
     return any(number > 0 for number in numbers)
 
 
+def webview_storage_path() -> Path | None:
+    if not config.WEBVIEW_STORAGE_ENABLED:
+        return None
+    return config.data_dir() / "webview"
+
+
 def run_native_window(boot_url: str, logger: Any | None = None) -> bool:
     """Open the NetScope window and block until it closes."""
 
@@ -125,8 +135,19 @@ def run_native_window(boot_url: str, logger: Any | None = None) -> bool:
         )
         if logger is not None:
             logger.event("window_started", source="web")
+        start_kwargs: dict[str, Any] = {"gui": "edgechromium", "debug": False}
+        storage = webview_storage_path()
+        if storage is not None:
+            try:
+                if "storage_path" in inspect.signature(webview.start).parameters:
+                    storage.mkdir(parents=True, exist_ok=True)
+                    start_kwargs["storage_path"] = str(storage)
+            except (OSError, TypeError, ValueError):
+                pass
+            if logger is not None:
+                logger.event("webview_storage", source="web", path=str(storage))
         try:
-            webview.start(gui="edgechromium", debug=False)
+            webview.start(**start_kwargs)
         finally:
             destroy = getattr(webview, "destroy_window", None)
             if callable(destroy):

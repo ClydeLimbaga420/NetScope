@@ -14,12 +14,14 @@ import urllib.error
 import urllib.request
 import webbrowser
 from pathlib import Path
+from types import SimpleNamespace
 from typing import BinaryIO
 from urllib.parse import urlsplit, urlunsplit
 from werkzeug.serving import make_server
 
 import config
-from core.logging_config import flush_logging, start_log_cleanup
+from core import disk_space
+from core.logging_config import NullLogger, flush_logging, setup_logging, start_log_cleanup
 from core.processes import (
     PERSISTENT_CHILD_PIDS,
     terminate_children_of_current_process,
@@ -49,13 +51,20 @@ def _instance_lock_path() -> Path:
 
 def _acquire_instance_lock() -> BinaryIO | None:
     path = _instance_lock_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    handle = path.open("a+b")
-    handle.seek(0, os.SEEK_END)
-    if handle.tell() == 0:
-        handle.write(b"\0")
-        handle.flush()
-    handle.seek(0)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        handle = path.open("a+b")
+        try:
+            handle.seek(0, os.SEEK_END)
+            if handle.tell() == 0:
+                handle.write(b"\0")
+                handle.flush()
+            handle.seek(0)
+        except OSError:
+            handle.close()
+            return None
+    except OSError:
+        return None
     try:
         if os.name == "nt":
             import msvcrt
@@ -127,10 +136,10 @@ def _port_open(port: int) -> bool:
 
 def _write_lock(port: int, boot_token: str, pid: int) -> None:
     path = _lock_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
     data = {"port": int(port), "boot_token": boot_token, "pid": int(pid), "ts": time.time()}
     temp_path = None
     try:
+        path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(
             "w", encoding="utf-8", dir=path.parent, delete=False
         ) as temp:
@@ -141,7 +150,10 @@ def _write_lock(port: int, boot_token: str, pid: int) -> None:
         os.replace(temp_path, path)
     finally:
         if temp_path is not None:
-            temp_path.unlink(missing_ok=True)
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def _remove_lock(pid: int | None = None) -> None:
@@ -209,7 +221,15 @@ def _run_window_session(state: WebState, srv: object, boot_url: str, print_url: 
         # lifetime, so pulse the deadline here while the window is open.
         while not keepalive_stop.wait(WINDOW_HEARTBEAT_INTERVAL_SECONDS):
             if callable(touch):
-                touch()
+                try:
+                    touch()
+                except Exception as exc:  # noqa: BLE001
+                    log = getattr(state, "logger", None)
+                    if log is not None:
+                        try:
+                            log.error("window_heartbeat_failed", source="web", error=str(exc))
+                        except Exception:
+                            pass
 
     threading.Thread(
         target=_window_keepalive,
@@ -402,57 +422,68 @@ def cleanup_processes(state: WebState | None = None) -> None:
         pass
 
 
-def _monitor(state: WebState, interval: float = 2.0) -> None:
-    while True:
-        if state.shutdown_event.wait(interval):
-            # explicit request (POST /api/shutdown): give the HTTP response a
-            # moment to flush before exiting the process.
-            time.sleep(0.5)
-            _notify_elevate_shutdown_for_state(state)
-            state.logger.event("server_shutdown", source="web", reason="api_request")
-            cleanup_processes()
-            _remove_lock(os.getpid())
-            os._exit(0)
+def _monitor_tick(state: WebState, interval: float) -> None:
+    if state.shutdown_event.wait(interval):
+        # explicit request (POST /api/shutdown): give the HTTP response a
+        # moment to flush before exiting the process.
+        time.sleep(0.5)
+        _notify_elevate_shutdown_for_state(state)
+        state.logger.event("server_shutdown", source="web", reason="api_request")
+        cleanup_processes()
+        _remove_lock(os.getpid())
+        os._exit(0)
 
-        handoff = getattr(state, "elevate_handoff", None)
-        if handoff and handoff.get("active"):
-            if not handoff.get("url"):
-                lock = _read_lock() or {}
-                if int(lock.get("pid") or 0) != os.getpid():
-                    url = _existing_instance_url(lock)
-                    if url:
-                        handoff["url"] = url
-                        state.logger.event("elevate_handoff_ready", source="web", url=url)
-            if not handoff.get("url") and time.monotonic() > float(handoff.get("deadline") or 0):
-                handoff["error"] = "Timed out waiting for the elevated NetScope instance."
-                handoff["active"] = False
-                state.logger.error("elevate_handoff_timeout", source="web")
-                try:
-                    if not _restore_instance_lock(state):
-                        state.logger.event(
-                            "elevate_handoff_lock_restore_failed",
-                            source="web",
-                            reason="instance lock is held by another process",
-                        )
-                    else:
-                        state.logger.event("elevate_handoff_lock_restored", source="web")
-                except Exception as exc:  # noqa: BLE001
-                    state.logger.error(
+    handoff = getattr(state, "elevate_handoff", None)
+    if handoff and handoff.get("active"):
+        if not handoff.get("url"):
+            lock = _read_lock() or {}
+            if int(lock.get("pid") or 0) != os.getpid():
+                url = _existing_instance_url(lock)
+                if url:
+                    handoff["url"] = url
+                    state.logger.event("elevate_handoff_ready", source="web", url=url)
+        if not handoff.get("url") and time.monotonic() > float(handoff.get("deadline") or 0):
+            handoff["error"] = "Timed out waiting for the elevated NetScope instance."
+            handoff["active"] = False
+            state.logger.error("elevate_handoff_timeout", source="web")
+            try:
+                if not _restore_instance_lock(state):
+                    state.logger.event(
                         "elevate_handoff_lock_restore_failed",
                         source="web",
-                        error=str(exc),
-                        exc_info=True,
+                        reason="instance lock is held by another process",
                     )
-            if getattr(state, "native_window_active", True):
-                continue
+                else:
+                    state.logger.event("elevate_handoff_lock_restored", source="web")
+            except Exception as exc:  # noqa: BLE001
+                state.logger.error(
+                    "elevate_handoff_lock_restore_failed",
+                    source="web",
+                    error=str(exc),
+                    exc_info=True,
+                )
+        if getattr(state, "native_window_active", True):
+            return
 
-        if state.should_shutdown():
-            _notify_elevate_shutdown_for_state(state)
-            state.logger.event("server_shutdown", source="web", reason="heartbeat_timeout")
-            state.shutdown_event.set()
-            cleanup_processes()
-            _remove_lock(os.getpid())
-            os._exit(0)
+    if state.should_shutdown():
+        _notify_elevate_shutdown_for_state(state)
+        state.logger.event("server_shutdown", source="web", reason="heartbeat_timeout")
+        state.shutdown_event.set()
+        cleanup_processes()
+        _remove_lock(os.getpid())
+        os._exit(0)
+
+
+def _monitor(state: WebState, interval: float = 2.0) -> None:
+    while True:
+        try:
+            _monitor_tick(state, interval)
+        except Exception as exc:  # noqa: BLE001
+            try:
+                state.logger.error("monitor_error", source="web", error=str(exc), exc_info=True)
+            except Exception:
+                pass
+            time.sleep(0.5)
 
 
 def run_web_ui(
@@ -472,8 +503,9 @@ def run_web_ui(
     if replace:
         instance_lock = _acquire_lock_with_wait(10.0)
         if instance_lock is None:
-            logger = config.setup_logging("web", session_id="replace-wait")
-            logger.error("elevate_takeover_timeout", source="web", timeout=10.0)
+            setup_logging("web", session_id="replace-wait").error(
+                "elevate_takeover_timeout", source="web", timeout=10.0
+            )
             return 1
     else:
         instance_lock = _acquire_instance_lock()
@@ -487,7 +519,11 @@ def run_web_ui(
                 if mode == "headless" or print_url:
                     _print_url(url)
                 else:
-                    _show_existing(url, mode, WebState(mode="web"))
+                    try:
+                        display_state = WebState(mode="web")
+                    except Exception:
+                        display_state = SimpleNamespace(logger=NullLogger())
+                    _show_existing(url, mode, display_state)
                 if handoff_url and handoff_token and lock:
                     _notify_elevate_handoff(
                         handoff_url,
@@ -499,11 +535,13 @@ def run_web_ui(
             time.sleep(0.1)
         return 1
 
-    state = WebState(mode="web")
-    if handoff_token:
-        state.elevate_shutdown_token = handoff_token
-    start_log_cleanup(config.LOG_CLEAR_INTERVAL_SECONDS, state.shutdown_event, state.logger)
+    state: WebState | None = None
     try:
+        state = WebState(mode="web")
+        if handoff_token:
+            state.elevate_shutdown_token = handoff_token
+        disk_space.log_status(state.logger, config.data_dir())
+        start_log_cleanup(config.LOG_CLEAR_INTERVAL_SECONDS, state.shutdown_event, state.logger)
         monitoring = getattr(getattr(state, "runtime", None), "monitoring", None)
         if monitoring is not None:
             monitoring.prewarm()
@@ -560,6 +598,17 @@ def run_web_ui(
     except KeyboardInterrupt:
         if state is not None:
             state.logger.event("server_shutdown", source="web", reason="keyboard_interrupt")
+    except Exception as exc:  # noqa: BLE001
+        if state is not None:
+            state.logger.error("web_ui_start_failed", source="web", error=str(exc), exc_info=True)
+        else:
+            try:
+                setup_logging("web", session_id="startup").error(
+                    "web_ui_start_failed", source="web", error=str(exc), exc_info=True
+                )
+            except Exception:
+                pass
+        return 1
     finally:
         cleanup_processes(state)
         handoff = getattr(state, "elevate_handoff", None) if state is not None else None
@@ -567,8 +616,8 @@ def run_web_ui(
             _remove_lock(int(handoff.get("pid") or os.getpid()))
         else:
             _remove_lock(os.getpid())
-        if state is not None:
-            _release_instance_lock(getattr(state, "instance_lock_handle", None))
+        if state is not None and getattr(state, "instance_lock_handle", None) is not None:
+            _release_instance_lock(state.instance_lock_handle)
             state.instance_lock_handle = None
         else:
             _release_instance_lock(instance_lock)

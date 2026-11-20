@@ -19,8 +19,8 @@ from typing import Any
 import config
 
 LOG_FILE_NAME = "netscope.log"
-MAX_BYTES = 5 * 1024 * 1024
-BACKUP_COUNT = 5
+MAX_BYTES = config.LOG_MAX_BYTES_MB * 1024 * 1024
+BACKUP_COUNT = config.LOG_BACKUP_COUNT
 
 _STANDARD_ATTRS = {
     "name",

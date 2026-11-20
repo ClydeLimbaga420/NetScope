@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import config
+from core import disk_space
 from core.checks.context import configured_dns_servers, text, truthy
 from core.gateway_setup import active_target, detect_gateway
 from core.models import CheckResult, Status
@@ -271,6 +272,12 @@ class FixExecutor:
             self.ps = PowerShellLayer(self.runner, self.logger)
         return self.ps
 
+    def _ensure_backup_dir(self) -> None:
+        try:
+            self.backup_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise PlanError(f"cannot create backup directory: {exc}") from exc
+
     def _snapshot(self) -> Snapshot | None:
         collector = getattr(self.engine, "collect_snapshot", None)
         if collector is None:
@@ -493,14 +500,14 @@ class FixExecutor:
         if source == "found_mtu":
             return param.default
         if source == "hosts_backup_path":
-            self.backup_dir.mkdir(parents=True, exist_ok=True)
+            self._ensure_backup_dir()
             stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
             return str(self.backup_dir / f"{stamp}-hosts.bak")
         if source == "wifi_backup_path":
-            self.backup_dir.mkdir(parents=True, exist_ok=True)
+            self._ensure_backup_dir()
             return str(self.backup_dir)
         if source == "firewall_backup_path":
-            self.backup_dir.mkdir(parents=True, exist_ok=True)
+            self._ensure_backup_dir()
             stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
             return str(self.backup_dir / f"{stamp}-firewall.wfw")
         if source in {"target", "value"}:
@@ -568,7 +575,19 @@ class FixExecutor:
             "rollback": [command.to_dict(values) for command in entry.rollback],
             "rollback_notes": entry.rollback_notes,
         }
-        self.backup_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self._ensure_backup_dir()
+        except PlanError as exc:
+            self._log("error", "fix_snapshot_write_failed", fix_id=entry.id, error=str(exc))
+            return None, captured
+        protected: list[Path] = []
+        try:
+            latest = self._latest_backup(entry.id)
+            if latest is not None:
+                protected.append(latest)
+        except OSError:
+            pass
+        disk_space.prepare_backup_write(self.backup_dir, self.logger, protected)
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
         safe_fix = re.sub(r"[^A-Za-z0-9_.-]", "_", entry.id)
         path = self.backup_dir / f"{stamp}-{safe_fix}.json"

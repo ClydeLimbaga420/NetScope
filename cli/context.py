@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any, TextIO
 
 from cli.colors import Colorizer
+from core import disk_space
 from core.engine import DiagnosticEngine
 from core.logging_config import NullLogger, setup_logging
 from core.probes import NetworkProbe
@@ -69,6 +70,8 @@ def create_context(
             )
         except Exception:
             logger = NullLogger()
+
+    disk_space.log_status(logger)
 
     from cli.colors import color_supported
 

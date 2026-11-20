@@ -78,6 +78,22 @@ LOG_CLEAR_INTERVAL_SECONDS = _int_env(
     "NETSCOPE_LOG_CLEAR_INTERVAL_SECONDS", 180, minimum=0, maximum=86400
 )
 
+LOG_MAX_BYTES_MB = _int_env("NETSCOPE_LOG_MAX_MB", 2, minimum=1, maximum=64)
+LOG_BACKUP_COUNT = _int_env("NETSCOPE_LOG_BACKUP_COUNT", 3, maximum=20)
+
+MIN_FREE_DISK_MB = _int_env("NETSCOPE_MIN_FREE_DISK_MB", 250, minimum=10, maximum=10000)
+MIN_FREE_DISK_BYTES = MIN_FREE_DISK_MB * 1024 * 1024
+
+REPORT_MAX_FILES = _int_env("NETSCOPE_REPORT_MAX_FILES", 24, maximum=1000)
+REPORT_MAX_BYTES = _int_env("NETSCOPE_REPORT_MAX_MB", 32, maximum=10000) * 1024 * 1024
+BACKUP_MAX_FILES = _int_env("NETSCOPE_BACKUP_MAX_FILES", 60, maximum=1000)
+BACKUP_MAX_BYTES = _int_env("NETSCOPE_BACKUP_MAX_MB", 64, maximum=10000) * 1024 * 1024
+ARTIFACT_MAX_AGE_SECONDS = (
+    _int_env("NETSCOPE_ARTIFACT_MAX_AGE_DAYS", 180, maximum=3650) * 86400
+)
+
+WEBVIEW_STORAGE_ENABLED = os.environ.get("NETSCOPE_WEBVIEW_STORAGE", "1") != "0"
+
 # The server used to exit silently after 120s without a browser heartbeat.
 # WebView2 throttles renderer timers on a busy or backgrounded low-end machine,
 # so a live window can miss several pings and get killed mid-scan. The native
