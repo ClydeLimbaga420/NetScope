@@ -342,9 +342,7 @@
 
     color: var(--text);
 
-    background:
-        radial-gradient(120% 80% at 0% 0%, rgba(98, 167, 255, 0.12), transparent 45%),
-        #0b1424;
+    background: #0b1424;
 
     box-shadow:
         0 0 0 1px rgba(255, 255, 255, 0.03) inset,
@@ -1008,8 +1006,6 @@
     border-color: rgba(98, 167, 255, 0.28);
 
     color: #ffffff;
-
-    box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .repair-row-head {
@@ -1817,9 +1813,7 @@
 
 [data-theme="light"] .engine-confirmation {
     border-color: rgba(47, 111, 214, 0.2);
-    background:
-        radial-gradient(120% 80% at 0% 0%, rgba(47, 111, 214, 0.08), transparent 45%),
-        #ffffff;
+    background: #ffffff;
     box-shadow:
         0 0 0 1px rgba(255, 255, 255, 0.6) inset,
         0 24px 60px rgba(30, 53, 94, 0.18);
@@ -2011,4 +2005,295 @@
 [data-theme="light"] .diag-detail .step-reason.error,
 [data-theme="light"] .engine-cause-tag.probable {
     color: #a33043;
+}
+
+:root {
+    color-scheme: dark;
+    --surface-highlight: rgba(255, 255, 255, 0.045);
+    --surface-tint: rgba(255, 255, 255, 0.025);
+    --text-secondary: #b8c7e2;
+}
+
+[data-theme="light"] {
+    color-scheme: light;
+    --surface-highlight: rgba(255, 255, 255, 0.9);
+    --surface-tint: rgba(47, 111, 214, 0.04);
+    --text-secondary: #3f5478;
+}
+
+html {
+    accent-color: var(--accent);
+}
+
+:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+}
+
+.sidebar {
+    box-shadow: 10px 0 40px rgba(2, 6, 16, 0.22);
+}
+
+.sidebar .brand h2 {
+    font-size: 22px;
+    letter-spacing: -0.8px;
+}
+
+.sidebar .brand small {
+    color: var(--accent);
+    opacity: 0.85;
+}
+
+.sidebar .nav-item {
+    position: relative;
+}
+
+.sidebar .nav-item.active {
+    border-color: var(--accent-border);
+    background: var(--accent-soft);
+    color: var(--text-strong);
+}
+
+.sidebar .nav-item.active svg {
+    color: var(--accent);
+}
+
+.sidebar-bottom {
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
+}
+
+.topbar {
+    align-items: flex-end;
+}
+
+.topbar .eyebrow {
+    color: var(--accent);
+}
+
+.topbar h1 {
+    font-size: 28px;
+    letter-spacing: -0.8px;
+    text-wrap: balance;
+}
+
+.top-status {
+    box-shadow: var(--shadow-sm);
+}
+
+.card,
+.panel {
+    box-shadow:
+        inset 0 1px 0 var(--surface-highlight),
+        var(--shadow-sm);
+}
+
+.card:hover {
+    box-shadow:
+        inset 0 1px 0 var(--surface-highlight),
+        var(--shadow);
+}
+
+.card .card-top {
+    align-items: center;
+}
+
+.card-icon {
+    border-color: color-mix(in srgb, var(--card-accent) 28%, transparent);
+}
+
+.metric-line strong {
+    font-size: 30px;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.card-foot {
+    color: var(--text-secondary);
+}
+
+.card.connectivity {
+    background: var(--panel);
+}
+
+.card.connectivity .card-label {
+    color: var(--accent);
+}
+
+.conn-grid {
+    gap: 14px 20px;
+    margin-top: 18px;
+}
+
+.conn-item {
+    padding: 11px 14px;
+    border-radius: var(--radius-md);
+    background: var(--surface-tint);
+}
+
+.conn-item + .conn-item {
+    padding-left: 14px;
+}
+
+.card.connectivity .metric-line {
+    margin-bottom: 6px;
+}
+
+.speed-test-panel {
+    background: var(--panel);
+}
+
+.speed-test-head h2 {
+    text-wrap: balance;
+}
+
+.speed-test-status {
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-tint);
+}
+
+.speed-test-metric {
+    box-shadow: inset 0 1px 0 var(--surface-highlight);
+}
+
+.speed-test-metric.latency strong {
+    color: var(--amber);
+}
+
+.speed-test-metric.download strong {
+    color: var(--green);
+}
+
+.speed-test-metric.upload strong {
+    color: var(--accent);
+}
+
+.panel.wide {
+    background: var(--panel);
+}
+
+.chart-wrap {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-tint);
+}
+
+.chart-wrap canvas {
+    display: block;
+}
+
+.info-list > div {
+    padding: 11px 4px;
+    border-radius: var(--radius-sm);
+    transition: background 0.18s ease;
+}
+
+.info-list > div:hover {
+    background: var(--surface-tint);
+}
+
+.adapter {
+    box-shadow: inset 0 1px 0 var(--surface-highlight);
+}
+
+.devices-panel .panel-head {
+    align-items: center;
+}
+
+.device-count {
+    border-color: var(--accent-border);
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.table-wrap {
+    box-shadow: inset 0 1px 0 var(--surface-highlight);
+}
+
+th {
+    background: color-mix(in srgb, var(--panel-solid) 88%, transparent);
+}
+
+td {
+    padding: 13px 14px;
+}
+
+td:nth-child(3),
+td:nth-child(4) {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+}
+
+tbody tr:nth-child(even) {
+    background: var(--surface-tint);
+}
+
+tbody tr:hover {
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+details.note > summary::marker {
+    color: var(--accent);
+}
+
+.layer-status-row {
+    box-shadow: inset 0 1px 0 var(--surface-highlight);
+    transition:
+        border-color 0.18s ease,
+        background 0.18s ease;
+}
+
+.layer-status-row:hover {
+    border-color: var(--border-strong);
+    background: var(--surface-tint);
+}
+
+.diag-progress-track {
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+.diag-progress-fill {
+    background: var(--accent);
+}
+
+footer {
+    padding-top: 18px;
+}
+
+footer .footer-brand {
+    color: var(--muted);
+}
+
+[data-theme="light"] .card.connectivity {
+    background: var(--panel-solid);
+}
+
+[data-theme="light"] .panel.wide {
+    background: var(--panel-solid);
+}
+
+[data-theme="light"] .conn-item,
+[data-theme="light"] tbody tr:nth-child(even),
+[data-theme="light"] .info-list > div:hover {
+    background: rgba(47, 111, 214, 0.045);
+}
+
+[data-theme="light"] .metric-line strong {
+    text-shadow: none;
+}
+
+@media (max-width: 760px) {
+    .topbar,
+    .devices-panel .panel-head {
+        align-items: flex-start;
+    }
+
+    .topbar h1 {
+        font-size: 24px;
+    }
+
+    .conn-item {
+        padding: 10px 12px;
+    }
 }

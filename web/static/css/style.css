@@ -164,19 +164,13 @@ body {
     font-size: 13.5px;
     line-height: 1.55;
 
-    background:
-        radial-gradient(1200px 600px at -10% -10%, rgba(98, 167, 255, 0.08), transparent 45%),
-        radial-gradient(900px 500px at 110% 0%, rgba(139, 124, 255, 0.06), transparent 40%),
-        var(--bg);
+    background: var(--bg);
 
     -webkit-font-smoothing: antialiased;
 }
 
 [data-theme="light"] body {
-    background:
-        radial-gradient(1200px 600px at -10% -10%, rgba(47, 111, 214, 0.08), transparent 45%),
-        radial-gradient(900px 500px at 110% 0%, rgba(107, 92, 231, 0.06), transparent 40%),
-        var(--bg);
+    background: var(--bg);
 }
 
 ::selection {
@@ -349,10 +343,6 @@ h1 {
 
     cursor: pointer;
 
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.12),
-        0 1px 4px rgba(16, 38, 79, 0.4);
-
     transition:
         background 0.18s ease,
         border-color 0.18s ease,
@@ -360,14 +350,6 @@ h1 {
         transform 0.18s ease,
         color 0.18s ease,
         opacity 0.18s ease;
-}
-
-[data-theme="light"] .btn,
-[data-theme="light"] #run-engine-diagnosis,
-[data-theme="light"] .step-run {
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.2),
-        0 1px 3px rgba(30, 53, 94, 0.18);
 }
 
 .btn svg,
@@ -387,10 +369,6 @@ h1 {
     background: var(--btn-primary-hover);
 
     transform: translateY(-1px);
-
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.14),
-        0 4px 14px rgba(24, 62, 129, 0.45);
 }
 
 .btn:active:not(:disabled),
@@ -2343,8 +2321,6 @@ details.note > *:not(summary) {
     border-color: rgba(98, 167, 255, 0.28);
 
     color: #ffffff;
-
-    box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .diag-item:disabled,
