@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from typing import Sequence
 
@@ -173,6 +174,12 @@ def _run_gui_process(extra: Sequence[str] = ()) -> int:
             kwargs["handoff_url"] = handoff_url
         if handoff_token:
             kwargs["handoff_token"] = handoff_token
+        data_dir = option_value("--data-dir")
+        if data_dir:
+            # Must happen before WebState/config paths are resolved. UAC can
+            # start the elevated process under another account, whose own
+            # LOCALAPPDATA would otherwise hide the handoff lock from this UI.
+            os.environ["NETSCOPE_DATA_DIR"] = data_dir
         return run_web_ui(**kwargs)  # type: ignore[arg-type]
     except KeyboardInterrupt:
         return exit_codes.INTERRUPTED

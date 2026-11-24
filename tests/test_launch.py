@@ -3,6 +3,7 @@ from __future__ import annotations
 import ctypes
 import ctypes.wintypes
 import io
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -10,6 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import config
 import cli.launch as launch
 from cli import exit_codes
 from cli.admin import format_admin_command
@@ -362,6 +364,35 @@ def test_main_no_args_in_shared_terminal_keeps_interactive_shell(monkeypatch):
 def test_gui_relaunch_argv_can_request_replace():
     argv = gui_relaunch_argv(replace=True)
     assert argv[-2:] == [GUI_INTERNAL, "--replace"]
+
+
+def test_gui_relaunch_argv_can_carry_original_data_dir(tmp_path):
+    argv = gui_relaunch_argv(data_dir=str(tmp_path))
+    assert argv[-2:] == ["--data-dir", str(tmp_path)]
+
+
+def test_local_app_data_honours_elevation_override(monkeypatch, tmp_path):
+    monkeypatch.setenv("NETSCOPE_DATA_DIR", str(tmp_path))
+    assert config.data_dir() == tmp_path
+
+
+def test_gui_process_applies_data_dir_override(monkeypatch, tmp_path):
+    import web.run as web_run
+
+    seen = {}
+    monkeypatch.delenv("NETSCOPE_DATA_DIR", raising=False)
+    monkeypatch.setattr(
+        web_run,
+        "run_web_ui",
+        lambda **kwargs: seen.update(kwargs) or 0,
+        raising=False,
+    )
+
+    from cli.main import _run_gui_process
+
+    assert _run_gui_process(["--data-dir", str(tmp_path)]) == 0
+    assert os.environ["NETSCOPE_DATA_DIR"] == str(tmp_path)
+    assert seen == {}
 
 
 def test_gui_parser_accepts_browser_and_print_url():

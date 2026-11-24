@@ -57,17 +57,25 @@ def attach_parent_console() -> bool:
         return False
 
 
-def gui_relaunch_argv(replace: bool = False, no_browser: bool = False) -> list[str]:
+def gui_relaunch_argv(
+    replace: bool = False,
+    no_browser: bool = False,
+    data_dir: str | None = None,
+) -> list[str]:
     """Arguments (without the interpreter) that reopen the UI in a new process.
 
     Used both to spawn the detached UI and for elevated relaunches
     (:func:`cli.admin.relaunch_elevated` prepends ``sys.executable`` itself).
+    ``data_dir`` is passed for elevation because UAC may switch to a different
+    account with a different ``%LOCALAPPDATA%``.
     """
 
     if getattr(sys, "frozen", False):
         argv = [GUI_INTERNAL]
     else:
         argv = [str(_ENTRY_POINT), GUI_INTERNAL]
+    if data_dir:
+        argv.extend(["--data-dir", str(data_dir)])
     if no_browser:
         argv.append("--no-browser")
     if replace:

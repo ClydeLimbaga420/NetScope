@@ -131,7 +131,7 @@ CAPTIVE_PORTAL_EXPECTED = "Microsoft Connect Test"
 # --- filesystem ----------------------------------------------------------
 
 def local_app_data() -> Path:
-    """Return the per-user data directory, with a cross-platform fallback."""
+    """Return the per-user LOCALAPPDATA directory, with a fallback."""
 
     if os.name == "nt":
         base = os.environ.get("LOCALAPPDATA")
@@ -143,6 +143,17 @@ def local_app_data() -> Path:
 
 
 def data_dir() -> Path:
+    """Return NetScope's data directory.
+
+    ``NETSCOPE_DATA_DIR`` overrides the whole path. Elevation passes the
+    original session's directory so an elevated process started under a
+    different Windows account still writes its lock/boot token where the
+    original UI is watching.
+    """
+
+    override = os.environ.get("NETSCOPE_DATA_DIR")
+    if override:
+        return Path(override)
     return local_app_data() / APP_NAME
 
 

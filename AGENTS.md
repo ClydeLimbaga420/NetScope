@@ -7,20 +7,34 @@ this file and `task.md` Notes at the end of every phase.
 **Current status: Phase 5, Phase 6 D/E, the Phase 7 desktop-installer follow-up,
 and the single-executable GUI-launch/window-fit follow-up are complete.**
 tkinter is removed. `dist/NetScope.exe` is a one-file
-windowed-subsystem build (19.8 MB) bundling web templates/static, the fix
+windowed-subsystem build (14.5 MB) bundling web templates/static, the fix
 catalog, pywebview/WebView2 and pythonnet; `dist/installer/NetScope-Setup.exe`
-(21.6 MB, Inno Setup 6.7.3) is a per-user installer with PATH/App Paths/Start
+(16.3 MB, Inno Setup 6.7.3) is a per-user installer with PATH/App Paths/Start
 Menu/desktop shortcuts, uninstaller, WebView2 handling, and a `.netscope-inno`
 marker. `netscope install`/`uninstall` still manage portable installs and refuse
 installer-managed copies. CI covers tests on Python 3.11/3.14, 80% coverage,
 Playwright browser smoke + screenshots, frozen exe smoke, and an Inno
-install/uninstall smoke. Latest local suite: 439 passed, 3 skipped (2026-11-20);
-coverage 83.11% over `core`/`fixes`/`powershell`.
+install/uninstall smoke. Latest local suite: 440 passed, 2 skipped (2026-11-24)
+plus 3 known environment-only failures (outdated WSL/Git Bash build-script test
+and two Windows Job Object descendant-kill tests).
 Manual validation (Windows 10
 VM checklist, window/UAC/installer cases, and human screenshot review) is
 deferred for now by request; it is a release-confidence item, not a code or
 test blocker. Phase 7 and GUI launch follow-up changes are committed locally;
 remote CI has not been run.
+
+**Administrator-mode elevation fix (2026-11-24):** the installed build was
+still Python 3.14 and Event Viewer showed `APPCRASH` in `python314.dll` when
+elevating; one crash extracted under `C:\Users\Admin\...`, confirming UAC can
+start the elevated process under another account with a different
+`%LOCALAPPDATA%`. `config.data_dir()` now honors `NETSCOPE_DATA_DIR`;
+`/api/elevate` passes the original session's data directory through a hidden
+`--data-dir` argument, and `__gui__` applies it before `WebState` is built so
+the elevated process writes the handoff lock/boot token where the original UI
+is watching. Added config/launch/web-API tests (84 focused passed). Rebuilt
+exe/installer with the Python 3.12.10 venv (14.5 MB / 16.3 MB), stopped the old
+instance, silently reinstalled, and frozen smoke passed 2/2. Live UAC handoff
+verification is still outstanding.
 
 **Low-end-device / request-storm follow-up (2026-11-18):** `config.py` now owns
 env-overridable resource caps (`NETSCOPE_MAX_CONCURRENT_COMMANDS` = 8,
