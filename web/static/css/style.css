@@ -2009,6 +2009,7 @@ details.note > *:not(summary) {
 .elevation-badge {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
 
     gap: 7px;
 

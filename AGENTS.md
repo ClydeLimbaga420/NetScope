@@ -23,6 +23,12 @@ deferred for now by request; it is a release-confidence item, not a code or
 test blocker. Phase 7 and GUI launch follow-up changes are committed locally;
 remote CI has not been run.
 
+**Administrator badge centering (2026-11-24):** `.elevation-badge` now uses
+`justify-content: center`, so the "Administrator"/"User only" label is centered
+inside the pill instead of sitting on its left edge. Added a CSS contract to
+`tests/test_web_design.py` (107 focused tests passed). Rebuilt the one-file exe
+and Inno installer, silently reinstalled, and frozen smoke passed 2/2.
+
 **Administrator-mode elevation fix (2026-11-24):** the installed build was
 still Python 3.14 and Event Viewer showed `APPCRASH` in `python314.dll` when
 elevating; one crash extracted under `C:\Users\Admin\...`, confirming UAC can

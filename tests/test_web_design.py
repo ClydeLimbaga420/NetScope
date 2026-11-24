@@ -299,6 +299,10 @@ def test_engine_ui_renders_structured_results_safely():
 def test_admin_restart_has_a_branded_progress_dialog():
     source = text(WEB / "static" / "js" / "engine-ui.js")
     styles = text(WEB / "static" / "css" / "web-overrides.css")
+    shared_styles = text(WEB / "static" / "css" / "style.css")
+    badge_rule = re.search(r"\.elevation-badge\s*\{(.*?)\}", shared_styles, re.S)
+    assert badge_rule is not None
+    assert "justify-content: center" in badge_rule.group(1)
     for token in (
         "function createElevationDialog",
         "Waiting for Windows approval",
