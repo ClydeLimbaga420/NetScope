@@ -23,6 +23,17 @@ deferred for now by request; it is a release-confidence item, not a code or
 test blocker. Phase 7 and GUI launch follow-up changes are committed locally;
 remote CI has not been run.
 
+**Fix-outcome text inset (2026-11-25):** the fix result copy in Troubleshoot
+was flush against the `.engine-output` side borders. Direct body children of
+that card (`.engine-result-meta`, `.diag-desc`, `.step-reason`,
+`.repair-section`) now get a 14px left/right inset in `web-overrides.css`.
+Added a CSS contract in `tests/test_web_design.py`; focused design tests 24
+passed, full suite 441 passed, 2 skipped plus the same 3 known environment-only
+failures (outdated WSL/Git Bash and two Windows Job Object descendant-kill
+tests). Rebuilt `dist/NetScope.exe` (14.5 MB) and
+`dist/installer/NetScope-Setup.exe` (16.3 MB) with Python 3.12.10; frozen smoke
+passed 11/11. The destructive installer smoke and silent reinstall were not run.
+
 **Administrator badge centering (2026-11-24):** `.elevation-badge` now uses
 `justify-content: center`, so the "Administrator"/"User only" label is centered
 inside the pill instead of sitting on its left edge. Added a CSS contract to

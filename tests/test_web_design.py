@@ -296,6 +296,14 @@ def test_engine_ui_renders_structured_results_safely():
     assert "textContent" in text(WEB / "static" / "js" / "web-init.js")
 
 
+def test_fix_outcome_copy_is_inset_from_card_edges():
+    styles = text(WEB / "static" / "css" / "web-overrides.css")
+    rule = re.search(r"\.engine-output\s*>\s*\.diag-desc[^}]*\}", styles, re.S)
+    assert rule is not None
+    assert "margin-left: 14px" in rule.group(0)
+    assert "margin-right: 14px" in rule.group(0)
+
+
 def test_admin_restart_has_a_branded_progress_dialog():
     source = text(WEB / "static" / "js" / "engine-ui.js")
     styles = text(WEB / "static" / "css" / "web-overrides.css")

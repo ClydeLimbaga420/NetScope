@@ -252,6 +252,15 @@
     background: transparent;
 }
 
+/* Keep fix-outcome copy clear of the card's side borders. */
+.engine-output > .engine-result-meta,
+.engine-output > .diag-desc,
+.engine-output > .step-reason,
+.engine-output > .repair-section {
+    margin-left: 14px;
+    margin-right: 14px;
+}
+
 
 /* ---------- Fix fact chips (Admin / Risk / Restart) ---------- */
 
