@@ -10,9 +10,9 @@ the VM is wired/Wi-Fi, and the results for each row.
 
 ## 0. Baseline and packaging
 
-- [ ] `NetScope.exe --version` prints the expected version.
-- [ ] `NetScope.exe --help` lists every command and the exit codes.
-- [ ] `NetScope.exe diagnose --json` emits one valid JSON document; the exit
+- [x] `NetScope.exe --version` prints the expected version.
+- [x] `NetScope.exe --help` lists every command and the exit codes.
+- [x] `NetScope.exe diagnose --json` emits one valid JSON document; the exit
       code matches the overall status.
 - [ ] `NetScope.exe info`, `ping 1.1.1.1`, `dns example.com`, `arp`, `routes`,
       `ports 1.1.1.1 443`, and `mtu 1.1.1.1` all return sensible output.
@@ -21,16 +21,16 @@ the VM is wired/Wi-Fi, and the results for each row.
 - [ ] Start the exe with an isolated `LOCALAPPDATA`; confirm the
       `%LOCALAPPDATA%\NetScope\logs\netscope.log` file contains structured
       `source:"web"` request/action events and no console banner.
-- [ ] Kill the server with Task Manager, then relaunch; confirm it starts (the
+- [x] Kill the server with Task Manager, then relaunch; confirm it starts (the
       stale lock/port file is ignored).
 
 ## 1. Launch and single instance
 
-- [ ] Double-click `NetScope.exe` with a normal desktop session: no permanent
+- [x] Double-click `NetScope.exe` with a normal desktop session: no permanent
       console window, the WebView2 app window opens, and the dashboard loads.
-- [ ] Win+R `NetScope`, Start Menu, and desktop shortcuts behave the same way
+- [x] Win+R `NetScope`, Start Menu, and desktop shortcuts behave the same way
       (desktop shortcut only if selected during install).
-- [ ] `netscope gui` from a terminal returns the prompt after opening the app
+- [x] `netscope gui` from a terminal returns the prompt after opening the app
       window.
 - [ ] `netscope gui --browser` opens Edge/Chrome instead of the app window.
 - [ ] Temporarily rename the WebView2 runtime or force pywebview to fail; the
@@ -175,10 +175,10 @@ result after applying the repair.
 - [ ] Run `python scripts\installer_smoke.py --installer dist\installer\NetScope-Setup.exe`
       in a disposable profile; it verifies shortcut, App Paths, PATH, version,
       uninstall, and default data removal.
-- [ ] Launch NetScope, then uninstall from **Settings > Apps**; all NetScope
+- [x] Launch NetScope, then uninstall from **Settings > Apps**; all NetScope
       processes stop first, and the app, shortcut, PATH entry and App Paths key
       are removed.
-- [ ] Uninstall data prompt opens with **Yes** selected; accept it and confirm
+- [x] Uninstall data prompt opens with **Yes** selected; accept it and confirm
       `%LOCALAPPDATA%\NetScope` is removed. Repeat and choose **No**: data stays.
 - [ ] Reinstall over an existing Inno install; the version upgrades and user
       data is preserved.
@@ -187,23 +187,23 @@ result after applying the repair.
 
 - [ ] `NetScope.exe install --dry-run` lists the copy, PATH, App Paths, and
       shortcut actions without changing anything.
-- [ ] `NetScope.exe install` copies to
+- [x] `NetScope.exe install` copies to
       `%LOCALAPPDATA%\Programs\NetScope\NetScope.exe`, adds the directory to the
       user PATH, registers App Paths, creates the Start Menu shortcut, and
       writes `.netscope-install`.
-- [ ] Open a new terminal; `netscope --version` resolves from PATH.
-- [ ] Win+R `NetScope` launches the app.
+- [x] Open a new terminal; `netscope --version` resolves from PATH.
+- [x] Win+R `NetScope` launches the app.
 - [ ] Run install twice; the PATH entry is not duplicated and the second run
       still succeeds.
 - [ ] Put an unrelated file in the install directory; uninstall keeps it and
       removes only the exe/marker/shortcut.
-- [ ] `NetScope.exe uninstall` removes PATH, App Paths, shortcut, and files.
+- [x] `NetScope.exe uninstall` removes PATH, App Paths, shortcut, and files.
 - [ ] `NetScope.exe uninstall --purge` also removes
       `%LOCALAPPDATA%\NetScope` (logs/reports/backups).
 - [ ] Uninstall while the app and its web server are running; all NetScope
       processes are terminated before files are removed, and a second uninstall
       is harmless.
-- [ ] Run `netscope stop` while the window is open; the window/server and any
+- [x] Run `netscope stop` while the window is open; the window/server and any
       spawned browser or WebView2 child processes exit, and no NetScope process
       remains in Task Manager.
 - [ ] Install from a copied exe with `--source PATH`; the installed copy runs.
