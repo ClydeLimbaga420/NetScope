@@ -49,7 +49,7 @@ Filename: "{app}\NetScope.exe"; Description: "{cm:LaunchProgram,NetScope}"; Flag
 
 [UninstallRun]
 ; Stop every NetScope process before Windows tries to delete the running exe.
-Filename: "{app}\NetScope.exe"; Parameters: "__stop_all__"; Flags: runhidden waituntilterminated skipifdoesntexist
+Filename: "{app}\NetScope.exe"; Parameters: "__stop_all__"; RunOnceId: "NetScopeStopAll"; Flags: runhidden waituntilterminated skipifdoesntexist
 
 [Code]
 function GetUserPath: string;
