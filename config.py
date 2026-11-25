@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 APP_NAME = "NetScope"
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.5.0"
 
 PING_TIMEOUT_SECONDS = 1
 
