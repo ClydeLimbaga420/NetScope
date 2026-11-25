@@ -14,16 +14,26 @@ Menu/desktop shortcuts, uninstaller, WebView2 handling, and a `.netscope-inno`
 marker. `netscope install`/`uninstall` still manage portable installs and refuse
 installer-managed copies. CI covers tests on Python 3.11/3.14, 80% coverage,
 Playwright browser smoke + screenshots, frozen exe smoke, and an Inno
-install/uninstall smoke. Latest local suite: 440 passed, 2 skipped (2026-11-24)
-plus 3 known environment-only failures (outdated WSL/Git Bash build-script test
-and two Windows Job Object descendant-kill tests).
+install/uninstall smoke. Latest local suite: 446 passed, 2 skipped (2026-11-25);
+coverage 83.15%. ruff/mypy are configured but not installed in this venv.
 Manual validation (Windows 10
 VM checklist, window/UAC/installer cases, and human screenshot review) is
 deferred for now by request; it is a release-confidence item, not a code or
 test blocker. Phase 7 and GUI launch follow-up changes are committed locally;
 remote CI has not been run.
 
-**Fix-outcome text inset (2026-11-25):** the fix result copy in Troubleshoot
+**Recursive GUI launch fix (2026-11-25):** `netscope gui` from an interactive
+terminal spawns a detached child with the hidden `--print-url` flag, but Windows
+still reports that child's stdin as a TTY (even with
+`stdin=DEVNULL`/`DETACHED_PROCESS`), so it re-entered the detached-launch branch
+and spawned another child indefinitely. `cmd_gui()` now skips the detached spawn
+whenever `print_url` is set. Parameterized regression tests cover both
+`gui --print-url` and `gui --browser --print-url`. A real `CREATE_NEW_CONSOLE`
+harness went from 10+ child processes to exactly one child running the server.
+The installed exe/installer have not been rebuilt with this source fix.
+
+**Fix-outcome text inset (2026-11-25):**
+ the fix result copy in Troubleshoot
 was flush against the `.engine-output` side borders. Direct body children of
 that card (`.engine-result-meta`, `.diag-desc`, `.step-reason`,
 `.repair-section`) now get a 14px left/right inset in `web-overrides.css`.

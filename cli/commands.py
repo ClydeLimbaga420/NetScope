@@ -711,7 +711,12 @@ def cmd_gui(args: Any, ctx: CliContext) -> int:
     # Otherwise start server and open window/browser (blocks this process).
     # When invoked from an interactive terminal without --no-browser, spawn a
     # detached server process so the prompt returns immediately.
-    if (not no_browser) and _stdin_is_tty(ctx) and not getattr(ctx, "json_mode", False):
+    if (
+        (not no_browser)
+        and not print_url
+        and _stdin_is_tty(ctx)
+        and not getattr(ctx, "json_mode", False)
+    ):
         try:
             import os
             import subprocess
