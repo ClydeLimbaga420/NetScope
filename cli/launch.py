@@ -14,6 +14,7 @@ Windows console rules used here:
 
 from __future__ import annotations
 
+import ctypes
 import os
 import subprocess
 import sys
@@ -29,6 +30,146 @@ _ENTRY_POINT = _PROJECT_ROOT / "netscope.py"
 _GWL_EXSTYLE = -20
 _WS_EX_TOOLWINDOW = 0x00000080
 _WS_EX_APPWINDOW = 0x00040000
+_TH32CS_SNAPPROCESS = 0x00000002
+_STD_INPUT_HANDLE = -10
+_STD_OUTPUT_HANDLE = -11
+_STD_ERROR_HANDLE = -12
+_FILE_TYPE_DISK = 0x0001
+_FILE_TYPE_PIPE = 0x0003
+_ATTACH_PARENT_PROCESS = 0xFFFFFFFF
+
+
+class _ProcessEntry32W(ctypes.Structure):
+    _fields_ = [
+        ("dwSize", ctypes.c_ulong),
+        ("cntUsage", ctypes.c_ulong),
+        ("th32ProcessID", ctypes.c_ulong),
+        ("th32DefaultHeapID", ctypes.c_void_p),
+        ("th32ModuleID", ctypes.c_ulong),
+        ("cntThreads", ctypes.c_ulong),
+        ("th32ParentProcessID", ctypes.c_ulong),
+        ("pcPriClassBase", ctypes.c_long),
+        ("dwFlags", ctypes.c_ulong),
+        ("szExeFile", ctypes.c_wchar * 260),
+    ]
+
+
+def _ancestor_process_ids(pid: int | None = None) -> list[int]:
+    """Return parent process IDs, nearest first, without requiring a console."""
+
+    if os.name != "nt":
+        return []
+    try:
+        import ctypes.wintypes
+
+        kernel32 = ctypes.windll.kernel32
+        snapshot = kernel32.CreateToolhelp32Snapshot(_TH32CS_SNAPPROCESS, 0)
+        if not snapshot or snapshot == -1:
+            return []
+        entry = _ProcessEntry32W()
+        entry.dwSize = ctypes.sizeof(entry)
+        parents: dict[int, int] = {}
+        kernel32.Process32FirstW.argtypes = (
+            ctypes.wintypes.HANDLE,
+            ctypes.POINTER(_ProcessEntry32W),
+        )
+        kernel32.Process32FirstW.restype = ctypes.wintypes.BOOL
+        kernel32.Process32NextW.argtypes = kernel32.Process32FirstW.argtypes
+        kernel32.Process32NextW.restype = ctypes.wintypes.BOOL
+        if kernel32.Process32FirstW(snapshot, ctypes.byref(entry)):
+            while True:
+                parents[int(entry.th32ProcessID)] = int(entry.th32ParentProcessID)
+                if not kernel32.Process32NextW(snapshot, ctypes.byref(entry)):
+                    break
+        kernel32.CloseHandle(snapshot)
+    except Exception:
+        return []
+
+    ancestors: list[int] = []
+    seen: set[int] = set()
+    current = pid if pid is not None else os.getpid()
+    while True:
+        parent = parents.get(current)
+        if parent is None or parent == 0 or parent in seen:
+            break
+        ancestors.append(parent)
+        seen.add(parent)
+        current = parent
+    return ancestors
+
+
+def _console_stream_needs_rebind(stream: Any, std_handle: int) -> bool:
+    if stream is None:
+        return True
+    try:
+        if stream.isatty():
+            return False
+    except Exception:
+        pass
+    try:
+        import ctypes
+        import ctypes.wintypes
+
+        kernel32 = ctypes.windll.kernel32
+        kernel32.GetStdHandle.argtypes = (ctypes.wintypes.DWORD,)
+        kernel32.GetStdHandle.restype = ctypes.wintypes.HANDLE
+        handle = kernel32.GetStdHandle(std_handle)
+        if not handle or handle == ctypes.c_void_p(-1).value:
+            return True
+        kernel32.GetConsoleMode.argtypes = (
+            ctypes.wintypes.HANDLE,
+            ctypes.POINTER(ctypes.wintypes.DWORD),
+        )
+        kernel32.GetConsoleMode.restype = ctypes.wintypes.BOOL
+        mode = ctypes.wintypes.DWORD()
+        if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            return True
+        kernel32.GetFileType.argtypes = (ctypes.wintypes.HANDLE,)
+        kernel32.GetFileType.restype = ctypes.wintypes.DWORD
+        return kernel32.GetFileType(handle) not in (_FILE_TYPE_DISK, _FILE_TYPE_PIPE)
+    except Exception:
+        return False
+
+
+def _rebind_console_streams() -> None:
+    """Reconnect Python's streams after attaching a windowed build to a console."""
+
+    if _console_stream_needs_rebind(sys.stdout, _STD_OUTPUT_HANDLE):
+        try:
+            encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+            sys.stdout = open(
+                "CONOUT$", "w", encoding=encoding, errors="replace", buffering=1
+            )
+        except Exception:
+            pass
+    if _console_stream_needs_rebind(sys.stderr, _STD_ERROR_HANDLE):
+        try:
+            encoding = getattr(sys.stderr, "encoding", None) or "utf-8"
+            sys.stderr = open(
+                "CONOUT$", "w", encoding=encoding, errors="replace", buffering=1
+            )
+        except Exception:
+            pass
+
+
+def ensure_console_input() -> bool:
+    """Reconnect stdin to the attached console without overriding redirection."""
+
+    if os.name != "nt" or not getattr(sys, "frozen", False):
+        return False
+    try:
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.GetStdHandle(_STD_INPUT_HANDLE)
+        if not handle or handle == ctypes.c_void_p(-1).value:
+            return False
+        file_type = kernel32.GetFileType(handle)
+        if file_type in (_FILE_TYPE_DISK, _FILE_TYPE_PIPE):
+            return False
+        encoding = getattr(sys.stdin, "encoding", None) or "utf-8"
+        sys.stdin = open("CONIN$", "r", encoding=encoding, errors="replace")
+        return True
+    except Exception:
+        return False
 
 
 def attach_parent_console() -> bool:
@@ -50,9 +191,16 @@ def attach_parent_console() -> bool:
         attach = kernel32.AttachConsole
         attach.argtypes = (ctypes.wintypes.DWORD,)
         attach.restype = ctypes.wintypes.BOOL
-        if attach(0xFFFFFFFF):  # ATTACH_PARENT_PROCESS
-            return True
-        return bool(kernel32.GetConsoleWindow())
+        attached = bool(attach(_ATTACH_PARENT_PROCESS))
+        if not attached:
+            for pid in _ancestor_process_ids():
+                if bool(attach(pid)):
+                    attached = True
+                    break
+        if not attached:
+            return bool(kernel32.GetConsoleWindow())
+        _rebind_console_streams()
+        return True
     except Exception:
         return False
 

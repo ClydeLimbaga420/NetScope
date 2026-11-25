@@ -215,6 +215,74 @@ def test_attach_parent_console_is_noop_for_source_runs(monkeypatch):
     assert launch.attach_parent_console() is False
 
 
+def test_attach_parent_console_falls_back_to_ancestor_console(monkeypatch):
+    calls = []
+    attach = FakeWinApiFunction(lambda pid: calls.append(pid) or pid == 4321)
+    get_console_window = FakeWinApiFunction(lambda: 0)
+    monkeypatch.setattr(launch.os, "name", "nt")
+    monkeypatch.setattr(launch.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(launch, "_ancestor_process_ids", lambda: [1111, 4321])
+    monkeypatch.setattr(launch, "_rebind_console_streams", lambda: None)
+    monkeypatch.setattr(
+        ctypes,
+        "windll",
+        SimpleNamespace(
+            kernel32=SimpleNamespace(
+                AttachConsole=attach,
+                GetConsoleWindow=get_console_window,
+            )
+        ),
+        raising=False,
+    )
+
+    assert launch.attach_parent_console() is True
+    assert calls == [0xFFFFFFFF, 1111, 4321]
+
+
+def test_ensure_console_input_ignores_redirected_stdin(monkeypatch):
+    kernel32 = SimpleNamespace(
+        GetStdHandle=FakeWinApiFunction(lambda _handle: 123),
+        GetFileType=FakeWinApiFunction(lambda _handle: 0x0003),
+    )
+    monkeypatch.setattr(launch.os, "name", "nt")
+    monkeypatch.setattr(launch.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(
+        ctypes, "windll", SimpleNamespace(kernel32=kernel32), raising=False
+    )
+    stdin = io.StringIO()
+    monkeypatch.setattr(launch.sys, "stdin", stdin)
+    monkeypatch.setattr(
+        "builtins.open",
+        lambda *_args, **_kwargs: pytest.fail("redirected stdin must not be rebound"),
+    )
+
+    assert launch.ensure_console_input() is False
+    assert launch.sys.stdin is stdin
+
+
+def test_ensure_console_input_rebinds_console_stdin(monkeypatch):
+    kernel32 = SimpleNamespace(
+        GetStdHandle=FakeWinApiFunction(lambda _handle: 123),
+        GetFileType=FakeWinApiFunction(lambda _handle: 0x0002),
+    )
+    opened = []
+    rebound = io.StringIO()
+    monkeypatch.setattr(launch.os, "name", "nt")
+    monkeypatch.setattr(launch.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(
+        ctypes, "windll", SimpleNamespace(kernel32=kernel32), raising=False
+    )
+    monkeypatch.setattr(launch.sys, "stdin", io.StringIO())
+    monkeypatch.setattr(
+        "builtins.open",
+        lambda name, *_args, **_kwargs: opened.append(name) or rebound,
+    )
+
+    assert launch.ensure_console_input() is True
+    assert opened == ["CONIN$"]
+    assert launch.sys.stdin is rebound
+
+
 def test_gui_relaunch_argv_targets_internal_token():
     argv = gui_relaunch_argv()
     assert argv
@@ -343,6 +411,55 @@ def test_main_no_args_from_frozen_onefile_launches_gui(monkeypatch):
 
     assert main([]) == exit_codes.OK
     assert calls == [{}]
+
+
+def test_main_no_args_in_frozen_terminal_keeps_interactive_shell(monkeypatch):
+    ctx = make_cli_ctx()
+    shell_calls = []
+    monkeypatch.setattr(launch.os, "name", "nt")
+    monkeypatch.setattr(launch.sys, "frozen", True, raising=False)
+    monkeypatch.setattr("cli.main.attach_parent_console", lambda: True)
+    monkeypatch.setattr("cli.main.owns_console", lambda: False)
+    monkeypatch.setattr("cli.main._stdin_is_tty", lambda: True)
+    monkeypatch.setattr("cli.main.create_context", lambda *_args, **_kwargs: ctx)
+    monkeypatch.setattr(
+        "cli.main.run_shell",
+        lambda parser, shell_ctx: shell_calls.append(shell_ctx) or 0,
+    )
+    monkeypatch.setattr(
+        "web.run.run_web_ui",
+        lambda **_kwargs: pytest.fail("terminal launch must not open the GUI"),
+    )
+
+    assert main([]) == exit_codes.OK
+    assert shell_calls == [ctx]
+
+
+def test_main_no_args_in_frozen_terminal_rebinds_input_for_shell(monkeypatch):
+    ctx = make_cli_ctx()
+    shell_calls = []
+    rebind_calls = []
+    monkeypatch.setattr(launch.os, "name", "nt")
+    monkeypatch.setattr(launch.sys, "frozen", True, raising=False)
+    monkeypatch.setattr("cli.main.attach_parent_console", lambda: True)
+    monkeypatch.setattr("cli.main.owns_console", lambda: False)
+    monkeypatch.setattr("cli.main._stdin_is_tty", lambda: False)
+    monkeypatch.setattr(
+        "cli.main.ensure_console_input", lambda: rebind_calls.append(True) or True
+    )
+    monkeypatch.setattr("cli.main.create_context", lambda *_args, **_kwargs: ctx)
+    monkeypatch.setattr(
+        "cli.main.run_shell",
+        lambda parser, shell_ctx: shell_calls.append(shell_ctx) or 0,
+    )
+    monkeypatch.setattr(
+        "web.run.run_web_ui",
+        lambda **_kwargs: pytest.fail("terminal launch must not open the GUI"),
+    )
+
+    assert main([]) == exit_codes.OK
+    assert rebind_calls == [True]
+    assert shell_calls == [ctx]
 
 
 def test_main_no_args_in_shared_terminal_keeps_interactive_shell(monkeypatch):

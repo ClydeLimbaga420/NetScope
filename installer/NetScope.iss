@@ -35,6 +35,9 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "..\dist\NetScope.exe"; DestDir: "{app}"; Flags: ignoreversion
+; CLI shim: cmd.exe waits for GUI programs launched from a batch file, so
+; `netscope --version` prints before the next prompt instead of after it.
+Source: "..\scripts\netscope.cmd"; DestDir: "{app}\bin"; DestName: "netscope.cmd"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\NetScope"; Filename: "{app}\NetScope.exe"; WorkingDir: "{app}"
@@ -42,7 +45,7 @@ Name: "{autodesktop}\NetScope"; Filename: "{app}\NetScope.exe"; WorkingDir: "{ap
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\NetScope.exe"; ValueType: string; ValueName: ""; ValueData: "{app}\NetScope.exe"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Flags: preservestringtype; Check: NeedsAddPath('{app}')
+Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}\bin"; Flags: preservestringtype; Check: NeedsAddPath('{app}\bin')
 
 [Run]
 Filename: "{app}\NetScope.exe"; Description: "{cm:LaunchProgram,NetScope}"; Flags: nowait postinstall skipifsilent
@@ -123,17 +126,25 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
+  begin
     SaveStringToFile(
       ExpandConstant('{app}\.netscope-inno'),
       'Managed by NetScope Setup',
       False
     );
+    // Upgrade from a build that put the GUI exe directory itself on PATH:
+    // that entry would win over the new CLI shim (PATHEXT prefers .exe).
+    RemoveFromUserPath(ExpandConstant('{app}'));
+  end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
+  begin
+    RemoveFromUserPath(ExpandConstant('{app}\bin'));
     RemoveFromUserPath(ExpandConstant('{app}'));
+  end;
   if CurUninstallStep = usPostUninstall then
     if UninstallSilent or (MsgBox(
       'Also remove NetScope logs, reports, and fix backups?',

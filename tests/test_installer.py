@@ -16,7 +16,15 @@ from cli import exit_codes
 from cli.colors import Colorizer
 from cli.commands import cmd_install, cmd_uninstall
 from cli.context import CliContext
-from cli.installer import INNO_MARKER_NAME, InstallResult, install, uninstall
+from cli.installer import (
+    CLI_BIN_DIR,
+    CLI_SHIM_NAME,
+    CLI_SHIM_TEXT,
+    INNO_MARKER_NAME,
+    InstallResult,
+    install,
+    uninstall,
+)
 from cli.parser import apply_defaults, build_parser
 from core.probes import FakeProbe
 from core.runner import FakeRunner
@@ -143,14 +151,86 @@ def test_install_copies_exe_and_registers(monkeypatch, tmp_path):
     )
 
     target = install_dir / "NetScope.exe"
+    shim_dir = install_dir / CLI_BIN_DIR
+    shim = shim_dir / CLI_SHIM_NAME
     assert result.ok
     assert target.read_bytes() == b"MZ fake exe"
+    assert shim.read_text(encoding="ascii") == CLI_SHIM_TEXT
     assert (install_dir / ".netscope-install").is_file()
     assert (start_menu / "NetScope.lnk").is_file()
     assert registry.app_paths["NetScope.exe"] == str(target)
     assert result.path_changed
-    assert str(install_dir) in registry.path.split(";")
+    assert str(shim_dir) in registry.path.split(";")
+    assert str(install_dir) not in registry.path.split(";")
     assert registry.broadcasts == 1
+
+
+def test_cli_shim_matches_inno_source_and_waits_for_gui_exe():
+    """The installed shim must match the one Inno Setup copies.
+
+    A batch file is what makes cmd.exe wait for the windowed executable, so its
+    two critical lines are asserted here as well as the byte-for-byte match.
+    """
+
+    repo_shim = Path(__file__).resolve().parents[1] / "scripts" / CLI_SHIM_NAME
+    assert repo_shim.read_bytes().decode("ascii").replace("\r\n", "\n") == CLI_SHIM_TEXT
+    assert '"%NETSCOPE_EXE%" %*' in CLI_SHIM_TEXT
+    assert "exit /b %ERRORLEVEL%" in CLI_SHIM_TEXT
+    assert "start " not in CLI_SHIM_TEXT  # plain batch invocation is enough to wait
+
+
+def test_path_shim_directory_does_not_contain_the_gui_exe(monkeypatch, tmp_path):
+    shortcut_writer(monkeypatch)
+    source = make_source(tmp_path)
+    install_dir = tmp_path / "install"
+    install(
+        source_exe=source,
+        install_dir=install_dir,
+        start_menu_dir=tmp_path / "start",
+        registry=MemoryRegistry(),
+    )
+
+    shim_dir = install_dir / CLI_BIN_DIR
+    assert sorted(path.name.lower() for path in shim_dir.iterdir()) == [CLI_SHIM_NAME]
+    assert not (shim_dir / "NetScope.exe").exists()
+    assert (install_dir / "NetScope.exe").is_file()
+
+
+def test_uninstall_removes_legacy_exe_directory_from_path(monkeypatch, tmp_path):
+    shortcut_writer(monkeypatch)
+    source = make_source(tmp_path)
+    install_dir = tmp_path / "install"
+    registry = MemoryRegistry(path=r"C:\Windows\System32")
+    install(
+        source_exe=source,
+        install_dir=install_dir,
+        start_menu_dir=tmp_path / "start",
+        registry=registry,
+    )
+    # Simulate an install made before the shim existed.
+    legacy_path = registry.path.split(";") + [str(install_dir)]
+    registry.path = ";".join(legacy_path)
+
+    uninstall(
+        install_dir=install_dir,
+        start_menu_dir=tmp_path / "start",
+        registry=registry,
+    )
+
+    assert str(install_dir) not in registry.path.split(";")
+    assert str(install_dir / CLI_BIN_DIR) not in registry.path.split(";")
+
+
+def test_inno_setup_installs_shim_and_uses_bin_on_path():
+    iss = (Path(__file__).resolve().parents[1] / "installer" / "NetScope.iss").read_text(
+        encoding="utf-8"
+    )
+    assert rf'Source: "..\scripts\{CLI_SHIM_NAME}"; DestDir: "{{app}}\{CLI_BIN_DIR}"' in iss
+    assert rf'ValueData: "{{olddata}};{{app}}\{CLI_BIN_DIR}"' in iss
+    assert rf"needsaddpath('{{app}}\{CLI_BIN_DIR}')" in iss.lower()
+    # On upgrade, the legacy exe-directory PATH entry must be removed or it
+    # wins over the shim (PATHEXT tries .exe before .cmd).
+    assert iss.count("RemoveFromUserPath(ExpandConstant('{app}'))") == 2
 
 
 def test_install_is_idempotent_for_path(monkeypatch, tmp_path):
@@ -175,7 +255,7 @@ def test_install_is_idempotent_for_path(monkeypatch, tmp_path):
 
     assert first.path_changed
     assert not second.path_changed
-    assert registry.path.split(";").count(str(install_dir)) == 1
+    assert registry.path.split(";").count(str(install_dir / CLI_BIN_DIR)) == 1
 
 
 def test_install_dry_run_changes_nothing(monkeypatch, tmp_path):
@@ -224,6 +304,7 @@ def test_uninstall_removes_everything_it_installed(monkeypatch, tmp_path):
     assert not install_dir.exists()
     assert not (start_menu / "NetScope.lnk").exists()
     assert "NetScope.exe" not in registry.app_paths
+    assert str(install_dir / CLI_BIN_DIR) not in registry.path.split(";")
     assert str(install_dir) not in registry.path.split(";")
     assert registry.broadcasts == 2
 

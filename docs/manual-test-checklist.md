@@ -168,8 +168,10 @@ result after applying the repair.
 - [ ] With WebView2 present, setup does not download it; with it absent (or on
       an offline VM), setup uses the bundled bootstrap/offline installer.
 - [ ] Start Menu shortcut opens the app window; `netscope --version` resolves
-      from a new terminal.
-- [ ] `.netscope-inno` exists in the install directory.
+      from a new terminal and prints the version **before** the next prompt
+      (the `bin\netscope.cmd` shim makes `cmd.exe` wait for the windowed exe).
+- [ ] `.netscope-inno` exists in the install directory and `bin\netscope.cmd`
+      exists beside the exe's parent folder.
 - [ ] `NetScope.exe install --dry-run` and `NetScope.exe uninstall` refuse to
       modify the Inno-managed install and point to **Settings > Apps**.
 - [ ] Run `python scripts\installer_smoke.py --installer dist\installer\NetScope-Setup.exe`
@@ -180,18 +182,19 @@ result after applying the repair.
       are removed.
 - [x] Uninstall data prompt opens with **Yes** selected; accept it and confirm
       `%LOCALAPPDATA%\NetScope` is removed. Repeat and choose **No**: data stays.
-- [ ] Reinstall over an existing Inno install; the version upgrades and user
-      data is preserved.
+- [ ] Reinstall over an existing Inno install; the version upgrades, user data
+      is preserved, and the old exe-directory PATH entry is replaced by `bin\`.
 
 ### Portable CLI installer
 
 - [ ] `NetScope.exe install --dry-run` lists the copy, PATH, App Paths, and
       shortcut actions without changing anything.
 - [x] `NetScope.exe install` copies to
-      `%LOCALAPPDATA%\Programs\NetScope\NetScope.exe`, adds the directory to the
-      user PATH, registers App Paths, creates the Start Menu shortcut, and
-      writes `.netscope-install`.
-- [x] Open a new terminal; `netscope --version` resolves from PATH.
+      `%LOCALAPPDATA%\Programs\NetScope\NetScope.exe`, adds the `bin\` shim
+      directory to the user PATH, registers App Paths, creates the Start Menu
+      shortcut, and writes `.netscope-install`.
+- [x] Open a new terminal; `netscope --version` resolves from PATH and prints
+      before the next prompt, not after it.
 - [x] Win+R `NetScope` launches the app.
 - [ ] Run install twice; the PATH entry is not duplicated and the second run
       still succeeds.

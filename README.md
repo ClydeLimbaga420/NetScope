@@ -111,11 +111,18 @@ validation items.
 ### Option A - Windows installer (recommended)
 
 Run `NetScope-Setup.exe`. The installer is per-user, needs no administrator
-rights, and installs to `%LOCALAPPDATA%\Programs\NetScope\`. It adds `netscope`
-to your user `PATH`, registers the app in `App Paths`, creates Start Menu and
-optional desktop shortcuts, and adds an uninstaller. If Microsoft Edge WebView2
-is missing, the installer downloads the Evergreen bootstrapper; offline installs
-can include the 64-bit offline installer beside the setup executable.
+rights, and installs to `%LOCALAPPDATA%\Programs\NetScope\`. It adds the
+`bin\` directory to your user `PATH` (through a `netscope.cmd` shim), registers
+the app in `App Paths`, creates Start Menu and optional desktop shortcuts, and
+adds an uninstaller. If Microsoft Edge WebView2 is missing, the installer
+downloads the Evergreen bootstrapper; offline installs can include the 64-bit
+offline installer beside the setup executable.
+
+The shim matters because `cmd.exe` does not wait for GUI-subsystem programs at
+an interactive prompt. Running the windowed `NetScope.exe` directly makes
+`--version` print *after* the next prompt; the batch shim makes the shell wait,
+so `netscope --version` prints in the expected place. Double-clicking
+`NetScope.exe` still opens the app with no console.
 
 After installation, launch NetScope from the Start Menu, or run:
 
@@ -140,9 +147,10 @@ or download it from a release, then install it for the current user:
 NetScope.exe install
 ```
 
-This copies the exe to `%LOCALAPPDATA%\Programs\NetScope\`, adds that directory
-to your user `PATH`, registers it in `App Paths`, creates a Start Menu shortcut,
-and broadcasts the environment change. Open a new terminal afterwards. Use
+This copies the exe to `%LOCALAPPDATA%\Programs\NetScope\`, adds a
+`bin\netscope.cmd` shim directory to your user `PATH`, registers the exe in
+`App Paths`, creates a Start Menu shortcut, and broadcasts the environment
+change. Open a new terminal afterwards. Use
 `NetScope.exe install --dry-run` to preview, `--source PATH` for a different exe,
 `--dir PATH` for a different install directory, or `--no-shortcut` to skip the
 Start Menu entry. Non-interactive installs require `--yes`.
@@ -427,10 +435,12 @@ opens the `netscope>` shell.
 ## Install and uninstall
 
 Both installers are per-user and require no elevation. They install to
-`%LOCALAPPDATA%\Programs\NetScope\`, add that directory to
-`HKCU\Environment\Path` (preserving the raw value type), register
+`%LOCALAPPDATA%\Programs\NetScope\`, add its `bin\` directory (holding the
+`netscope.cmd` CLI shim) to `HKCU\Environment\Path` (preserving the raw value
+type), register
 `HKCU\Software\Microsoft\Windows\CurrentVersion\App Paths\NetScope.exe`, and
-create a Start Menu shortcut.
+create a Start Menu shortcut. Upgrades remove the legacy exe-directory PATH
+entry, which would otherwise win over the shim.
 
 The Inno Setup installer (`NetScope-Setup.exe`) also offers a desktop shortcut,
 writes an uninstaller and `.netscope-inno` marker, and handles WebView2 runtime
