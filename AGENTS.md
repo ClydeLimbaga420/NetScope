@@ -80,6 +80,16 @@ tests). Rebuilt `dist/NetScope.exe` (14.5 MB) and
 `dist/installer/NetScope-Setup.exe` (16.3 MB) with Python 3.12.10; frozen smoke
 passed 11/11. The destructive installer smoke and silent reinstall were not run.
 
+**Packet-loss pending retry (2026-11-25):** the dashboard's first
+`/api/packet-loss` call returns 202 while the pings run in the background, but
+the next poll was 3 minutes away, so the card sat at `—`. `dashboard.js` now
+schedules a 5s retry while a result is pending, stops retrying once a result or
+error arrives, and refreshes immediately when a hidden tab becomes visible with
+a retry outstanding. Added a JS contract test; web-design tests 25 passed,
+`node --check` clean, full suite 442 passed, 2 skipped plus the same 3 known
+environment-only failures. Rebuilt the exe/installer again (14.5 MB / 16.3 MB);
+frozen smoke passed 11/11.
+
 **Administrator badge centering (2026-11-24):** `.elevation-badge` now uses
 `justify-content: center`, so the "Administrator"/"User only" label is centered
 inside the pill instead of sitting on its left edge. Added a CSS contract to

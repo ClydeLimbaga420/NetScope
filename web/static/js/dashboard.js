@@ -21,6 +21,10 @@ const TRAFFIC_MIN_CEILING_MBPS = 1;
 // short so a stalled poll releases its guard well before the next interval.
 const STATUS_POLL_INTERVAL_MS = 15000;
 const PACKET_LOSS_POLL_INTERVAL_MS = 180000;
+// The first packet-loss request returns 202 while its pings run in the
+// background. Retry quickly so the card fills in instead of sitting at a dash
+// until the next three-minute poll.
+const PACKET_LOSS_PENDING_RETRY_MS = 5000;
 const TRAFFIC_HISTORY_LENGTH = 40; // ten minutes at the fifteen-second cadence
 const SMOOTHING_FACTOR = 0.28;
 const TRAFFIC_DROP_FACTOR = 0.7;
@@ -29,6 +33,8 @@ const STATUS_ABORT_TIMEOUT_MS = Math.min(6000, STATUS_POLL_INTERVAL_MS - 1000);
 let statusInFlight = false;
 let lastStatusRequestAt = 0;
 let lastPacketLossRequestAt = 0;
+let packetLossRetryTimer = null;
+let packetLossWaiting = false;
 let smoothedDownload = null;
 let smoothedUpload = null;
 let trafficCeiling = TRAFFIC_MIN_CEILING_MBPS;
@@ -1307,7 +1313,7 @@ document.addEventListener("visibilitychange", () => {
         refreshStatus();
     }
 
-    if (Date.now() - lastPacketLossRequestAt >= PACKET_LOSS_POLL_INTERVAL_MS) {
+    if (packetLossWaiting || Date.now() - lastPacketLossRequestAt >= PACKET_LOSS_POLL_INTERVAL_MS) {
         refreshPacketLoss();
     }
 
@@ -1513,6 +1519,29 @@ document.querySelectorAll('.nav-item[data-view]').forEach(item => {
 
 let packetLossInFlight = false;
 
+function stopPacketLossRetry() {
+
+    if (packetLossRetryTimer !== null) {
+        window.clearTimeout(packetLossRetryTimer);
+        packetLossRetryTimer = null;
+    }
+
+    packetLossWaiting = false;
+
+}
+
+function schedulePacketLossRetry() {
+
+    stopPacketLossRetry();
+    packetLossWaiting = true;
+
+    packetLossRetryTimer = window.setTimeout(() => {
+        packetLossRetryTimer = null;
+        refreshPacketLoss();
+    }, PACKET_LOSS_PENDING_RETRY_MS);
+
+}
+
 async function refreshPacketLoss() {
 
     if (document.visibilityState === "hidden") {
@@ -1541,6 +1570,7 @@ async function refreshPacketLoss() {
         if (response.status === 202 && data.state === "pending") {
             value.textContent = "\u2014";
             detail.textContent = "Packet loss test is still running...";
+            schedulePacketLossRetry();
             return;
         }
         if (!response.ok) {
@@ -1583,10 +1613,12 @@ async function refreshPacketLoss() {
         }
 
         detail.textContent = parts.join(" \u00b7 ");
+        stopPacketLossRetry();
 
     }
 
     catch (error) {
+        stopPacketLossRetry();
         value.textContent = "\u2014";
         detail.textContent =
             error instanceof Error && error.message

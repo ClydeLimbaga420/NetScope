@@ -156,6 +156,21 @@ def test_visibility_refresh_uses_packet_loss_poll_interval():
     assert "lastPacketLossRequestAt >= PACKET_LOSS_POLL_INTERVAL_MS" in section
 
 
+def test_packet_loss_pending_state_retries_quickly():
+    source = text(WEB / "static" / "js" / "dashboard.js")
+    assert "PACKET_LOSS_PENDING_RETRY_MS = 5000" in source
+    assert "let packetLossRetryTimer = null" in source
+    assert "let packetLossWaiting = false" in source
+    refresh = source.index("async function refreshPacketLoss")
+    pending = source.index('if (response.status === 202 && data.state === "pending") {', refresh)
+    next_block = source.index("if (!response.ok) {", pending)
+    assert "schedulePacketLossRetry();" in source[pending:next_block]
+    assert "stopPacketLossRetry();" in source
+    visible = source.index('addEventListener("visibilitychange"')
+    section = source[visible : visible + 800]
+    assert "packetLossWaiting" in section
+
+
 def test_status_card_has_freshness_badge():
     source = text(WEB / "templates" / "index.html")
     badge = re.search(r'<span[^>]*id="data-freshness"[^>]*>', source)
