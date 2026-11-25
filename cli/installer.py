@@ -3,9 +3,16 @@
 Install layout (no administrator rights, no system-wide changes):
 
 - ``%LOCALAPPDATA%\\Programs\\NetScope\\NetScope.exe``
-- ``HKCU\\Environment\\Path`` gains the install directory
+- ``%LOCALAPPDATA%\\Programs\\NetScope\\bin\\netscope.cmd`` (PATH shim)
+- ``HKCU\\Environment\\Path`` gains the ``bin`` directory, not the exe directory
 - ``HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\NetScope.exe``
 - ``%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\NetScope.lnk``
+
+The batch shim exists because ``cmd.exe`` does not wait for GUI-subsystem
+programs at an interactive prompt: running the windowed ``NetScope.exe``
+directly makes ``--version`` (and every other CLI answer) print *after* the
+next prompt. A batch file does wait for the GUI executable, so the shim keeps
+the one-file GUI build while restoring normal CLI output ordering.
 
 Uninstall removes exactly those changes. User data (logs, reports, backups) is
 kept unless ``purge=True``.
@@ -28,8 +35,22 @@ import config
 APP_EXE_NAME = "NetScope.exe"
 MARKER_NAME = ".netscope-install"
 INNO_MARKER_NAME = ".netscope-inno"
+CLI_BIN_DIR = "bin"
+CLI_SHIM_NAME = "netscope.cmd"
 APP_PATHS_KEY = r"Software\Microsoft\Windows\CurrentVersion\App Paths"
 USER_ENV_KEY = r"Environment"
+
+# Keep in sync with scripts/netscope.cmd (used by the Inno Setup build). The
+# shim runs the windowed exe from a batch file so cmd.exe waits for it; an
+# interactive prompt does not wait for GUI programs on its own.
+CLI_SHIM_TEXT = """@echo off
+rem cmd.exe does not wait for GUI programs at an interactive prompt.
+rem Running the windowed exe from a batch file keeps CLI output before the next prompt.
+set "NETSCOPE_EXE=%~dp0..\\NetScope.exe"
+if not exist "%NETSCOPE_EXE%" set "NETSCOPE_EXE=%~dp0NetScope.exe"
+"%NETSCOPE_EXE%" %*
+exit /b %ERRORLEVEL%
+"""
 
 # A running executable cannot be deleted on Windows. When the uninstall command
 # itself is that executable, a detached copy of PowerShell waits for this
@@ -42,6 +63,8 @@ while ((Get-Process -Id $WaitPid -ErrorAction SilentlyContinue) -and (Get-Date) 
 }
 Remove-Item -LiteralPath (Join-Path $InstallDir 'NetScope.exe') -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath (Join-Path $InstallDir '.netscope-install') -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath (Join-Path $InstallDir 'bin\netscope.cmd') -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath (Join-Path $InstallDir 'bin') -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $InstallDir -Force -ErrorAction SilentlyContinue
 if ($Purge -and $DataDir) {
   Remove-Item -LiteralPath $DataDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -378,6 +401,8 @@ def install(
     if not source.is_file():
         raise InstallerError(f"installer source does not exist: {source}")
     target = target_dir / APP_EXE_NAME
+    shim_dir = target_dir / CLI_BIN_DIR
+    shim = shim_dir / CLI_SHIM_NAME
     shortcut = (Path(start_menu_dir) if start_menu_dir else default_start_menu_dir()) / "NetScope.lnk"
 
     result = InstallResult(
@@ -390,7 +415,8 @@ def install(
 
     if dry_run:
         result.messages.append(f"Would copy {source} to {target}")
-        result.messages.append(f"Would add {target_dir} to the user PATH")
+        result.messages.append(f"Would create CLI shim {shim}")
+        result.messages.append(f"Would add {shim_dir} to the user PATH")
         result.messages.append(f"Would register {target} in App Paths")
         if create_start_menu:
             result.messages.append(f"Would create Start Menu shortcut {shortcut}")
@@ -399,10 +425,12 @@ def install(
     target_dir.mkdir(parents=True, exist_ok=True)
     if source != target:
         shutil.copy2(source, target)
+    shim_dir.mkdir(parents=True, exist_ok=True)
+    shim.write_text(CLI_SHIM_TEXT, encoding="ascii", newline="\r\n")
     _write_marker(target_dir, source)
 
     active_registry = registry or WindowsRegistry()
-    result.path_changed = active_registry.add_to_user_path(str(target_dir))
+    result.path_changed = active_registry.add_to_user_path(str(shim_dir))
     active_registry.set_app_path(APP_EXE_NAME, str(target))
     result.app_path_changed = True
     if create_start_menu:
@@ -429,6 +457,8 @@ def uninstall(
         raise InstallerError("install directory must be an absolute path")
     _reject_inno_managed(target_dir)
     target = target_dir / APP_EXE_NAME
+    shim_dir = target_dir / CLI_BIN_DIR
+    shim = shim_dir / CLI_SHIM_NAME
     shortcut = (Path(start_menu_dir) if start_menu_dir else default_start_menu_dir()) / "NetScope.lnk"
     data_dir = config.data_dir()
 
@@ -442,7 +472,7 @@ def uninstall(
 
     if dry_run:
         result.messages.append("Would stop all running NetScope processes")
-        result.messages.append(f"Would remove {target_dir} from the user PATH")
+        result.messages.append(f"Would remove {shim_dir} from the user PATH")
         result.messages.append("Would remove the App Paths registration")
         result.messages.append(f"Would remove Start Menu shortcut {shortcut}")
         if _is_our_install(target_dir):
@@ -463,7 +493,11 @@ def uninstall(
         )
 
     active_registry = registry or WindowsRegistry()
-    result.path_changed = active_registry.remove_from_user_path(str(target_dir))
+    # Older portable installs put the exe directory itself on PATH; remove both
+    # so upgrading does not leave the GUI exe ahead of the new CLI shim.
+    path_removed = active_registry.remove_from_user_path(str(shim_dir))
+    path_removed |= active_registry.remove_from_user_path(str(target_dir))
+    result.path_changed = bool(path_removed)
     result.app_path_changed = active_registry.remove_app_path(APP_EXE_NAME)
 
     if shortcut.is_file():
@@ -473,11 +507,10 @@ def uninstall(
     self_uninstall = _is_current_executable(target)
     scheduled = False
     if _is_our_install(target_dir):
-        for name in (APP_EXE_NAME, MARKER_NAME):
-            path = target_dir / name
+        for path in (target, target_dir / MARKER_NAME, shim):
             if not path.is_file():
                 continue
-            if self_uninstall and name == APP_EXE_NAME:
+            if self_uninstall and path == target:
                 continue
             try:
                 path.unlink()
@@ -485,6 +518,12 @@ def uninstall(
             except OSError as exc:
                 result.ok = False
                 result.messages.append(f"Could not remove {path}: {exc}")
+        if shim_dir.is_dir() and not any(shim_dir.iterdir()):
+            try:
+                shim_dir.rmdir()
+                result.removed.append(str(shim_dir))
+            except OSError:
+                pass
         if self_uninstall:
             scheduled = _schedule_self_cleanup(target_dir, data_dir, purge)
             result.pending_cleanup = scheduled

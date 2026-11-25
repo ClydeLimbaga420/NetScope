@@ -94,6 +94,8 @@ def main(argv: list[str] | None = None) -> int:
     installer = args.installer.resolve()
     install_dir = args.install_dir.resolve()
     exe = install_dir / APP_EXE
+    bin_dir = install_dir / "bin"
+    shim = bin_dir / "netscope.cmd"
     data_dir = Path(os.environ.get("LOCALAPPDATA", "")) / "NetScope"
 
     if not installer.is_file():
@@ -126,14 +128,17 @@ def main(argv: list[str] | None = None) -> int:
         _fail("App Paths registration missing")
     _ok("App Paths registration exists")
 
-    if not _path_contains(install_dir):
-        _fail(f"user PATH does not contain {install_dir}")
-    _ok("user PATH contains the install directory")
+    if not shim.is_file():
+        _fail(f"CLI shim missing: {shim}")
+    _ok("CLI shim was installed")
+    if not _path_contains(bin_dir):
+        _fail(f"user PATH does not contain {bin_dir}")
+    _ok("user PATH contains the CLI shim directory")
 
-    version = _run([str(exe), "--version"])
+    version = _run([str(shim), "--version"])
     if version.returncode != 0 or not version.stdout.strip().startswith("NetScope "):
-        _fail(f"{exe} --version failed: {version.stdout!r} {version.stderr!r}")
-    _ok(f"version check: {version.stdout.strip()}")
+        _fail(f"{shim} --version failed: {version.stdout!r} {version.stderr!r}")
+    _ok(f"version check via shim: {version.stdout.strip()}")
 
     uninstaller = install_dir / "unins000.exe"
     if not uninstaller.is_file():
@@ -150,8 +155,10 @@ def main(argv: list[str] | None = None) -> int:
         _fail(f"Start Menu shortcut still exists: {START_MENU_LNK}")
     if not _wait_until(lambda: not _app_paths_exists()):
         _fail("App Paths registration still exists")
-    if not _wait_until(lambda: not _path_contains(install_dir)):
-        _fail(f"user PATH still contains {install_dir}")
+    if not _wait_until(lambda: not shim.exists()):
+        _fail(f"CLI shim still exists: {shim}")
+    if not _wait_until(lambda: not _path_contains(bin_dir)):
+        _fail(f"user PATH still contains {bin_dir}")
     if not _wait_until(lambda: not data_dir.exists()):
         _fail(f"user data was not removed: {data_dir}")
     _ok("uninstaller removed app, shortcut, App Paths, PATH entry and user data")

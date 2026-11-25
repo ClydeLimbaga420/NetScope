@@ -14,8 +14,9 @@ Menu/desktop shortcuts, uninstaller, WebView2 handling, and a `.netscope-inno`
 marker. `netscope install`/`uninstall` still manage portable installs and refuse
 installer-managed copies. CI covers tests on Python 3.11/3.14, 80% coverage,
 Playwright browser smoke + screenshots, frozen exe smoke, and an Inno
-install/uninstall smoke. Latest local suite: 446 passed, 2 skipped (2026-11-25);
-coverage 83.15%. ruff/mypy are configured but not installed in this venv.
+install/uninstall smoke. Latest local suite: 452 passed, 2 skipped plus the same
+3 known environment-only failures (2026-11-25); coverage 83.15%. ruff/mypy are
+configured but not installed in this venv.
 Manual validation (Windows 10
 VM checklist, window/UAC/installer cases, and human screenshot review) is
 deferred for now by request; it is a release-confidence item, not a code or
@@ -47,6 +48,25 @@ A real `CREATE_NEW_CONSOLE` harness against the installed exe prints
 The exe/installer were rebuilt and silently reinstalled with the local Python
 3.14.7 venv (16.1 MB / 17.9 MB); regenerate with Python 3.12.10 for release
 because of the earlier native-crash history. ruff/mypy are not installed here.
+
+**CLI output-ordering shim (2026-11-25):** `cmd.exe` does not wait for GUI-subsystem
+executables at an interactive prompt, so the windowed one-file build's
+`AttachConsole()` output landed *after* the next prompt (`NetScope 0.5.0`
+appeared below a fresh `C:\...>`). Both installers now put a `bin\netscope.cmd`
+shim on the user PATH instead of the exe directory: a batch file does wait for
+the GUI exe, so CLI answers print in the right place while double-clicking
+`NetScope.exe` still opens with no console. `cli/installer.py` owns the shim
+text (`scripts/netscope.cmd` is the identical Inno source); uninstall and the
+self-cleanup script remove it; Inno's post-install step deletes the legacy
+exe-directory PATH entry so upgrades do not let `.exe` beat `.cmd` in PATHEXT.
+Added installer/Inno contract tests (23 focused passed); full suite 452 passed,
+2 skipped plus the same 3 known environment-only failures (outdated WSL/Git Bash
+and two Windows Job Object descendant-kill tests). A real piped `cmd.exe`
+harness reproduced the bug with the direct exe and confirmed the installed shim
+prints `NetScope 0.5.0` before the next marker/prompt. Rebuilt exe/installer with
+the Python 3.12.10 venv (14.5 MB / 16.3 MB), silently reinstalled, and frozen
+smoke passed 11/11. Direct `NetScope.exe --version` from an interactive prompt
+still has the GUI-subsystem limitation; documented in README.
 
 **Fix-outcome text inset (2026-11-25):**
  the fix result copy in Troubleshoot
