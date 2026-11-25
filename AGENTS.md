@@ -30,7 +30,23 @@ and spawned another child indefinitely. `cmd_gui()` now skips the detached spawn
 whenever `print_url` is set. Parameterized regression tests cover both
 `gui --print-url` and `gui --browser --print-url`. A real `CREATE_NEW_CONSOLE`
 harness went from 10+ child processes to exactly one child running the server.
-The installed exe/installer have not been rebuilt with this source fix.
+The exe/installer were later rebuilt with that source fix.
+
+**Frozen terminal CLI fix (2026-11-25):** a fresh install reported that
+`netscope` opened the GUI and `netscope --version` printed nothing. In the
+one-file windowed build the Python process is a child of the bootloader, so
+`AttachConsole(ATTACH_PARENT_PROCESS)` fails; `attach_parent_console()` now walks
+ancestor PIDs via a Toolhelp32 snapshot and rebinds stdout/stderr to `CONOUT$`.
+`cli/main.py` no longer treats `sys.frozen` as an owned console, so no-args in a
+terminal starts the interactive shell while double-click still opens the GUI.
+`ensure_console_input()` rebinds stdin to `CONIN$` only for that frozen shell and
+refuses to override file/pipe redirection. Added five launch tests; focused 36
+passed, full suite 451 passed/2 skipped, coverage 83.15%, frozen smoke 2 passed.
+A real `CREATE_NEW_CONSOLE` harness against the installed exe prints
+`NetScope 0.5.0` for `--version` and shows the `netscope>` prompt for no args.
+The exe/installer were rebuilt and silently reinstalled with the local Python
+3.14.7 venv (16.1 MB / 17.9 MB); regenerate with Python 3.12.10 for release
+because of the earlier native-crash history. ruff/mypy are not installed here.
 
 **Fix-outcome text inset (2026-11-25):**
  the fix result copy in Troubleshoot

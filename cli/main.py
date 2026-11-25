@@ -18,19 +18,22 @@ from cli.launch import (
     STOP_ALL_INTERNAL,
     attach_parent_console,
     detach_console,
+    ensure_console_input,
     launch_detached_gui,
     owns_console,
 )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    attach_parent_console()
+    attached_console = attach_parent_console()
     args_in = list(sys.argv[1:] if argv is None else argv)
     if args_in and args_in[0] == STOP_ALL_INTERNAL:
         return _stop_all_processes()
     if args_in and args_in[0] == GUI_INTERNAL:
         return _run_gui_process(args_in[1:])
-    if not args_in and (owns_console() or getattr(sys, "frozen", False)):
+    frozen = getattr(sys, "frozen", False)
+    gui_from_console = (not frozen and owns_console()) or (frozen and not attached_console)
+    if not args_in and gui_from_console:
         return _open_gui_from_owned_console()
     parser = build_parser()
     try:
@@ -40,9 +43,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     apply_defaults(args)
 
     if getattr(args, "command", None) is None:
-        if owns_console() or getattr(sys, "frozen", False):
+        if gui_from_console:
             return _open_gui_from_owned_console()
-        if not _stdin_is_tty():
+        stdin_tty = _stdin_is_tty()
+        if frozen and attached_console and not stdin_tty:
+            stdin_tty = ensure_console_input()
+        if not stdin_tty:
             parser.print_help(sys.stderr)
             return exit_codes.USAGE
         interactive = True
