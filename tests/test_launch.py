@@ -421,6 +421,39 @@ def test_cmd_gui_detached_child_opens_window(monkeypatch):
     assert "window launched" in ctx.stderr.getvalue().lower()
 
 
+@pytest.mark.parametrize(
+    ("flags", "browser"),
+    [
+        (["--print-url"], False),
+        (["--browser", "--print-url"], True),
+    ],
+)
+def test_cmd_gui_print_url_child_does_not_spawn_another_gui(monkeypatch, flags, browser):
+    calls = []
+    monkeypatch.setattr("cli.commands._stdin_is_tty", lambda _ctx: True)
+    monkeypatch.setattr(
+        subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: pytest.fail(
+            "print-url child must run the server instead of spawning another GUI"
+        ),
+    )
+    monkeypatch.setattr("web.run.run_web_ui", lambda **kwargs: calls.append(kwargs) or 0)
+    args = apply_defaults(build_parser().parse_args(["gui", *flags]))
+    ctx = make_cli_ctx()
+
+    assert cmd_gui(args, ctx) == exit_codes.OK, ctx.stderr.getvalue()
+    assert calls == [
+        {
+            "port": None,
+            "no_browser": False,
+            "browser": browser,
+            "print_url": True,
+            "replace": False,
+        }
+    ]
+
+
 def test_main_hidden_stop_all_token_stops_everything(monkeypatch):
     calls = []
     monkeypatch.setattr("cli.stop.stop_running_ui", lambda: calls.append(True) or "stopped")
